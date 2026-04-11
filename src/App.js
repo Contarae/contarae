@@ -300,50 +300,62 @@ function CrtS(){
   const totalIng=ings.reduce((s,[,k])=>s+parseNum(f[k]),0)+parseNum(f.iO);
   const tarifa=getTarifa(totalIng);
 
-  const openWompi=()=>{
+  const openWompi=async()=>{
     const ref=`CERT-${f.cc}-${Date.now()}`;
-    const checkout=new window.WidgetCheckout({
-      currency:"COP",
-      amountInCents:tarifa*100,
-      reference:ref,
-      publicKey:WOMPI_KEY,
-      redirectUrl:"https://contarae.com"
-    });
-    checkout.open(function(result){
-      const tx=result.transaction;
-      if(tx && tx.status==="APPROVED"){
-        // Submit to Netlify Forms
-        const formData=new URLSearchParams();
-        formData.append("form-name","certificacion");
-        formData.append("nombre",f.n);
-        formData.append("cedula",f.cc);
-        formData.append("telefono",f.tel);
-        formData.append("correo",f.em);
-        formData.append("destino",f.dir);
-        formData.append("entidad",f.ent);
-        formData.append("periodo",f.per);
-        formData.append("ingresos_laborales",f.iL);
-        formData.append("pensiones",f.iP);
-        formData.append("dividendos",f.iD);
-        formData.append("inversiones",f.iI);
-        formData.append("arriendos",f.iA);
-        formData.append("remesas",f.iR);
-        formData.append("otros_ingresos",f.iO);
-        formData.append("otros_descripcion",f.oD);
-        formData.append("total_ingresos","$"+fm(totalIng));
-        formData.append("tarifa_pagada","$"+fm(tarifa));
-        formData.append("referencia_wompi",ref);
-        formData.append("estado_pago","APROBADO");
-        formData.append("comentarios",f.cm);
-        formData.append("declaracion_juramentada","ACEPTADA");
-        fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:formData.toString()}).catch(()=>{});
-        setPaid(true);
-      } else if(tx && tx.status==="DECLINED"){
-        alert("El pago fue rechazado. Por favor intente con otro medio de pago.");
-      } else if(tx && tx.status==="ERROR"){
-        alert("Ocurrió un error procesando el pago. Intente nuevamente.");
-      }
-    });
+    const amountCents=tarifa*100;
+    try{
+      // Get signature from serverless function
+      const sigRes=await fetch("/.netlify/functions/wompi-signature",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({reference:ref,amountInCents:amountCents,currency:"COP"})
+      });
+      const sigData=await sigRes.json();
+      if(!sigData.signature){alert("Error generando firma de pago. Intente nuevamente.");return;}
+
+      const checkout=new window.WidgetCheckout({
+        currency:"COP",
+        amountInCents:amountCents,
+        reference:ref,
+        publicKey:WOMPI_KEY,
+        "signature:integrity":sigData.signature,
+        redirectUrl:"https://contarae.com"
+      });
+      checkout.open(function(result){
+        const tx=result.transaction;
+        if(tx && tx.status==="APPROVED"){
+          const formData=new URLSearchParams();
+          formData.append("form-name","certificacion");
+          formData.append("nombre",f.n);
+          formData.append("cedula",f.cc);
+          formData.append("telefono",f.tel);
+          formData.append("correo",f.em);
+          formData.append("destino",f.dir);
+          formData.append("entidad",f.ent);
+          formData.append("periodo",f.per);
+          formData.append("ingresos_laborales",f.iL);
+          formData.append("pensiones",f.iP);
+          formData.append("dividendos",f.iD);
+          formData.append("inversiones",f.iI);
+          formData.append("arriendos",f.iA);
+          formData.append("remesas",f.iR);
+          formData.append("otros_ingresos",f.iO);
+          formData.append("otros_descripcion",f.oD);
+          formData.append("total_ingresos","$"+fm(totalIng));
+          formData.append("tarifa_pagada","$"+fm(tarifa));
+          formData.append("referencia_wompi",ref);
+          formData.append("estado_pago","APROBADO");
+          formData.append("comentarios",f.cm);
+          formData.append("declaracion_juramentada","ACEPTADA");
+          fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:formData.toString()}).catch(()=>{});
+          setPaid(true);
+        } else if(tx && tx.status==="DECLINED"){
+          alert("El pago fue rechazado. Por favor intente con otro medio de pago.");
+        } else if(tx && tx.status==="ERROR"){
+          alert("Ocurrió un error procesando el pago. Intente nuevamente.");
+        }
+      });
+    }catch(err){alert("Error de conexión. Intente nuevamente.");}
   };
 
   const resumenWA=`Hola CONTARAE, confirmo mi solicitud de certificación de ingresos:%0ANombre: ${f.n}%0ACédula: ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AAdjunto mis soportes documentales.`;
