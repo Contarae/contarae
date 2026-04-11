@@ -302,9 +302,48 @@ function CrtS(){
 
   const openWompi=()=>{
     const ref=`CERT-${f.cc}-${Date.now()}`;
-    const url=`https://checkout.wompi.co/p/?public-key=${WOMPI_KEY}&currency=COP&amount-in-cents=${tarifa*100}&reference=${ref}&redirect-url=${encodeURIComponent("https://contarae.com")}`;
-    window.open(url,"_blank");
-    setPaid(true);
+    const checkout=new window.WidgetCheckout({
+      currency:"COP",
+      amountInCents:tarifa*100,
+      reference:ref,
+      publicKey:WOMPI_KEY,
+      redirectUrl:"https://contarae.com"
+    });
+    checkout.open(function(result){
+      const tx=result.transaction;
+      if(tx && tx.status==="APPROVED"){
+        // Submit to Netlify Forms
+        const formData=new URLSearchParams();
+        formData.append("form-name","certificacion");
+        formData.append("nombre",f.n);
+        formData.append("cedula",f.cc);
+        formData.append("telefono",f.tel);
+        formData.append("correo",f.em);
+        formData.append("destino",f.dir);
+        formData.append("entidad",f.ent);
+        formData.append("periodo",f.per);
+        formData.append("ingresos_laborales",f.iL);
+        formData.append("pensiones",f.iP);
+        formData.append("dividendos",f.iD);
+        formData.append("inversiones",f.iI);
+        formData.append("arriendos",f.iA);
+        formData.append("remesas",f.iR);
+        formData.append("otros_ingresos",f.iO);
+        formData.append("otros_descripcion",f.oD);
+        formData.append("total_ingresos","$"+fm(totalIng));
+        formData.append("tarifa_pagada","$"+fm(tarifa));
+        formData.append("referencia_wompi",ref);
+        formData.append("estado_pago","APROBADO");
+        formData.append("comentarios",f.cm);
+        formData.append("declaracion_juramentada","ACEPTADA");
+        fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:formData.toString()}).catch(()=>{});
+        setPaid(true);
+      } else if(tx && tx.status==="DECLINED"){
+        alert("El pago fue rechazado. Por favor intente con otro medio de pago.");
+      } else if(tx && tx.status==="ERROR"){
+        alert("Ocurrió un error procesando el pago. Intente nuevamente.");
+      }
+    });
   };
 
   const resumenWA=`Hola CONTARAE, confirmo mi solicitud de certificación de ingresos:%0ANombre: ${f.n}%0ACédula: ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AAdjunto mis soportes documentales.`;
@@ -463,10 +502,23 @@ export default function App(){
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;}::selection{background:#2563EB;color:#fff;}@media(max-width:768px){.dsk-menu{display:none!important;}.ham-btn{display:block!important;}}`}</style>
+    <script src="https://checkout.wompi.co/widget.js" async></script>
     {/* Schema.org */}
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Servicios contables, tributarios y financieros. Certificación de ingresos por Contador Público, outsourcing contable para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573013101050","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00","serviceType":["Certificación de ingresos","Contabilidad","Asesoría tributaria","Declaración de renta","Gestión financiera"]})}}/>
     <Nav/>
     <Banner/>
+    {/* Hidden form for Netlify detection */}
+    <form name="certificacion" data-netlify="true" hidden>
+      <input name="form-name" type="hidden" value="certificacion"/>
+      <input name="nombre"/><input name="cedula"/><input name="telefono"/><input name="correo"/>
+      <input name="destino"/><input name="entidad"/><input name="periodo"/>
+      <input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/>
+      <input name="inversiones"/><input name="arriendos"/><input name="remesas"/>
+      <input name="otros_ingresos"/><input name="otros_descripcion"/>
+      <input name="total_ingresos"/><input name="tarifa_pagada"/>
+      <input name="referencia_wompi"/><input name="estado_pago"/>
+      <input name="comentarios"/><input name="declaracion_juramentada"/>
+    </form>
     <Hero/>
     <div className="ai"><WhyUs/></div>
     <div className="ai"><SvcS/></div>
