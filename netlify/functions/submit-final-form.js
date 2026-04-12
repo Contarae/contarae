@@ -76,13 +76,15 @@ export default async (req, context) => {
 
     Object.entries(formData).forEach(([key, value]) => {
       if (value === undefined || value === null) return;
+      if (["estado_pago", "consecutivo", "referencia_wompi"].includes(key)) return;
       params.append(key, String(value));
     });
 
-    params.append("reference", reference);
-    params.append("consecutive", String(paidRecord.consecutive || ""));
-    params.append("payment_status", "APPROVED");
-    params.append("approved_at", paidRecord.approvedAt || "");
+    params.append("referencia_wompi", reference);
+    params.append("consecutivo", String(paidRecord.consecutive || ""));
+    params.append("estado_pago", "APROBADO");
+    params.append("total_ingresos", String(formData.total_ingresos || ""));
+    params.append("tarifa_pagada", String(formData.tarifa_pagada || ""));
     params.append(
       "wompi_transaction_id",
       String(paidRecord.wompiTransaction?.id || "")
@@ -123,7 +125,7 @@ export default async (req, context) => {
         ok: true,
         message: "Solicitud enviada correctamente a Netlify Forms",
         reference,
-        consecutive: paidRecord.consecutive,
+        consecutivo: paidRecord.consecutive,
         submittedAt: updatedPaidRecord.netlifySubmittedAt
       }),
       {

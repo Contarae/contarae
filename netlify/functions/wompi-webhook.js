@@ -13,13 +13,13 @@ function buildNetlifyFormPayload(formName, paidRecord, reference) {
 
   Object.entries(formData).forEach(([key, value]) => {
     if (value === undefined || value === null) return;
+    if (["estado_pago", "consecutivo", "referencia_wompi"].includes(key)) return;
     params.append(key, String(value));
   });
 
-  params.append("reference", reference);
-  params.append("consecutive", String(paidRecord.consecutive || ""));
-  params.append("payment_status", "APPROVED");
-  params.append("approved_at", paidRecord.approvedAt || "");
+  params.append("referencia_wompi", reference);
+  params.append("consecutivo", String(paidRecord.consecutive || ""));
+  params.append("estado_pago", "APROBADO");
   params.append(
     "wompi_transaction_id",
     String(paidRecord.wompiTransaction?.id || "")
@@ -68,7 +68,6 @@ export default async (req, context) => {
       );
     }
 
-    // 1) Validar autenticidad del evento
     const properties = signature.properties || [];
     const timestamp = String(signature.timestamp || "");
     const wompiChecksum = String(signature.checksum || "").toUpperCase();
@@ -90,7 +89,6 @@ export default async (req, context) => {
       );
     }
 
-    // 2) Solo nos interesan eventos de actualización de transacción
     if (eventName !== "transaction.updated") {
       return new Response(
         JSON.stringify({ ok: true, message: "Evento ignorado", event: eventName }),
@@ -108,7 +106,6 @@ export default async (req, context) => {
       );
     }
 
-    // 3) Si no está aprobada, respondemos 200 y no procesamos
     if (status !== "APPROVED") {
       return new Response(
         JSON.stringify({
@@ -124,10 +121,8 @@ export default async (req, context) => {
     const store = getStore("certification-requests");
     const formName = process.env.NETLIFY_FORM_NAME || "certificacion";
 
-    // 4) Buscar si ya existe pagada
     let paidRecord = await store.get(`paid:${reference}`, { type: "json" });
 
-    // 5) Si no existe, tomar pendiente y crear pagada con consecutivo
     if (!paidRecord) {
       const pendingRecord = await store.get(`pending:${reference}`, { type: "json" });
 
@@ -169,21 +164,19 @@ export default async (req, context) => {
       });
     }
 
-    // 6) Si ya fue enviada a Netlify Forms, no repetimos
     if (paidRecord.netlifySubmittedAt) {
       return new Response(
         JSON.stringify({
           ok: true,
           message: "Solicitud ya aprobada y enviada a Netlify Forms",
           reference,
-          consecutive: paidRecord.consecutive,
+          consecutivo: paidRecord.consecutive,
           submittedAt: paidRecord.netlifySubmittedAt
         }),
         { status: 200, headers }
       );
     }
 
-    // 7) Enviar automáticamente a Netlify Forms
     const origin = new URL(req.url).origin;
     const params = buildNetlifyFormPayload(formName, paidRecord, reference);
 
@@ -206,7 +199,6 @@ export default async (req, context) => {
       );
     }
 
-    // 8) Marcar como enviada a Netlify Forms
     const updatedPaidRecord = {
       ...paidRecord,
       netlifySubmittedAt: new Date().toISOString(),
@@ -220,7 +212,7 @@ export default async (req, context) => {
         ok: true,
         message: "Webhook procesado y formulario enviado correctamente",
         reference,
-        consecutive: updatedPaidRecord.consecutive,
+        consecutivo: updatedPaidRecord.consecutive,
         submittedAt: updatedPaidRecord.netlifySubmittedAt
       }),
       { status: 200, headers }
