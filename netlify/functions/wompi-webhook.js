@@ -49,9 +49,50 @@ export default async (req, context) => {
   try {
     const body = await req.json();
 
-    const eventName = body?.event;
-    const transaction = body?.data?.transaction;
-    const signature = body?.signature;
+    console.log("Webhook body recibido:", JSON.stringify(body));
+
+    const eventName = body?.event || body?.name || "";
+    const signature = body?.signature || {};
+    const transaction =
+      body?.data?.transaction ||
+      body?.transaction ||
+      body?.data ||
+      null;
+
+    if (!transaction) {
+      console.log("Webhook sin transaction válida");
+      return new Response(
+        JSON.stringify({ error: "Evento sin transacción válida" }),
+        { status: 400, headers }
+      );
+    }
+
+    const reference =
+      transaction?.reference ||
+      body?.data?.reference ||
+      "";
+
+    const rawStatus = transaction?.status || "";
+    const status = String(rawStatus).toUpperCase().trim();
+
+    console.log("Webhook eventName:", eventName);
+    console.log("Webhook reference:", reference);
+    console.log("Webhook status:", status);
+
+    if (!eventName) {
+      return new Response(
+        JSON.stringify({ error: "Evento sin nombre" }),
+        { status: 400, headers }
+      );
+    }
+
+    if (!reference) {
+      return new Response(
+        JSON.stringify({ error: "El evento no trae referencia" }),
+        { status: 400, headers }
+      );
+    }
+
     const eventSecret = process.env.WOMPI_EVENTS_SECRET;
 
     if (!eventSecret) {
@@ -61,19 +102,12 @@ export default async (req, context) => {
       );
     }
 
-    if (!eventName || !transaction || !signature) {
-      return new Response(
-        JSON.stringify({ error: "Evento incompleto" }),
-        { status: 400, headers }
-      );
-    }
-
     const properties = signature.properties || [];
     const timestamp = String(signature.timestamp || "");
     const wompiChecksum = String(signature.checksum || "").toUpperCase();
 
     const concatenatedValues = properties
-      .map((path) => String(getValueByPath(body.data, path) ?? ""))
+      .map((path) => String(getValueByPath(body.data || body, path) ?? ""))
       .join("");
 
     const localChecksum = crypto
@@ -82,31 +116,27 @@ export default async (req, context) => {
       .digest("hex")
       .toUpperCase();
 
+    console.log("Checksum local:", localChecksum);
+    console.log("Checksum wompi:", wompiChecksum);
+
     if (localChecksum !== wompiChecksum) {
+      console.log("Firma inválida");
       return new Response(
         JSON.stringify({ error: "Firma del evento inválida" }),
         { status: 401, headers }
       );
     }
 
-    if (eventName !== "transaction.updated") {
+    if (!["transaction.updated", "TRANSACTION.UPDATED"].includes(eventName)) {
+      console.log("Evento ignorado:", eventName);
       return new Response(
         JSON.stringify({ ok: true, message: "Evento ignorado", event: eventName }),
         { status: 200, headers }
       );
     }
 
-    const reference = transaction.reference;
-    const status = transaction.status;
-
-    if (!reference) {
-      return new Response(
-        JSON.stringify({ error: "El evento no trae referencia" }),
-        { status: 400, headers }
-      );
-    }
-
     if (status !== "APPROVED") {
+      console.log("Transacción no aprobada todavía:", status);
       return new Response(
         JSON.stringify({
           ok: true,
@@ -117,6 +147,8 @@ export default async (req, context) => {
         { status: 200, headers }
       );
     }
+
+    console.log("Transacción aprobada, continúa procesamiento");
 
     const store = getStore("certification-requests");
     const formName = process.env.NETLIFY_FORM_NAME || "certificacion";
