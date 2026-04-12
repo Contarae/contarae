@@ -83,6 +83,10 @@ export default async (req, context) => {
     params.append("referencia_wompi", reference);
     params.append("consecutivo", String(paidRecord.consecutive || ""));
     params.append("estado_pago", "APROBADO");
+    params.append(
+      "email",
+      String(formData.email || formData.correo || paidRecord.wompiTransaction?.customer_email || "")
+    );
     params.append("total_ingresos", String(formData.total_ingresos || ""));
     params.append("tarifa_pagada", String(formData.tarifa_pagada || ""));
     params.append(

@@ -823,6 +823,7 @@ function CrtS(){
     lugar_expedicion:f.le,
     telefono:f.tel,
     correo:f.em,
+    email:f.em,
     destino:f.dir,
     entidad:f.ent,
     periodo:f.per,
@@ -1267,7 +1268,7 @@ export default function App(){
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573013101050","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
     <Nav/><Banner/>
-    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="total_ingresos"/><input name="tarifa_pagada"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
+    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="total_ingresos"/><input name="tarifa_pagada"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
     <Hero/>
     <div className="ai"><SvcS/></div>
     <div className="ai"><PlnS/></div>

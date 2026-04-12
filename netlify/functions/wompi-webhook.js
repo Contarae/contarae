@@ -5,6 +5,259 @@ function getValueByPath(obj, path) {
   return path.split(".").reduce((acc, key) => acc?.[key], obj);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function joinValues(values) {
+  return values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildIncomeRows(formData = {}) {
+  const rows = [
+    ["Ingresos laborales", formData.ingresos_laborales],
+    ["Pensiones", formData.pensiones],
+    ["Dividendos", formData.dividendos],
+    ["Inversiones", formData.inversiones],
+    ["Arriendos", formData.arriendos],
+    ["Remesas", formData.remesas],
+    ["Otros ingresos", formData.otros_ingresos],
+    ["Descripción otros ingresos", formData.otros_descripcion]
+  ];
+
+  return rows.filter(([, value]) => String(value || "").trim());
+}
+
+function buildBusinessSummaryRows(paidRecord, reference) {
+  const formData = paidRecord.formData || {};
+
+  return [
+    ["Estado", "APROBADO"],
+    ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "Sin consecutivo"],
+    ["Referencia Wompi", reference],
+    ["Transacción Wompi", paidRecord.wompiTransaction?.id || ""],
+    ["Nombre", formData.nombre],
+    ["Correo", formData.correo || formData.email || paidRecord.wompiTransaction?.customer_email || ""],
+    ["Teléfono", formData.telefono],
+    [
+      "Documento",
+      joinValues([formData.tipo_documento, formData.numero_documento])
+    ],
+    ["Lugar de expedición", formData.lugar_expedicion],
+    ["Destino / entidad", joinValues([formData.destino, formData.entidad])],
+    ["Período", formData.periodo],
+    ["Total ingresos", formData.total_ingresos],
+    ["Tarifa pagada", formData.tarifa_pagada],
+    ["Comentarios", formData.comentarios],
+    ["Declaración juramentada", formData.declaracion_juramentada]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
+function buildRowsHtml(rows) {
+  return rows
+    .map(
+      ([label, value]) => `
+        <tr>
+          <td style="padding:10px 12px;border:1px solid #dbe5f1;background:#f8fbff;font-weight:700;color:#1b3a5c;">${escapeHtml(label)}</td>
+          <td style="padding:10px 12px;border:1px solid #dbe5f1;color:#334155;">${escapeHtml(value)}</td>
+        </tr>
+      `
+    )
+    .join("");
+}
+
+function buildRowsText(rows) {
+  return rows.map(([label, value]) => `${label}: ${value}`).join("\n");
+}
+
+function buildBusinessEmailHtml(paidRecord, reference, supportEmail) {
+  const formData = paidRecord.formData || {};
+  const summaryRows = buildBusinessSummaryRows(paidRecord, reference);
+  const incomeRows = buildIncomeRows(formData);
+
+  return `
+    <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
+      <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #dbe5f1;border-radius:18px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#0b1d3a,#2563eb);padding:24px 28px;color:#ffffff;">
+          <div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.82;">CONTARAE</div>
+          <h1 style="margin:10px 0 4px;font-size:24px;">Nueva solicitud aprobada</h1>
+          <p style="margin:0;font-size:14px;opacity:0.88;">El pago fue confirmado y el formulario ya se envió correctamente a Netlify Forms.</p>
+        </div>
+        <div style="padding:24px 28px;">
+          <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Resumen de la solicitud</h2>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+            ${buildRowsHtml(summaryRows)}
+          </table>
+          ${
+            incomeRows.length
+              ? `
+                <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Detalle de ingresos reportados</h2>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+                  ${buildRowsHtml(incomeRows)}
+                </table>
+              `
+              : ""
+          }
+          <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.7;">
+            Recuerde solicitar al cliente los soportes documentales que acrediten la realidad económica reportada. Puede responder directamente a este correo para continuar el seguimiento.
+            ${
+              supportEmail
+                ? `<br/><br/>Correo de soporte: <strong>${escapeHtml(supportEmail)}</strong>`
+                : ""
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildBusinessEmailText(paidRecord, reference, supportEmail) {
+  const formData = paidRecord.formData || {};
+  const summaryRows = buildBusinessSummaryRows(paidRecord, reference);
+  const incomeRows = buildIncomeRows(formData);
+
+  return [
+    "CONTARAE",
+    "Nueva solicitud aprobada",
+    "",
+    buildRowsText(summaryRows),
+    incomeRows.length ? `\nDetalle de ingresos:\n${buildRowsText(incomeRows)}` : "",
+    supportEmail ? `\nCorreo de soporte: ${supportEmail}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLink) {
+  const formData = paidRecord.formData || {};
+  const summaryRows = [
+    ["Estado del pago", "APROBADO"],
+    ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "En validación"],
+    ["Referencia Wompi", reference],
+    ["Total ingresos reportados", formData.total_ingresos],
+    ["Valor pagado", formData.tarifa_pagada],
+    ["Destino", joinValues([formData.destino, formData.entidad])],
+    ["Período", formData.periodo]
+  ].filter(([, value]) => String(value || "").trim());
+
+  return `
+    <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
+      <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #dbe5f1;border-radius:18px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#0b1d3a,#2563eb);padding:24px 28px;color:#ffffff;">
+          <div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.82;">CONTARAE</div>
+          <h1 style="margin:10px 0 4px;font-size:24px;">Pago confirmado</h1>
+          <p style="margin:0;font-size:14px;opacity:0.88;">Su solicitud de certificación de ingresos quedó registrada correctamente.</p>
+        </div>
+        <div style="padding:24px 28px;">
+          <p style="margin:0 0 16px;color:#334155;line-height:1.8;">
+            Hola ${escapeHtml(formData.nombre || "")}, su pago fue confirmado y ya iniciamos la revisión de su solicitud. A continuación encontrará los datos principales del trámite:
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+            ${buildRowsHtml(summaryRows)}
+          </table>
+          <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.8;">
+            <strong>Siguientes pasos:</strong><br/>
+            1. Envíe por WhatsApp o correo electrónico los soportes que acrediten la realidad económica de los ingresos reportados.<br/>
+            2. Puede remitir contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones y demás documentos de respaldo.<br/>
+            3. Un profesional de CONTARAE revisará la documentación completa y se pondrá en contacto si requiere información adicional.
+          </div>
+          <div style="margin-top:18px;padding:16px 18px;border-radius:14px;background:#eef6ff;border:1px solid #cfe2ff;color:#1e3a5f;line-height:1.8;">
+            ${
+              supportEmail
+                ? `Correo de contacto: <strong>${escapeHtml(supportEmail)}</strong><br/>`
+                : ""
+            }
+            ${
+              whatsappLink
+                ? `WhatsApp: <a href="${escapeHtml(whatsappLink)}" style="color:#2563eb;text-decoration:none;font-weight:700;">Abrir conversación</a>`
+                : ""
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLink) {
+  const formData = paidRecord.formData || {};
+  const rows = [
+    ["Estado del pago", "APROBADO"],
+    ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "En validación"],
+    ["Referencia Wompi", reference],
+    ["Total ingresos reportados", formData.total_ingresos],
+    ["Valor pagado", formData.tarifa_pagada],
+    ["Destino", joinValues([formData.destino, formData.entidad])],
+    ["Período", formData.periodo]
+  ].filter(([, value]) => String(value || "").trim());
+
+  return [
+    `Hola ${formData.nombre || ""},`,
+    "",
+    "Su pago fue confirmado y su solicitud de certificación de ingresos quedó registrada correctamente.",
+    "",
+    buildRowsText(rows),
+    "",
+    "Siguientes pasos:",
+    "1. Envíe por WhatsApp o correo electrónico los soportes que acrediten la realidad económica de los ingresos reportados.",
+    "2. Puede remitir contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones y demás documentos de respaldo.",
+    "3. Un profesional de CONTARAE revisará la documentación completa y se pondrá en contacto si requiere información adicional.",
+    supportEmail ? `Correo de contacto: ${supportEmail}` : "",
+    whatsappLink ? `WhatsApp: ${whatsappLink}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function sendResendEmail({
+  apiKey,
+  from,
+  to,
+  subject,
+  html,
+  text,
+  replyTo,
+  idempotencyKey
+}) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject,
+      html,
+      text,
+      replyTo
+    })
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || "Resend no aceptó el envío");
+  }
+
+  return payload;
+}
+
 function buildNetlifyFormPayload(formName, paidRecord, reference) {
   const params = new URLSearchParams();
   params.append("form-name", formName);
@@ -20,6 +273,10 @@ function buildNetlifyFormPayload(formName, paidRecord, reference) {
   params.append("referencia_wompi", reference);
   params.append("consecutivo", String(paidRecord.consecutive || ""));
   params.append("estado_pago", "APROBADO");
+  params.append(
+    "email",
+    String(formData.email || formData.correo || paidRecord.wompiTransaction?.customer_email || "")
+  );
   params.append(
     "wompi_transaction_id",
     String(paidRecord.wompiTransaction?.id || "")
@@ -227,46 +484,141 @@ export default async (req, context) => {
       });
     }
 
-    if (paidRecord.netlifySubmittedAt) {
+    const customerEmail = normalizeEmail(
+      paidRecord.formData?.correo ||
+        paidRecord.formData?.email ||
+        paidRecord.wompiTransaction?.customer_email ||
+        transaction.customer_email
+    );
+    const allNotificationsCompleted =
+      Boolean(paidRecord.businessNotificationSentAt) &&
+      (customerEmail ? Boolean(paidRecord.customerNotificationSentAt) : true);
+
+    if (paidRecord.netlifySubmittedAt && allNotificationsCompleted) {
       return new Response(
         JSON.stringify({
           ok: true,
           message: "Solicitud ya aprobada y enviada a Netlify Forms",
           reference,
           consecutivo: paidRecord.consecutive,
-          submittedAt: paidRecord.netlifySubmittedAt
+          submittedAt: paidRecord.netlifySubmittedAt,
+          businessNotificationSentAt: paidRecord.businessNotificationSentAt || null,
+          customerNotificationSentAt: paidRecord.customerNotificationSentAt || null
         }),
         { status: 200, headers }
       );
     }
 
-    const origin = new URL(req.url).origin;
-    const params = buildNetlifyFormPayload(formName, paidRecord, reference);
+    let updatedPaidRecord = paidRecord;
 
-    const submitResponse = await fetch(`${origin}/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: params.toString()
-    });
+    if (!paidRecord.netlifySubmittedAt) {
+      const origin = new URL(req.url).origin;
+      const params = buildNetlifyFormPayload(formName, paidRecord, reference);
 
-    if (!submitResponse.ok) {
-      const responseText = await submitResponse.text();
-      return new Response(
-        JSON.stringify({
-          error: "Netlify Forms no aceptó el envío",
-          detail: responseText
-        }),
-        { status: 500, headers }
-      );
+      const submitResponse = await fetch(`${origin}/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      });
+
+      if (!submitResponse.ok) {
+        const responseText = await submitResponse.text();
+        return new Response(
+          JSON.stringify({
+            error: "Netlify Forms no aceptó el envío",
+            detail: responseText
+          }),
+          { status: 500, headers }
+        );
+      }
+
+      updatedPaidRecord = {
+        ...paidRecord,
+        netlifySubmittedAt: new Date().toISOString(),
+        netlifyFormName: formName
+      };
     }
 
-    const updatedPaidRecord = {
-      ...paidRecord,
-      netlifySubmittedAt: new Date().toISOString(),
-      netlifyFormName: formName
-    };
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendFromEmail =
+      process.env.RESEND_FROM_EMAIL || "CONTARAE <notificaciones@send.contarae.com>";
+    const replyToBusinessEmail = process.env.RESEND_REPLY_TO || "info@contarae.com";
+    const businessNotificationEmail =
+      process.env.BUSINESS_NOTIFICATION_EMAIL || replyToBusinessEmail;
+    const whatsappLink = `https://wa.me/573013101050?text=${encodeURIComponent(
+      `Hola CONTARAE, envío los soportes de mi solicitud ${updatedPaidRecord.consecutive ? `N° ${updatedPaidRecord.consecutive}` : ""} con referencia ${reference}.`
+    )}`;
+    const notificationErrors = {};
+
+    if (resendApiKey) {
+      if (!updatedPaidRecord.businessNotificationSentAt && businessNotificationEmail) {
+        try {
+          const businessEmailResult = await sendResendEmail({
+            apiKey: resendApiKey,
+            from: resendFromEmail,
+            to: businessNotificationEmail,
+            subject: `CONTARAE | Solicitud aprobada ${updatedPaidRecord.consecutive ? `N° ${updatedPaidRecord.consecutive}` : reference}`,
+            html: buildBusinessEmailHtml(updatedPaidRecord, reference, replyToBusinessEmail),
+            text: buildBusinessEmailText(updatedPaidRecord, reference, replyToBusinessEmail),
+            replyTo: customerEmail || replyToBusinessEmail,
+            idempotencyKey: `${reference}:business`
+          });
+
+          updatedPaidRecord = {
+            ...updatedPaidRecord,
+            businessNotificationSentAt: new Date().toISOString(),
+            businessNotificationId: businessEmailResult.id || ""
+          };
+        } catch (error) {
+          notificationErrors.business = error.message;
+        }
+      }
+
+      if (customerEmail && !updatedPaidRecord.customerNotificationSentAt) {
+        try {
+          const customerEmailResult = await sendResendEmail({
+            apiKey: resendApiKey,
+            from: resendFromEmail,
+            to: customerEmail,
+            subject: `CONTARAE | Confirmación de pago de su certificación de ingresos`,
+            html: buildCustomerEmailHtml(
+              updatedPaidRecord,
+              reference,
+              replyToBusinessEmail,
+              whatsappLink
+            ),
+            text: buildCustomerEmailText(
+              updatedPaidRecord,
+              reference,
+              replyToBusinessEmail,
+              whatsappLink
+            ),
+            replyTo: replyToBusinessEmail,
+            idempotencyKey: `${reference}:customer`
+          });
+
+          updatedPaidRecord = {
+            ...updatedPaidRecord,
+            customerNotificationSentAt: new Date().toISOString(),
+            customerNotificationId: customerEmailResult.id || ""
+          };
+        } catch (error) {
+          notificationErrors.customer = error.message;
+        }
+      }
+    } else {
+      notificationErrors.resend = "RESEND_API_KEY no configurada";
+    }
+
+    if (Object.keys(notificationErrors).length) {
+      updatedPaidRecord = {
+        ...updatedPaidRecord,
+        lastNotificationError: notificationErrors,
+        lastNotificationErrorAt: new Date().toISOString()
+      };
+    }
 
     await store.setJSON(`paid:${reference}`, updatedPaidRecord);
 
@@ -276,7 +628,12 @@ export default async (req, context) => {
         message: "Webhook procesado y formulario enviado correctamente",
         reference,
         consecutivo: updatedPaidRecord.consecutive,
-        submittedAt: updatedPaidRecord.netlifySubmittedAt
+        submittedAt: updatedPaidRecord.netlifySubmittedAt,
+        businessNotificationSentAt: updatedPaidRecord.businessNotificationSentAt || null,
+        customerNotificationSentAt: updatedPaidRecord.customerNotificationSentAt || null,
+        notificationWarnings: Object.keys(notificationErrors).length
+          ? notificationErrors
+          : null
       }),
       { status: 200, headers }
     );
