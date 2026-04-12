@@ -796,50 +796,22 @@ return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAV
 function CrtS(){
   const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
   const[step,sStep]=useState(0);const[f,sF]=useState({n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""});
-  const[acc,sAcc]=useState(false);const[modal,sMod]=useState(null);const[citySug,sCitySug]=useState([]);const[openForm,sOpenForm]=useState(false);const[launchingPay,sLaunchingPay]=useState(false);
+  const[acc,sAcc]=useState(false);const[modal,sMod]=useState(null);const[citySug,sCitySug]=useState([]);const[openForm,sOpenForm]=useState(false);
   const u=(k,v)=>sF(p=>({...p,[k]:v}));const uF=(k,v)=>sF(p=>({...p,[k]:fmtI(v)}));
   const handleCity=v=>{u("le",v);sCitySug(v.length>=2?CITIES.filter(c=>c.toLowerCase().includes(v.toLowerCase())).slice(0,8):[]);};
   const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."]];
   const totalIng=ings.reduce((s,[,k])=>s+pN(f[k]),0)+pN(f.iO);
-  const tarifa=gT(totalIng);const consec=1000+Math.floor(Math.random()*100);const ref=`CONTARAE-${consec}`;
+  const tarifa=gT(totalIng);const ref=`CONTARAE-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
 
-  const openWompi=async()=>{
-    try{
-      sLaunchingPay(true);
-      const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:ref,amountInCents:tarifa*100,currency:"COP"})});
-      const sd=await sg.json();
-      if(!sd.signature){sLaunchingPay(false);alert("Error generando firma. Intente nuevamente.");return;}
-
-      sOpenForm(false);
-
-      setTimeout(()=>{
-        try{
-          const ck=new window.WidgetCheckout({currency:"COP",amountInCents:tarifa*100,reference:ref,publicKey:WK,"signature:integrity":sd.signature,redirectUrl:"https://contarae.com"});
-          sLaunchingPay(false);
-          ck.open(function(result){
-            const tx=result?.transaction;
-            const st=String(tx?.status||"").toUpperCase().trim();
-
-            if(tx&&st==="APPROVED"){
-              const fd=new URLSearchParams();fd.append("form-name","certificacion");fd.append("consecutivo",ref);fd.append("nombre",f.n);fd.append("tipo_documento",f.td);fd.append("numero_documento",f.cc);fd.append("lugar_expedicion",f.le);fd.append("telefono",f.tel);fd.append("correo",f.em);fd.append("destino",f.dir);fd.append("entidad",f.ent);fd.append("periodo",f.per);fd.append("ingresos_laborales",f.iL);fd.append("pensiones",f.iP);fd.append("dividendos",f.iD);fd.append("inversiones",f.iI);fd.append("arriendos",f.iA);fd.append("remesas",f.iR);fd.append("otros_ingresos",f.iO);fd.append("otros_descripcion",f.oD);fd.append("total_ingresos","$"+fm(totalIng));fd.append("tarifa_pagada","$"+fm(tarifa));fd.append("referencia_wompi",ref);fd.append("estado_pago","APROBADO");fd.append("comentarios",f.cm);fd.append("declaracion_juramentada","ACEPTADA");
-              fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:fd.toString()}).catch(()=>{});
-              sMod({type:"success",reference:ref});
-            }else if(st==="DECLINED"||st==="ERROR"||st==="VOIDED"||st==="CANCELLED"){
-              sMod({type:"failed",status:st||"NO_CONFIRMADO"});
-            }else{
-              sMod({type:"failed",status:st||"NO_CONFIRMADO"});
-            }
-          });
-        }catch(e){
-          sLaunchingPay(false);
-          sMod({type:"failed",status:"ERROR"});
-        }
-      },180);
-    }catch(e){
-      sLaunchingPay(false);
-      alert("Error de conexión. Intente nuevamente.");
-    }
-  };
+  const openWompi=async()=>{try{
+    const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:ref,amountInCents:tarifa*100,currency:"COP"})});
+    const sd=await sg.json();if(!sd.signature){alert("Error generando firma. Intente nuevamente.");return;}
+    const ck=new window.WidgetCheckout({currency:"COP",amountInCents:tarifa*100,reference:ref,publicKey:WK,"signature:integrity":sd.signature,redirectUrl:"https://contarae.com"});
+    ck.open(function(result){const tx=result.transaction;
+      if(tx&&tx.status==="APPROVED"){sMod(ref);}
+      else if(tx&&tx.status==="DECLINED")alert("Pago rechazado. Intente con otro medio.");
+      else if(tx&&tx.status==="ERROR")alert("Error en el pago. Intente nuevamente.");});
+  }catch(e){alert("Error de conexión. Intente nuevamente.");}};
 
   const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0AConsecutivo: ${ref}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AAdjunto soportes.`;
   const pasos=["Datos personales","Destino","Ingresos y soportes","Confirmación y pago","Entrega en PDF"];
@@ -903,16 +875,11 @@ function CrtS(){
     </div>}
     </div></div></div>, document.body)}
 
-    {modal&&createPortal(<div style={{position:"fixed",inset:0,background:"rgba(8,15,29,.55)",zIndex:12010,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 18px"}} onClick={()=>sMod(null)}><div style={{background:"#fff",borderRadius:20,padding:36,maxWidth:520,width:"100%",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.25)",border:"1px solid rgba(37,99,235,.10)"}} onClick={e=>e.stopPropagation()}>{modal?.type==="success"?(<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:16,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>Referencia {modal.reference}</div>
+    {modal&&createPortal(<div style={{position:"fixed",inset:0,background:"rgba(8,15,29,.55)",zIndex:12010,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 18px"}} onClick={()=>sMod(null)}><div style={{background:"#fff",borderRadius:20,padding:36,maxWidth:520,width:"100%",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.25)",border:"1px solid rgba(37,99,235,.10)"}} onClick={e=>e.stopPropagation()}><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:16,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>Solicitud N° {modal}</div>
       <p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:8}}>Uno de nuestros Contadores Públicos revisará la información y soportes. En caso de requerirse documentación adicional, nos comunicaremos de inmediato.</p>
-      <p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:20}}>Consulte su solicitud por WhatsApp con la referencia: <strong>{modal.reference}</strong></p>
-      <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"heroUp 1.38s ease-out"}}><a href={`${WL}?text=${waMsg}`} target="_blank" rel="noopener noreferrer" style={{padding:"12px 22px",borderRadius:11,background:"#25D366",color:"#fff",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Enviar soportes por WhatsApp</a><button type="button" onClick={()=>{sMod(null);moveStep(0);sAcc(false);sOpenForm(false);sF({n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""});}} style={{padding:"12px 22px",borderRadius:11,background:"rgba(37,99,235,.08)",color:"#2563EB",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Nueva solicitud</button><button type="button" onClick={()=>{sMod(null);sOpenForm(false);}} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#5A6F8A",fontSize:14,fontWeight:600,border:"2px solid rgba(37,99,235,.12)",cursor:"pointer",fontFamily:F}}>Cerrar</button></div></>):(<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(220,38,38,.10)",fontSize:16,fontWeight:700,color:"#DC2626",marginBottom:14,fontFamily:F}}>Pago no confirmado</div>
-      <p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:10}}>La transacción no fue aprobada. Puede intentarlo nuevamente o escribirnos por WhatsApp para recibir apoyo.</p>
-      <p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:20}}>Estado reportado por la pasarela: <strong>{modal?.status||"NO_CONFIRMADO"}</strong></p>
-      <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}><a href={wm("Hola CONTARAE, mi pago no fue confirmado en la certificación de ingresos y necesito apoyo para completar el proceso.")} target="_blank" rel="noopener noreferrer" style={{padding:"12px 22px",borderRadius:11,background:"#25D366",color:"#fff",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Recibir apoyo por WhatsApp</a><button type="button" onClick={()=>{sMod(null);sOpenForm(true);sStep(3);}} style={{padding:"12px 22px",borderRadius:11,background:"rgba(37,99,235,.08)",color:"#2563EB",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Intentar nuevamente</button><button type="button" onClick={()=>sMod(null)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#5A6F8A",fontSize:14,fontWeight:600,border:"2px solid rgba(37,99,235,.12)",cursor:"pointer",fontFamily:F}}>Cerrar</button></div></>)}
-    </div></div>, document.body)}
-
-    {launchingPay&&createPortal(<div style={{position:"fixed",inset:0,background:"rgba(8,15,29,.28)",zIndex:12005,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 18px",pointerEvents:"none"}}><div style={{background:"#fff",borderRadius:18,padding:"22px 24px",maxWidth:420,width:"100%",textAlign:"center",boxShadow:"0 20px 50px rgba(15,23,42,.18)",border:"1px solid rgba(37,99,235,.10)"}}><div style={{width:34,height:34,borderRadius:"50%",border:"3px solid rgba(37,99,235,.14)",borderTopColor:"#2563EB",margin:"0 auto 12px",animation:"spinLoader .9s linear infinite"}}/><div style={{fontSize:16,fontWeight:700,color:"#0B1D3A",fontFamily:F,marginBottom:6}}>Abriendo pasarela de pago</div><div style={{fontSize:13,color:"#64748B",fontFamily:F,lineHeight:1.7}}>Estamos preparando la ventana segura de Wompi para continuar su pago.</div></div></div>,document.body)}</Sec>);
+      <p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:20}}>Consulte su solicitud por WhatsApp con el consecutivo: <strong>{modal}</strong></p>
+      <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"heroUp 1.38s ease-out"}}><a href={`${WL}?text=${waMsg}`} target="_blank" rel="noopener noreferrer" style={{padding:"12px 22px",borderRadius:11,background:"#25D366",color:"#fff",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Enviar soportes por WhatsApp</a><button type="button" onClick={()=>{sMod(null);moveStep(0);sAcc(false);sOpenForm(false);sF({n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""});}} style={{padding:"12px 22px",borderRadius:11,background:"rgba(37,99,235,.08)",color:"#2563EB",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Nueva solicitud</button><button type="button" onClick={()=>{sMod(null);sOpenForm(false);}} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#5A6F8A",fontSize:14,fontWeight:600,border:"2px solid rgba(37,99,235,.12)",cursor:"pointer",fontFamily:F}}>Cerrar</button></div>
+    </div></div>, document.body)}</Sec>);
 }
 /* ══════ TOOLS (ALL VISIBLE) ══════ */
 const TOOL_META=[
@@ -1166,7 +1133,7 @@ export default function App(){
   useEffect(()=>{const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[]);
   useEffect(()=>{const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);const el=document.getElementById(id);if(!el)return;e.preventDefault();const top=el.getBoundingClientRect().top+window.pageYOffset-156;window.scrollTo({top,behavior:"smooth"});if(window.history?.replaceState)window.history.replaceState(null,"",`#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[]);
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
-    <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} @keyframes spinLoader{to{transform:rotate(360deg)}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}}`}</style>
+    <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}}`}</style>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573013101050","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
     <Nav/><Banner/>
