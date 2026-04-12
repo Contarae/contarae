@@ -1,0 +1,267 @@
+import { getStore } from "@netlify/blobs";
+import { getSupportDownloadPath } from "./certification-supports.js";
+
+const FINAL_FAILED_STATUSES = new Set([
+  "declined",
+  "error",
+  "voided",
+  "failed",
+  "rejected",
+  "canceled",
+  "cancelled"
+]);
+
+export const CERTIFICATION_STATUSES = [
+  "pendiente_pago",
+  "pendiente_revision",
+  "en_revision",
+  "documentos_solicitados",
+  "lista_para_envio",
+  "enviada",
+  "pago_no_confirmado"
+];
+
+export function getCertificationStore() {
+  return getStore("certification-requests");
+}
+
+function joinValues(values = []) {
+  return values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function normalizePhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("57") && digits.length >= 12) return digits;
+  if (digits.length === 10) return `57${digits}`;
+  return digits;
+}
+
+export function inferCertificationStatus(record = {}, source = "pending") {
+  if (record.certificationStatus) return record.certificationStatus;
+
+  const paymentStatus = String(record.status || "").toLowerCase();
+
+  if (FINAL_FAILED_STATUSES.has(paymentStatus)) return "pago_no_confirmado";
+  if (paymentStatus === "pending") return "pendiente_pago";
+  if (paymentStatus === "approved" || source === "paid") return "pendiente_revision";
+
+  return "pendiente_revision";
+}
+
+function buildIncomeItems(formData = {}) {
+  return [
+    ["Ingresos laborales", formData.ingresos_laborales],
+    ["Pensiones", formData.pensiones],
+    ["Dividendos", formData.dividendos],
+    ["Inversiones", formData.inversiones],
+    ["Arriendos", formData.arriendos],
+    ["Remesas", formData.remesas],
+    ["Otros ingresos", formData.otros_ingresos],
+    ["Descripción otros ingresos", formData.otros_descripcion]
+  ]
+    .filter(([, value]) => String(value || "").trim())
+    .map(([label, value]) => ({ label, value }));
+}
+
+function getUpdatedAt(record = {}) {
+  return (
+    record.updatedAt ||
+    record.lastReviewedAt ||
+    record.requestedDocumentsAt ||
+    record.sentToClientAt ||
+    record.approvedAt ||
+    record.createdAt ||
+    record.lastEventAt ||
+    ""
+  );
+}
+
+function summarizeRecord(record, source) {
+  const formData = record.formData || {};
+  const supportFiles = Array.isArray(record.supportFiles) ? record.supportFiles : [];
+
+  return {
+    reference: record.reference,
+    source,
+    paymentStatus: String(record.status || "").toLowerCase() || (source === "paid" ? "approved" : "pending"),
+    certificationStatus: inferCertificationStatus(record, source),
+    customerName: formData.nombre || "",
+    customerEmail:
+      formData.correo ||
+      formData.email ||
+      record.wompiTransaction?.customer_email ||
+      "",
+    customerPhone: formData.telefono || "",
+    destination: joinValues([formData.destino, formData.entidad]),
+    period: formData.periodo || "",
+    totalIncome: formData.total_ingresos || "",
+    fee: formData.tarifa_pagada || "",
+    consecutive: record.consecutive || "",
+    supportFilesCount: supportFiles.length,
+    createdAt: record.createdAt || "",
+    approvedAt: record.approvedAt || "",
+    updatedAt: getUpdatedAt(record),
+    lastEventStatus: record.lastEventStatus || "",
+    netlifySubmittedAt: record.netlifySubmittedAt || "",
+    businessNotificationSentAt: record.businessNotificationSentAt || "",
+    customerNotificationSentAt: record.customerNotificationSentAt || ""
+  };
+}
+
+function buildDetail(record, source) {
+  const formData = record.formData || {};
+  const normalizedPhone = normalizePhone(formData.telefono);
+  const customerEmail =
+    formData.correo ||
+    formData.email ||
+    record.wompiTransaction?.customer_email ||
+    "";
+  const supportFiles = Array.isArray(record.supportFiles) ? record.supportFiles : [];
+
+  return {
+    summary: summarizeRecord(record, source),
+    source,
+    record,
+    formData,
+    incomes: buildIncomeItems(formData),
+    supportFiles: supportFiles.map((file) => ({
+      ...file,
+      downloadPath: getSupportDownloadPath(record.reference, file.blobKey)
+    })),
+    contact: {
+      email: customerEmail,
+      rawPhone: formData.telefono || "",
+      whatsappPhone: normalizedPhone
+    }
+  };
+}
+
+export async function getCertificationByReference(reference) {
+  const store = getCertificationStore();
+  const paidRecord = await store.get(`paid:${reference}`, { type: "json" });
+  const pendingRecord = await store.get(`pending:${reference}`, { type: "json" });
+  const source = paidRecord ? "paid" : pendingRecord ? "pending" : "";
+  const record = paidRecord || pendingRecord || null;
+
+  return {
+    store,
+    source,
+    record,
+    paidRecord,
+    pendingRecord,
+    detail: record ? buildDetail(record, source) : null
+  };
+}
+
+export async function listAllCertifications() {
+  const store = getCertificationStore();
+  const [paidList, pendingList] = await Promise.all([
+    store.list({ prefix: "paid:" }),
+    store.list({ prefix: "pending:" })
+  ]);
+
+  const entries = new Map();
+
+  const paidRecords = await Promise.all(
+    (paidList.blobs || []).map(async ({ key }) => {
+      const record = await store.get(key, { type: "json" });
+      return record ? summarizeRecord(record, "paid") : null;
+    })
+  );
+
+  paidRecords.filter(Boolean).forEach((item) => {
+    entries.set(item.reference, item);
+  });
+
+  const pendingRecords = await Promise.all(
+    (pendingList.blobs || []).map(async ({ key }) => {
+      const record = await store.get(key, { type: "json" });
+      return record ? summarizeRecord(record, "pending") : null;
+    })
+  );
+
+  pendingRecords.filter(Boolean).forEach((item) => {
+    if (!entries.has(item.reference)) {
+      entries.set(item.reference, item);
+    }
+  });
+
+  return Array.from(entries.values()).sort((left, right) => {
+    return new Date(right.updatedAt || right.approvedAt || right.createdAt || 0) -
+      new Date(left.updatedAt || left.approvedAt || left.createdAt || 0);
+  });
+}
+
+export async function updateCertificationRecord(reference, updates = {}, actor = "admin") {
+  const store = getCertificationStore();
+  const { paidRecord, pendingRecord, record } = await getCertificationByReference(reference);
+
+  if (!record) {
+    throw new Error("Solicitud no encontrada");
+  }
+
+  const now = new Date().toISOString();
+  const nextCertificationStatus =
+    updates.certificationStatus ||
+    inferCertificationStatus(
+      {
+        ...record,
+        certificationStatus: record.certificationStatus
+      },
+      paidRecord ? "paid" : "pending"
+    );
+
+  const sharedUpdates = {
+    certificationStatus: nextCertificationStatus,
+    adminNotes:
+      updates.adminNotes !== undefined
+        ? String(updates.adminNotes || "")
+        : String(record.adminNotes || ""),
+    requestedDocumentsMessage:
+      updates.requestedDocumentsMessage !== undefined
+        ? String(updates.requestedDocumentsMessage || "")
+        : String(record.requestedDocumentsMessage || ""),
+    updatedAt: now,
+    lastReviewedAt: now,
+    lastReviewedBy: actor,
+    reviewAction: updates.action || record.reviewAction || ""
+  };
+
+  if (updates.action === "request_documents") {
+    sharedUpdates.certificationStatus = updates.certificationStatus || "documentos_solicitados";
+    sharedUpdates.requestedDocumentsAt = now;
+    sharedUpdates.lastContactChannel = updates.contactChannel || record.lastContactChannel || "";
+  }
+
+  if (sharedUpdates.certificationStatus === "en_revision" && !record.reviewStartedAt) {
+    sharedUpdates.reviewStartedAt = now;
+  }
+
+  if (sharedUpdates.certificationStatus === "lista_para_envio") {
+    sharedUpdates.readyToSendAt = now;
+  }
+
+  if (sharedUpdates.certificationStatus === "enviada" && !record.sentToClientAt) {
+    sharedUpdates.sentToClientAt = now;
+  }
+
+  if (paidRecord) {
+    await store.setJSON(`paid:${reference}`, {
+      ...paidRecord,
+      ...sharedUpdates
+    });
+  }
+
+  if (pendingRecord) {
+    await store.setJSON(`pending:${reference}`, {
+      ...pendingRecord,
+      ...sharedUpdates
+    });
+  }
+
+  return getCertificationByReference(reference);
+}

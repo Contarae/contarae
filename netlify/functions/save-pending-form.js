@@ -26,8 +26,9 @@ export default async (req, context) => {
 
   try {
     const data = await req.json();
+    const reference = String(data.reference || "").trim();
 
-    if (!data.reference) {
+    if (!reference) {
       return new Response(
         JSON.stringify({ error: "Falta la referencia" }),
         {
@@ -38,21 +39,30 @@ export default async (req, context) => {
     }
 
     const store = getStore("certification-requests");
+    const {
+      supportFiles = [],
+      reference: ignoredReference,
+      ...formPayload
+    } = data;
 
     const pendingRecord = {
-      reference: data.reference,
+      reference,
       status: "pending",
       createdAt: new Date().toISOString(),
-      formData: data
+      supportFiles: Array.isArray(supportFiles) ? supportFiles : [],
+      formData: {
+        ...formPayload,
+        referencia_wompi: formPayload.referencia_wompi || reference
+      }
     };
 
-    await store.setJSON(`pending:${data.reference}`, pendingRecord);
+    await store.setJSON(`pending:${reference}`, pendingRecord);
 
     return new Response(
       JSON.stringify({
         ok: true,
         message: "Solicitud pendiente guardada correctamente",
-        reference: data.reference
+        reference
       }),
       {
         status: 200,

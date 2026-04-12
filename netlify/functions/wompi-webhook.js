@@ -40,8 +40,18 @@ function buildIncomeRows(formData = {}) {
   return rows.filter(([, value]) => String(value || "").trim());
 }
 
+function buildSupportItems(paidRecord = {}) {
+  const supportFiles = Array.isArray(paidRecord.supportFiles) ? paidRecord.supportFiles : [];
+  return supportFiles
+    .map((file) => [
+      file.originalName || "Soporte adjunto",
+      `${file.contentType || "archivo"} · ${file.size || 0} bytes`
+    ]);
+}
+
 function buildBusinessSummaryRows(paidRecord, reference) {
   const formData = paidRecord.formData || {};
+  const supportFiles = Array.isArray(paidRecord.supportFiles) ? paidRecord.supportFiles : [];
 
   return [
     ["Estado", "APROBADO"],
@@ -60,6 +70,7 @@ function buildBusinessSummaryRows(paidRecord, reference) {
     ["Período", formData.periodo],
     ["Total ingresos", formData.total_ingresos],
     ["Tarifa pagada", formData.tarifa_pagada],
+    ["Soportes adjuntos", supportFiles.length ? `${supportFiles.length} archivo(s)` : "Sin adjuntos"],
     ["Comentarios", formData.comentarios],
     ["Declaración juramentada", formData.declaracion_juramentada]
   ].filter(([, value]) => String(value || "").trim());
@@ -86,6 +97,7 @@ function buildBusinessEmailHtml(paidRecord, reference, supportEmail) {
   const formData = paidRecord.formData || {};
   const summaryRows = buildBusinessSummaryRows(paidRecord, reference);
   const incomeRows = buildIncomeRows(formData);
+  const supportRows = buildSupportItems(paidRecord);
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
@@ -110,6 +122,16 @@ function buildBusinessEmailHtml(paidRecord, reference, supportEmail) {
               `
               : ""
           }
+          ${
+            supportRows.length
+              ? `
+                <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Soportes cargados en el formulario</h2>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+                  ${buildRowsHtml(supportRows)}
+                </table>
+              `
+              : ""
+          }
           <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.7;">
             Recuerde solicitar al cliente los soportes documentales que acrediten la realidad económica reportada. Puede responder directamente a este correo para continuar el seguimiento.
             ${
@@ -128,6 +150,7 @@ function buildBusinessEmailText(paidRecord, reference, supportEmail) {
   const formData = paidRecord.formData || {};
   const summaryRows = buildBusinessSummaryRows(paidRecord, reference);
   const incomeRows = buildIncomeRows(formData);
+  const supportRows = buildSupportItems(paidRecord);
 
   return [
     "CONTARAE",
@@ -135,6 +158,7 @@ function buildBusinessEmailText(paidRecord, reference, supportEmail) {
     "",
     buildRowsText(summaryRows),
     incomeRows.length ? `\nDetalle de ingresos:\n${buildRowsText(incomeRows)}` : "",
+    supportRows.length ? `\nSoportes cargados:\n${buildRowsText(supportRows)}` : "",
     supportEmail ? `\nCorreo de soporte: ${supportEmail}` : ""
   ]
     .filter(Boolean)
@@ -143,6 +167,7 @@ function buildBusinessEmailText(paidRecord, reference, supportEmail) {
 
 function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLink) {
   const formData = paidRecord.formData || {};
+  const supportFiles = Array.isArray(paidRecord.supportFiles) ? paidRecord.supportFiles : [];
   const summaryRows = [
     ["Estado del pago", "APROBADO"],
     ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "En validación"],
@@ -170,7 +195,11 @@ function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLin
           </table>
           <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.8;">
             <strong>Siguientes pasos:</strong><br/>
-            1. Envíe por WhatsApp o correo electrónico los soportes que acrediten la realidad económica de los ingresos reportados.<br/>
+            1. ${
+              supportFiles.length
+                ? `Ya recibimos ${supportFiles.length} soporte(s) adjunto(s) en el formulario. Si falta alguno, puede enviarlo por WhatsApp o correo electrónico.`
+                : "Envíe por WhatsApp o correo electrónico los soportes que acrediten la realidad económica de los ingresos reportados."
+            }<br/>
             2. Puede remitir contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones y demás documentos de respaldo.<br/>
             3. Un profesional de CONTARAE revisará la documentación completa y se pondrá en contacto si requiere información adicional.
           </div>
@@ -194,6 +223,7 @@ function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLin
 
 function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLink) {
   const formData = paidRecord.formData || {};
+  const supportFiles = Array.isArray(paidRecord.supportFiles) ? paidRecord.supportFiles : [];
   const rows = [
     ["Estado del pago", "APROBADO"],
     ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "En validación"],
@@ -212,7 +242,9 @@ function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLin
     buildRowsText(rows),
     "",
     "Siguientes pasos:",
-    "1. Envíe por WhatsApp o correo electrónico los soportes que acrediten la realidad económica de los ingresos reportados.",
+    supportFiles.length
+      ? `1. Ya recibimos ${supportFiles.length} soporte(s) adjunto(s) en el formulario. Si falta alguno, puede enviarlo por WhatsApp o correo electrónico.`
+      : "1. Envíe por WhatsApp o correo electrónico los soportes que acrediten la realidad económica de los ingresos reportados.",
     "2. Puede remitir contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones y demás documentos de respaldo.",
     "3. Un profesional de CONTARAE revisará la documentación completa y se pondrá en contacto si requiere información adicional.",
     supportEmail ? `Correo de contacto: ${supportEmail}` : "",
