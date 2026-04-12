@@ -103,7 +103,7 @@ export default async (req, context) => {
     }
 
     const properties = signature.properties || [];
-    const timestamp = String(signature.timestamp || "");
+    const timestamp = String(body?.timestamp || "");
     const wompiChecksum = String(signature.checksum || "").toUpperCase();
 
     const concatenatedValues = properties
