@@ -796,24 +796,58 @@ return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAV
 function CrtS(){
   const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
   const[step,sStep]=useState(0);const[f,sF]=useState({n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""});
-  const[acc,sAcc]=useState(false);const[modal,sMod]=useState(null);const[citySug,sCitySug]=useState([]);const[openForm,sOpenForm]=useState(false);
+  const[acc,sAcc]=useState(false);const[modal,sMod]=useState(null);const[citySug,sCitySug]=useState([]);const[openForm,sOpenForm]=useState(false);const[lastRef,sLastRef]=useState("");
   const u=(k,v)=>sF(p=>({...p,[k]:v}));const uF=(k,v)=>sF(p=>({...p,[k]:fmtI(v)}));
   const handleCity=v=>{u("le",v);sCitySug(v.length>=2?CITIES.filter(c=>c.toLowerCase().includes(v.toLowerCase())).slice(0,8):[]);};
   const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."]];
   const totalIng=ings.reduce((s,[,k])=>s+pN(f[k]),0)+pN(f.iO);
-  const tarifa=gT(totalIng);const ref=`CONTARAE-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+  const tarifa=gT(totalIng);
+  const createPaymentReference=()=>`CONTARAE-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+  const buildPendingPayload=paymentReference=>({
+    nombre:f.n,
+    tipo_documento:f.td,
+    numero_documento:f.cc,
+    lugar_expedicion:f.le,
+    telefono:f.tel,
+    correo:f.em,
+    destino:f.dir,
+    entidad:f.ent,
+    periodo:f.per,
+    ingresos_laborales:f.iL,
+    pensiones:f.iP,
+    dividendos:f.iD,
+    inversiones:f.iI,
+    arriendos:f.iA,
+    remesas:f.iR,
+    otros_ingresos:f.iO,
+    otros_descripcion:f.oD,
+    total_ingresos:"$"+fm(totalIng),
+    tarifa_pagada:"$"+fm(tarifa),
+    referencia_wompi:paymentReference,
+    estado_pago:"PENDIENTE",
+    comentarios:f.cm,
+    declaracion_juramentada:"ACEPTADA",
+    consecutivo:""
+  });
 
   const openWompi=async()=>{try{
-    const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:ref,amountInCents:tarifa*100,currency:"COP"})});
+    const paymentReference=createPaymentReference();
+    sLastRef(paymentReference);
+    const pendingPayload=buildPendingPayload(paymentReference);
+    const sp=await fetch("/api/save-pending-form",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,...pendingPayload})});
+    const spd=await sp.json();
+    if(!sp.ok||!spd.ok){alert("No fue posible preparar la solicitud. Intente nuevamente.");return;}
+    const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,amountInCents:tarifa*100,currency:"COP"})});
     const sd=await sg.json();if(!sd.signature){alert("Error generando firma. Intente nuevamente.");return;}
-    const ck=new window.WidgetCheckout({currency:"COP",amountInCents:tarifa*100,reference:ref,publicKey:WK,"signature:integrity":sd.signature,redirectUrl:"https://contarae.com"});
-    ck.open(function(result){const tx=result.transaction;
-      if(tx&&tx.status==="APPROVED"){sMod(ref);}
+    const ck=new window.WidgetCheckout({currency:"COP",amountInCents:tarifa*100,reference:paymentReference,publicKey:WK,"signature:integrity":sd.signature,redirectUrl:"https://contarae.com"});
+    ck.open(function(result){const tx=result&&result.transaction?result.transaction:null;
+      if(tx&&tx.status==="APPROVED"){sMod(paymentReference);}
       else if(tx&&tx.status==="DECLINED")alert("Pago rechazado. Intente con otro medio.");
-      else if(tx&&tx.status==="ERROR")alert("Error en el pago. Intente nuevamente.");});
+      else if(tx&&tx.status==="ERROR")alert("Error en el pago. Intente nuevamente.");
+      else if(tx)alert("La transacción no fue finalizada. Intente nuevamente.");});
   }catch(e){alert("Error de conexión. Intente nuevamente.");}};
 
-  const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0AConsecutivo: ${ref}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AAdjunto soportes.`;
+  const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0AConsecutivo: ${modal||lastRef||"PENDIENTE"}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AAdjunto soportes.`;
   const pasos=["Datos personales","Destino","Ingresos y soportes","Confirmación y pago","Entrega en PDF"];
   const moveStep=n=>{sStep(n);};
   useEffect(()=>{const prev=document.body.style.overflow; if(openForm||modal){document.body.style.overflow="hidden";} return ()=>{document.body.style.overflow=prev;};},[openForm,modal]);
