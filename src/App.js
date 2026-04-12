@@ -7,7 +7,7 @@ const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 const fmtI=v=>{const n=v.replace(/\D/g,"");return n?"$ "+fm(parseInt(n)):""};
 const pN=v=>parseInt(v.replace(/\D/g,""))||0;
-const gT=t=>{if(t<=2e6)return 80000;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
+const gT=t=>{if(t<=2e6)return 2000;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
 const disc=v=>Math.round(v/.75);
 
 const CITIES=["Bogotá D.C.","Medellín","Cali","Barranquilla","Cartagena","Cúcuta","Bucaramanga","Pereira","Santa Marta","Ibagué","Pasto","Manizales","Neiva","Villavicencio","Armenia","Valledupar","Montería","Sincelejo","Popayán","Tunja","Florencia","Riohacha","Quibdó","Yopal","Mocoa","Arauca","Leticia","Inírida","Mitú","Puerto Carreño","San José del Guaviare","San Andrés","Buenaventura","Soacha","Bello","Soledad","Itagüí","Envigado","Palmira","Floridablanca","Dosquebradas","Tulúa","Barrancabermeja","Maicao","Girardot","Zipaquirá","Facatativá","Chía","Fusagasugá","Tuluá","Sogamoso","Duitama","Girón","Piedecuesta","Apartadó","Turbo","Lorica","Magangué","Aguachica","Ocaña","Pamplona","Ciénaga","Fundación","Cartago","Buga","Tumaco","Ipiales","Sabaneta","La Estrella","Copacabana","Rionegro","Cajicá","Mosquera","Madrid","Funza"];
