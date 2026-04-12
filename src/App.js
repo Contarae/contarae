@@ -9,6 +9,13 @@ const fmtI=v=>{const n=v.replace(/\D/g,"");return n?"$ "+fm(parseInt(n)):""};
 const pN=v=>parseInt(v.replace(/\D/g,""))||0;
 const gT=t=>{if(t<=2e6)return 1500;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
 const disc=v=>Math.round(v/.75);
+const CERT_ROUTE="/certificacion";
+const CERT_ROUTE_ALIASES=new Set([CERT_ROUTE,"/certificacion-de-ingresos"]);
+const normPath=p=>{if(!p)return"/";const c=p.replace(/\/+$/,"");return c||"/";};
+const isCertificationPath=p=>CERT_ROUTE_ALIASES.has(normPath(p));
+const getCurrentPath=()=>typeof window==="undefined"?"/":normPath(window.location.pathname);
+const getSectionHref=(id,path)=>isCertificationPath(path)&&id!=="certificacion"?`/#${id}`:`#${id}`;
+const scrollToId=(id,behavior="smooth")=>{if(typeof window==="undefined")return false;const el=document.getElementById(id);if(!el)return false;const top=el.getBoundingClientRect().top+window.pageYOffset-156;window.scrollTo({top,behavior});return true;};
 
 const CITIES=["Bogotá D.C.","Medellín","Cali","Barranquilla","Cartagena","Cúcuta","Bucaramanga","Pereira","Santa Marta","Ibagué","Pasto","Manizales","Neiva","Villavicencio","Armenia","Valledupar","Montería","Sincelejo","Popayán","Tunja","Florencia","Riohacha","Quibdó","Yopal","Mocoa","Arauca","Leticia","Inírida","Mitú","Puerto Carreño","San José del Guaviare","San Andrés","Buenaventura","Soacha","Bello","Soledad","Itagüí","Envigado","Palmira","Floridablanca","Dosquebradas","Tulúa","Barrancabermeja","Maicao","Girardot","Zipaquirá","Facatativá","Chía","Fusagasugá","Tuluá","Sogamoso","Duitama","Girón","Piedecuesta","Apartadó","Turbo","Lorica","Magangué","Aguachica","Ocaña","Pamplona","Ciénaga","Fundación","Cartago","Buga","Tumaco","Ipiales","Sabaneta","La Estrella","Copacabana","Rionegro","Cajicá","Mosquera","Madrid","Funza"];
 
@@ -60,10 +67,11 @@ const Cd=({children,s,...props})=><div {...props} className="card-glow-shell" st
 
 /* NAV WITH DROPDOWNS + ACTIVE */
 
-function Nav(){
+function Nav({path}){
   const[op,sO]=useState(false);
-  const[act,sAct]=useState("inicio");
+  const[act,sAct]=useState(isCertificationPath(path)?"certificacion":"inicio");
   const[dd,sDD]=useState(null);
+  const certRoute=isCertificationPath(path);
 
   const menu=[
     {l:"Inicio",id:"inicio"},
@@ -76,6 +84,10 @@ function Nav(){
   ];
 
   useEffect(()=>{
+    if(certRoute){
+      sAct("certificacion");
+      return;
+    }
     const ids=["inicio","servicios","planes","escenarios","tramites","certificacion","herramientas","tool-renta","tool-retencion","tool-planilla","tool-nomina","tool-iva","tool-precio","calendario","blog","descargas","faq","alertas","whyus","nosotros","contacto"];
     const obs=new IntersectionObserver(en=>{
       en.forEach(e=>{
@@ -89,7 +101,7 @@ function Nav(){
     });
 
     return()=>obs.disconnect();
-  },[]);
+  },[certRoute]);
 
   const navBase={
     textDecoration:"none",
@@ -104,15 +116,19 @@ function Nav(){
   };
 
   const goTo=id=>e=>{
+    if(certRoute&&id!=="certificacion"){
+      sDD(null);
+      sO(false);
+      return;
+    }
     const el=document.getElementById(id);
     if(!el)return;
     e.preventDefault();
-    const y=el.getBoundingClientRect().top + window.pageYOffset - 156;
-    window.scrollTo({top:y,behavior:"smooth"});
+    scrollToId(id);
     sAct(id);
     sDD(null);
     sO(false);
-    if(window.history?.replaceState)window.history.replaceState(null,"",`#${id}`);
+    if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);
   };
 
   return(
@@ -151,7 +167,7 @@ function Nav(){
             onMouseLeave={()=>sDD(null)}
           >
             <a
-              href={`#${m.id}`}
+              href={getSectionHref(m.id,path)}
               onClick={goTo(m.id)}
               style={{
                 ...navBase,
@@ -198,7 +214,7 @@ function Nav(){
                 {m.sub.map((s,j)=>
                   <a
                     key={j}
-                    href={`#${s.id}`}
+                    href={getSectionHref(s.id,path)}
                     onClick={goTo(s.id)}
                     style={{
                       display:"block",
@@ -276,7 +292,7 @@ function Nav(){
           {menu.map((m,i)=>
             <div key={i}>
               <a
-                href={`#${m.id}`}
+                href={getSectionHref(m.id,path)}
                 onClick={goTo(m.id)}
                 style={{
                   display:"block",
@@ -295,7 +311,7 @@ function Nav(){
               {m.sub&&m.sub.map((s,j)=>
                 <a
                   key={j}
-                  href={`#${s.id}`}
+                  href={getSectionHref(s.id,path)}
                   onClick={goTo(s.id)}
                   style={{
                     display:"block",
@@ -353,7 +369,7 @@ function Nav(){
 }
 
 
-function Banner(){const[s,sS]=useState(true);if(!s)return null;return(<div style={{position:"fixed",top:68,width:"100%",zIndex:190,background:"linear-gradient(90deg,#1B3A5C,#2563EB)",padding:"4px 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><span style={{fontSize:13,color:"#fff",fontFamily:F}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href="#certificacion" style={{fontSize:12,color:"#fff",fontWeight:700,background:"rgba(255,255,255,.2)",padding:"2px 12px",borderRadius:100,textDecoration:"none",fontFamily:F}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:14,padding:0,marginLeft:4}}>✕</button></div>)}
+function Banner({path}){const[s,sS]=useState(true);if(!s)return null;return(<div style={{position:"fixed",top:68,width:"100%",zIndex:190,background:"linear-gradient(90deg,#1B3A5C,#2563EB)",padding:"4px 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><span style={{fontSize:13,color:"#fff",fontFamily:F}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href={getSectionHref("certificacion",path)} style={{fontSize:12,color:"#fff",fontWeight:700,background:"rgba(255,255,255,.2)",padding:"2px 12px",borderRadius:100,textDecoration:"none",fontFamily:F}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:14,padding:0,marginLeft:4}}>✕</button></div>)}
 
 /* HERO WITH ANIMATED BG */
 
@@ -792,6 +808,10 @@ return(<Sec id="escenarios" title="¿Se identifica con alguno de estos casos?" s
 
 function TrmS(){const trm=[{i:"📄",t:"Certificación de Ingresos",d:"Documento firmado por Contador Público. Válido ante bancos, inmobiliarias, embajadas. 100% online, entrega inmediata.",l:"cert",w:"Necesito un certificado de ingresos."},{i:"📝",t:"Declaración de Renta",d:"Preparación y presentación ante la DIAN. Plazos 2026: 12 agosto al 26 octubre.",l:"wa",w:"Necesito ayuda con mi declaración de renta."},{i:"🏢",t:"Renovación Matrícula Mercantil",d:"Gestión ante Cámara de Comercio. Plazo: 31 de marzo. Sanciones hasta 17 SMLMV.",l:"wa",w:"Necesito renovar mi matrícula mercantil."},{i:"🧾",t:"Facturación Electrónica",d:"Implementación completa: habilitación DIAN, proveedor tecnológico, capacitación y soporte.",l:"wa",w:"Necesito implementar facturación electrónica."},{i:"📊",t:"Información Exógena",d:"Medios magnéticos ante la DIAN. Sanciones desde $524.000 hasta 5% de sumas no reportadas.",l:"wa",w:"Necesito ayuda con información exógena."},{i:"🏗️",t:"Creación de Empresas",d:"SAS, LTDA, S.A.: estatutos, Cámara de Comercio, RUT, cuenta bancaria e IVA.",l:"wa",w:"Quiero crear mi empresa en Colombia."}];
 return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAVE" bg={B[4]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18}}>{trm.map((t,i)=><Cd key={i}><div style={{fontSize:26,marginBottom:6}}>{t.i}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{t.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{t.d}</p><a href={t.l==="cert"?"#certificacion":wm("Hola CONTARAE, "+t.w)} target={t.l==="wa"?"_blank":undefined} style={{display:"inline-block",marginTop:8,fontSize:13,color:"#2563EB",fontWeight:600,textDecoration:"none",fontFamily:F}}>{t.l==="cert"?"Solicitar al instante →":"Solicitar servicio →"}</a></Cd>)}</div></Sec>)}
+
+function CertificationHero(){
+  return(<section style={{padding:"150px 24px 52px",background:"linear-gradient(135deg,#F4F8FF 0%,#EEF5FF 38%,#F8FBFF 100%)",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 14% 18%, rgba(59,130,246,.14) 0%, rgba(59,130,246,0) 24%), radial-gradient(circle at 84% 20%, rgba(14,165,233,.12) 0%, rgba(14,165,233,0) 20%)"}}/><div style={{maxWidth:1100,margin:"0 auto",position:"relative",zIndex:1}}><div style={{display:"grid",gridTemplateColumns:"minmax(0,1.25fr) minmax(280px,.75fr)",gap:26,alignItems:"stretch"}}><div style={{padding:"34px 34px 30px",borderRadius:26,background:"linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.88))",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}><div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"8px 16px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:700,color:"#2563EB",letterSpacing:"1.6px",marginBottom:16,fontFamily:F}}>ENLACE DIRECTO DEL SERVICIO</div><h1 style={{fontFamily:FH,fontSize:"clamp(31px,5vw,50px)",fontWeight:700,lineHeight:1.08,color:"#0B1D3A",marginBottom:16}}>Certificación de ingresos firmada por Contador Público</h1><p style={{fontSize:16,color:"#4B5D79",lineHeight:1.8,fontFamily:F,maxWidth:660,marginBottom:24}}>Esta URL le permite promocionar el servicio de forma directa sin perder la sección de certificación dentro de la página principal. El flujo de formulario, pago con Wompi y confirmación funciona igual en ambos accesos.</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}><a href="#certificacion" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 26px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>Iniciar solicitud</a><a href="/#inicio" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 22px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Volver al sitio principal</a></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>{["Solicitud y pago 100% en línea","Revisión profesional antes de emitir","Atención por WhatsApp y correo"].map((item,i)=><div key={i} style={{padding:"14px 16px",borderRadius:16,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)",fontSize:13,color:"#43607E",fontFamily:F,fontWeight:600}}>{item}</div>)}</div></div><div style={{padding:"28px 24px",borderRadius:26,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:16,alignContent:"start"}}><div style={{fontSize:12,letterSpacing:"1.6px",fontWeight:700,color:"#93C5FD",fontFamily:F}}>CUÁNDO USAR ESTE ENLACE</div><div style={{fontFamily:FH,fontSize:28,lineHeight:1.15}}>Ideal para campañas, pauta y enlaces compartidos</div><p style={{fontSize:14,color:"rgba(226,232,240,.76)",lineHeight:1.8,fontFamily:F}}>Use <strong style={{color:"#fff"}}>contarae.com/certificacion</strong> para anuncios, WhatsApp, correo y botones externos. La home conserva su sección interna con <strong style={{color:"#fff"}}>#certificacion</strong> para la navegación normal del sitio.</p><div style={{padding:"16px 18px",borderRadius:18,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)",fontSize:13,color:"rgba(226,232,240,.82)",lineHeight:1.75,fontFamily:F}}>El retorno desde Wompi mantiene la misma página donde inició el proceso, así que también queda cubierto el flujo móvil y el seguimiento por referencia.</div></div></div></div></section>)
+}
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
   const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
@@ -1261,29 +1281,43 @@ return(<><a href={wm("Hola CONTARAE, me gustaría recibir asesoría.")} target="
 
 /* ══════ APP ══════ */
 export default function App(){
-  useEffect(()=>{const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[]);
-  useEffect(()=>{const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);const el=document.getElementById(id);if(!el)return;e.preventDefault();const top=el.getBoundingClientRect().top+window.pageYOffset-156;window.scrollTo({top,behavior:"smooth"});if(window.history?.replaceState)window.history.replaceState(null,"",`#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[]);
+  const[path,sPath]=useState(getCurrentPath());
+  const certRoute=isCertificationPath(path);
+
+  useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
+  useEffect(()=>{const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path]);
+  useEffect(()=>{const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[]);
+  useEffect(()=>{const id=window.location.hash?.slice(1);if(!id)return;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path]);
+  useEffect(()=>{document.title=certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute]);
+
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}}`}</style>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573013101050","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
-    <Nav/><Banner/>
+    <Nav path={path}/><Banner path={path}/>
     <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="total_ingresos"/><input name="tarifa_pagada"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
-    <Hero/>
-    <div className="ai"><SvcS/></div>
-    <div className="ai"><PlnS/></div>
-    <div className="ai"><ScnS/></div>
-    <div className="ai"><TrmS/></div>
-    <div className="ai"><CrtS/></div>
-    <div className="ai"><Tools/></div>
-    <div className="ai"><TlS/></div>
-    <div className="ai"><BlgS/></div>
-    <div className="ai"><DwS/></div>
-    <div className="ai"><FaqS/></div>
-    <div className="ai"><AltS/></div>
-    <div className="ai"><WhyUs/></div>
-    <div className="ai"><Abt/></div>
-    <div className="ai"><Ftr/></div>
+    {certRoute?<>
+      <CertificationHero/>
+      <div className="ai"><CrtS/></div>
+      <div className="ai"><FaqS/></div>
+      <div className="ai"><Ftr/></div>
+    </>:<>
+      <Hero/>
+      <div className="ai"><SvcS/></div>
+      <div className="ai"><PlnS/></div>
+      <div className="ai"><ScnS/></div>
+      <div className="ai"><TrmS/></div>
+      <div className="ai"><CrtS/></div>
+      <div className="ai"><Tools/></div>
+      <div className="ai"><TlS/></div>
+      <div className="ai"><BlgS/></div>
+      <div className="ai"><DwS/></div>
+      <div className="ai"><FaqS/></div>
+      <div className="ai"><AltS/></div>
+      <div className="ai"><WhyUs/></div>
+      <div className="ai"><Abt/></div>
+      <div className="ai"><Ftr/></div>
+    </>}
     <Flt/>
   </div>);
 }
