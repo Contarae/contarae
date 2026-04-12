@@ -795,9 +795,22 @@ return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAV
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
   const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
-  const[step,sStep]=useState(0);const[f,sF]=useState({n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""});
-  const[acc,sAcc]=useState(false);const[modal,sMod]=useState(null);const[citySug,sCitySug]=useState([]);const[openForm,sOpenForm]=useState(false);const[lastRef,sLastRef]=useState("");
-  const u=(k,v)=>sF(p=>({...p,[k]:v}));const uF=(k,v)=>sF(p=>({...p,[k]:fmtI(v)}));
+  const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""};
+  const PAYMENT_STORAGE_KEY="contarae-certification-reference";
+  const PAYMENT_QUERY_PARAM="cert_ref";
+  const FINAL_FAILED_STATUSES=new Set(["DECLINED","ERROR","VOIDED","FAILED","REJECTED","CANCELED","CANCELLED"]);
+  const PAYMENT_PHASES={idle:"idle",preparing:"preparing",opening:"opening",awaiting:"awaiting",approved:"approved",failed:"failed"};
+  const[step,sStep]=useState(0);
+  const[f,sF]=useState(INITIAL_FORM);
+  const[acc,sAcc]=useState(false);
+  const[citySug,sCitySug]=useState([]);
+  const[openForm,sOpenForm]=useState(false);
+  const[lastRef,sLastRef]=useState("");
+  const[paymentFlow,sPaymentFlow]=useState({phase:PAYMENT_PHASES.idle,reference:"",status:"",message:"",consecutive:""});
+  const pollTimeoutRef=useRef(null);
+  const pollStartedAtRef=useRef(0);
+  const u=(k,v)=>sF(p=>({...p,[k]:v}));
+  const uF=(k,v)=>sF(p=>({...p,[k]:fmtI(v)}));
   const handleCity=v=>{u("le",v);sCitySug(v.length>=2?CITIES.filter(c=>c.toLowerCase().includes(v.toLowerCase())).slice(0,8):[]);};
   const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."]];
   const totalIng=ings.reduce((s,[,k])=>s+pN(f[k]),0)+pN(f.iO);
@@ -829,28 +842,107 @@ function CrtS(){
     declaracion_juramentada:"ACEPTADA",
     consecutivo:""
   });
-
-  const openWompi=async()=>{try{
-    const paymentReference=createPaymentReference();
+  const clearPollTimeout=()=>{if(pollTimeoutRef.current){window.clearTimeout(pollTimeoutRef.current);pollTimeoutRef.current=null;}};
+  const clearTrackedReference=()=>{try{window.sessionStorage.removeItem(PAYMENT_STORAGE_KEY);}catch(e){} if(typeof window!=="undefined"){const url=new URL(window.location.href);url.searchParams.delete(PAYMENT_QUERY_PARAM);if(window.history?.replaceState)window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash}`);}};
+  const persistTrackedReference=reference=>{try{window.sessionStorage.setItem(PAYMENT_STORAGE_KEY,reference);}catch(e){} if(typeof window!=="undefined"){const url=new URL(window.location.href);url.searchParams.set(PAYMENT_QUERY_PARAM,reference);if(window.history?.replaceState)window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash||"#certificacion"}`);}};
+  const buildRedirectUrl=reference=>{const url=new URL(window.location.href);url.searchParams.set(PAYMENT_QUERY_PARAM,reference);url.hash="certificacion";return url.toString();};
+  const resetForm=()=>{sStep(0);sAcc(false);sCitySug([]);sOpenForm(false);sF(INITIAL_FORM);};
+  const closePaymentFeedback=()=>{clearPollTimeout();sPaymentFlow({phase:PAYMENT_PHASES.idle,reference:"",status:"",message:"",consecutive:""});};
+  const getPaymentFailureMessage=status=>{if(status==="DECLINED")return"El pago fue rechazado o declinado por la entidad financiera. Puede intentarlo con otro medio de pago o escribirnos para revisarlo.";if(status==="ERROR")return"No se confirmó el pago por un error en la transacción. Si ve un cobro reflejado, contáctenos y validamos el caso.";if(status==="VOIDED")return"La transacción fue anulada antes de completarse. Puede volver al formulario para intentarlo de nuevo.";return"No se confirmó el pago. Si necesita ayuda, nuestro equipo puede acompañarle por WhatsApp o correo electrónico.";};
+  const getPaymentSupportLink=reference=>wm(`Hola CONTARAE, necesito ayuda con mi pago de certificación de ingresos. Referencia: ${reference||lastRef||"SIN_REFERENCIA"}.`);
+  const markPaymentApproved=(reference,record={})=>{clearPollTimeout();clearTrackedReference();sPaymentFlow({phase:PAYMENT_PHASES.approved,reference,status:"APPROVED",message:"Pago confirmado y solicitud enviada correctamente para revisión profesional.",consecutive:String(record.consecutive||"")});};
+  const markPaymentFailed=(reference,status,message)=>{clearPollTimeout();sPaymentFlow({phase:PAYMENT_PHASES.failed,reference,status:status||"UNCONFIRMED",message:message||getPaymentFailureMessage(status)});};
+  const pollPaymentStatus=reference=>{
+    if(!reference)return;
+    clearPollTimeout();
+    pollStartedAtRef.current=Date.now();
+    sPaymentFlow({phase:PAYMENT_PHASES.awaiting,reference,status:"PENDING",message:"Estamos confirmando el pago con Wompi y finalizando el envío de su solicitud. Esto puede tardar unos segundos.",consecutive:""});
+    const checkStatus=async()=>{
+      try{
+        const paidResponse=await fetch(`/api/get-paid-form?reference=${encodeURIComponent(reference)}`);
+        if(paidResponse.ok){
+          const paidData=await paidResponse.json();
+          const paidRecord=paidData.record||{};
+          if(paidRecord.netlifySubmittedAt){markPaymentApproved(reference,paidRecord);return;}
+          sPaymentFlow(prev=>({...prev,phase:PAYMENT_PHASES.awaiting,reference,status:"APPROVED",message:"Pago confirmado en Wompi. Estamos terminando el registro y el envío de la solicitud.",consecutive:String(paidRecord.consecutive||prev.consecutive||"")}));
+        }else{
+          const pendingResponse=await fetch(`/api/get-pending-form?reference=${encodeURIComponent(reference)}`);
+          if(pendingResponse.ok){
+            const pendingData=await pendingResponse.json();
+            const pendingRecord=pendingData.record||{};
+            const backendStatus=String(pendingRecord.status||pendingRecord.lastEventStatus||"").toUpperCase();
+            if(FINAL_FAILED_STATUSES.has(backendStatus)){markPaymentFailed(reference,backendStatus,getPaymentFailureMessage(backendStatus));return;}
+          }
+        }
+      }catch(error){}
+      if(Date.now()-pollStartedAtRef.current>120000){markPaymentFailed(reference,"UNCONFIRMED","Aún no logramos confirmar el pago automáticamente. Si ya realizó el pago o necesita ayuda, escríbanos y validamos el caso de inmediato.");return;}
+      pollTimeoutRef.current=window.setTimeout(checkStatus,2500);
+    };
+    checkStatus();
+  };
+  const handleWidgetResult=(reference,result)=>{
+    const tx=result&&result.transaction?result.transaction:null;
+    const status=String(tx?.status||"").toUpperCase();
+    if(status==="APPROVED"){pollPaymentStatus(reference);return;}
+    if(FINAL_FAILED_STATUSES.has(status)){markPaymentFailed(reference,status,getPaymentFailureMessage(status));return;}
+    if(tx){markPaymentFailed(reference,status,"La transacción no quedó confirmada. Puede intentarlo de nuevo o escribirnos para recibir soporte.");return;}
+    markPaymentFailed(reference,"CLOSED","El proceso de pago se cerró antes de confirmarse. Si necesita ayuda, nuestro equipo puede acompañarle por WhatsApp o correo electrónico.");
+  };
+  const openWompi=async()=>{let paymentReference="";try{
+    if(typeof window==="undefined"||!window.WidgetCheckout){alert("La pasarela de pago aún se está cargando. Intente nuevamente en unos segundos.");return;}
+    paymentReference=createPaymentReference();
+    const phoneDigits=f.tel.replace(/\D/g,"");
+    const legalIdType=f.td==="Pasaporte"?"PP":f.td;
     sLastRef(paymentReference);
+    sPaymentFlow({phase:PAYMENT_PHASES.preparing,reference:paymentReference,status:"PREPARING",message:"Estamos guardando su solicitud en estado pendiente antes de abrir el pago.",consecutive:""});
     const pendingPayload=buildPendingPayload(paymentReference);
     const sp=await fetch("/api/save-pending-form",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,...pendingPayload})});
     const spd=await sp.json();
-    if(!sp.ok||!spd.ok){alert("No fue posible preparar la solicitud. Intente nuevamente.");return;}
+    if(!sp.ok||!spd.ok){closePaymentFeedback();alert("No fue posible preparar la solicitud. Intente nuevamente.");return;}
+    persistTrackedReference(paymentReference);
     const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,amountInCents:tarifa*100,currency:"COP"})});
-    const sd=await sg.json();if(!sd.signature){alert("Error generando firma. Intente nuevamente.");return;}
-    const ck=new window.WidgetCheckout({currency:"COP",amountInCents:tarifa*100,reference:paymentReference,publicKey:WK,"signature:integrity":sd.signature,redirectUrl:"https://contarae.com"});
-    ck.open(function(result){const tx=result&&result.transaction?result.transaction:null;
-      if(tx&&tx.status==="APPROVED"){sMod(paymentReference);}
-      else if(tx&&tx.status==="DECLINED")alert("Pago rechazado. Intente con otro medio.");
-      else if(tx&&tx.status==="ERROR")alert("Error en el pago. Intente nuevamente.");
-      else if(tx)alert("La transacción no fue finalizada. Intente nuevamente.");});
-  }catch(e){alert("Error de conexión. Intente nuevamente.");}};
-
-  const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0AConsecutivo: ${modal||lastRef||"PENDIENTE"}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AAdjunto soportes.`;
+    const sd=await sg.json();
+    if(!sd.signature){clearTrackedReference();closePaymentFeedback();alert("Error generando la firma de seguridad. Intente nuevamente.");return;}
+    sOpenForm(false);
+    if(document.activeElement instanceof HTMLElement)document.activeElement.blur();
+    sPaymentFlow({phase:PAYMENT_PHASES.opening,reference:paymentReference,status:"OPENING",message:"Estamos abriendo la ventana segura de Wompi. Si está en celular, al volver seguiremos confirmando el pago automáticamente.",consecutive:""});
+    await new Promise(resolve=>window.setTimeout(resolve,160));
+    const ck=new window.WidgetCheckout({
+      currency:"COP",
+      amountInCents:tarifa*100,
+      reference:paymentReference,
+      publicKey:WK,
+      signature:{integrity:sd.signature},
+      redirectUrl:buildRedirectUrl(paymentReference),
+      customerData:{
+        email:f.em||undefined,
+        fullName:f.n||undefined,
+        phoneNumber:phoneDigits?phoneDigits.slice(-10):undefined,
+        phoneNumberPrefix:phoneDigits?"+57":undefined,
+        legalId:f.cc||undefined,
+        legalIdType:legalIdType||undefined
+      }
+    });
+    ck.open(result=>handleWidgetResult(paymentReference,result));
+  }catch(e){clearTrackedReference();markPaymentFailed(paymentReference||lastRef,"CONNECTION_ERROR","Ocurrió un problema al conectar con la pasarela de pago. Intente nuevamente o contáctenos para ayudarle.");}};
+  const supportRef=paymentFlow.reference||lastRef||"PENDIENTE";
+  const supportCode=paymentFlow.consecutive?`Solicitud N° ${paymentFlow.consecutive}`:supportRef;
+  const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0ACódigo: ${supportCode}%0AReferencia: ${supportRef}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0ATotal ingresos: $${fm(totalIng)}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AEnviaré los soportes documentales por este medio o por correo electrónico.`;
   const pasos=["Datos personales","Destino","Ingresos y soportes","Confirmación y pago","Entrega en PDF"];
   const moveStep=n=>{sStep(n);};
-  useEffect(()=>{const prev=document.body.style.overflow; if(openForm||modal){document.body.style.overflow="hidden";} return ()=>{document.body.style.overflow=prev;};},[openForm,modal]);
+  useEffect(()=>{
+    const prev=document.body.style.overflow;
+    if(openForm||paymentFlow.phase!==PAYMENT_PHASES.idle){document.body.style.overflow="hidden";}
+    return()=>{document.body.style.overflow=prev;clearPollTimeout();};
+  },[openForm,paymentFlow.phase]);
+  useEffect(()=>{
+    const url=new URL(window.location.href);
+    const referenceFromUrl=url.searchParams.get(PAYMENT_QUERY_PARAM);
+    let storedReference=referenceFromUrl||"";
+    if(!storedReference){try{storedReference=window.sessionStorage.getItem(PAYMENT_STORAGE_KEY)||"";}catch(e){}}
+    if(storedReference){sLastRef(storedReference);pollPaymentStatus(storedReference);}
+    return()=>clearPollTimeout();
+  },[]);
 
   return(<Sec id="certificacion" title="Certificación de ingresos por Contador Público" sub="CERTIFICADO DE INGRESOS ONLINE COLOMBIA" bg={B[5]} narrow>
     <p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:10,fontFamily:F}}>Certificado de ingresos firmado por Contador Público con tarjeta profesional vigente.</p>
@@ -888,7 +980,7 @@ function CrtS(){
 
       <div style={{marginTop:18,padding:18,borderRadius:11,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",color:"#fff"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL INGRESOS MENSUALES</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Calculado automáticamente — no modificable</div></div><div style={{fontSize:24,fontWeight:700,fontFamily:F,color:"#60A5FA"}}>$ {fm(totalIng)}</div></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>VALOR A PAGAR</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Según tabla de tarifas — no modificable</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(tarifa)}</div></div></div>
 
-      <div style={{marginTop:16,padding:16,borderRadius:10,background:"rgba(37,99,235,.04)",border:"1px dashed rgba(37,99,235,.15)"}}><h4 style={{fontSize:14,fontWeight:700,color:"#1B3A5C",marginBottom:6,fontFamily:F}}>📎 Adjunte soportes (opcional, máx 10MB)</h4><input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" style={{fontSize:14,fontFamily:F}}/><div style={{marginTop:10,padding:12,borderRadius:8,background:"rgba(37,99,235,.06)"}}><p style={{fontSize:14,color:"#1B3A5C",lineHeight:1.7,fontFamily:F}}>💡 <strong>¿Aún no tiene todos los soportes?</strong> No se preocupe. Puede completar su solicitud ahora y enviarnos los documentos después por WhatsApp. Uno de nuestros profesionales le indicará exactamente qué necesita según su caso.</p></div></div>
+      <div style={{marginTop:16,padding:18,borderRadius:12,background:"rgba(37,99,235,.04)",border:"1px dashed rgba(37,99,235,.16)"}}><h4 style={{fontSize:14,fontWeight:700,color:"#1B3A5C",marginBottom:8,fontFamily:F}}>📎 Soportes documentales</h4><p style={{fontSize:14,color:"#1B3A5C",lineHeight:1.8,fontFamily:F,marginBottom:10}}>Los documentos que soporten la realidad económica de los ingresos reportados deberán enviarse por <strong>WhatsApp</strong> o <strong>correo electrónico</strong> una vez registre la solicitud. Esto nos permite revisar con mayor detalle cada caso antes de emitir la certificación.</p><p style={{fontSize:14,color:"#3a5068",lineHeight:1.8,fontFamily:F,marginBottom:10}}>Según aplique a su situación, puede remitir contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones, comprobantes de pago, consignaciones, reportes de ingresos y demás documentos que acrediten la información suministrada en el formulario.</p><p style={{fontSize:14,color:"#3a5068",lineHeight:1.8,fontFamily:F,marginBottom:0}}>Después de recibir la solicitud, un profesional de CONTARAE se pondrá en contacto para realizar la revisión completa de la documentación y validar la información reportada antes de la emisión del certificado.</p></div>
 
       <div style={{marginTop:12}}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Comentarios</label><textarea style={{...IS,minHeight:60,resize:"vertical",marginTop:4}} value={f.cm} onChange={e=>u("cm",e.target.value)} placeholder="Información adicional..."/></div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}><button type="button" onClick={()=>moveStep(1)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button><button type="button" onClick={()=>totalIng>0?moveStep(3):alert("Ingrese al menos un valor")} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div>
@@ -904,15 +996,17 @@ function CrtS(){
         <p><strong>4. Datos personales:</strong> Autorizo el tratamiento conforme a la Ley 1581 de 2012.</p>
       </div><label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:14,cursor:"pointer"}}><input type="checkbox" checked={acc} onChange={e=>sAcc(e.target.checked)} style={{marginTop:3,accentColor:"#2563EB",width:18,height:18}}/><span style={{fontSize:15,fontWeight:700,color:"#0B1D3A",fontFamily:F}}>He leído, entiendo y acepto las condiciones.</span></label></div>
 
-      <div style={{textAlign:"center"}}><button type="button" onClick={()=>acc?openWompi():alert("Debe aceptar las condiciones")} disabled={!acc} style={{padding:"14px 40px",borderRadius:13,background:acc?"linear-gradient(135deg,#1B3A5C,#2563EB)":"#ccc",color:"#fff",fontSize:16,fontWeight:700,border:"none",cursor:acc?"pointer":"not-allowed",fontFamily:F,boxShadow:acc?"0 4px 20px rgba(37,99,235,.3)":"none"}}>🔒 Pagar $ {fm(tarifa)} con Wompi</button><p style={{fontSize:12,color:"#7A8FA8",marginTop:10,fontFamily:F}}>Pago seguro. Sus datos están protegidos.</p></div>
+      <div style={{textAlign:"center"}}><button type="button" onClick={()=>acc?openWompi():alert("Debe aceptar las condiciones")} disabled={!acc} style={{padding:"14px 40px",borderRadius:13,background:acc?"linear-gradient(135deg,#1B3A5C,#2563EB)":"#ccc",color:"#fff",fontSize:16,fontWeight:700,border:"none",cursor:acc?"pointer":"not-allowed",fontFamily:F,boxShadow:acc?"0 4px 20px rgba(37,99,235,.3)":"none"}}>🔒 Pagar $ {fm(tarifa)} con Wompi</button><p style={{fontSize:12,color:"#7A8FA8",marginTop:10,fontFamily:F}}>Guardaremos primero la solicitud en estado pendiente y luego abriremos la pasarela segura de pago.</p></div>
       <div style={{marginTop:14}}><button type="button" onClick={()=>moveStep(2)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button></div>
     </div>}
     </div></div></div>, document.body)}
 
-    {modal&&createPortal(<div style={{position:"fixed",inset:0,background:"rgba(8,15,29,.55)",zIndex:12010,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 18px"}} onClick={()=>sMod(null)}><div style={{background:"#fff",borderRadius:20,padding:36,maxWidth:520,width:"100%",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.25)",border:"1px solid rgba(37,99,235,.10)"}} onClick={e=>e.stopPropagation()}><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:16,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>Solicitud N° {modal}</div>
-      <p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:8}}>Uno de nuestros Contadores Públicos revisará la información y soportes. En caso de requerirse documentación adicional, nos comunicaremos de inmediato.</p>
-      <p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:20}}>Consulte su solicitud por WhatsApp con el consecutivo: <strong>{modal}</strong></p>
-      <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"heroUp 1.38s ease-out"}}><a href={`${WL}?text=${waMsg}`} target="_blank" rel="noopener noreferrer" style={{padding:"12px 22px",borderRadius:11,background:"#25D366",color:"#fff",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Enviar soportes por WhatsApp</a><button type="button" onClick={()=>{sMod(null);moveStep(0);sAcc(false);sOpenForm(false);sF({n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",cm:""});}} style={{padding:"12px 22px",borderRadius:11,background:"rgba(37,99,235,.08)",color:"#2563EB",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Nueva solicitud</button><button type="button" onClick={()=>{sMod(null);sOpenForm(false);}} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#5A6F8A",fontSize:14,fontWeight:600,border:"2px solid rgba(37,99,235,.12)",cursor:"pointer",fontFamily:F}}>Cerrar</button></div>
+    {paymentFlow.phase!==PAYMENT_PHASES.idle&&createPortal(<div style={{position:"fixed",inset:0,background:"rgba(8,15,29,.58)",zIndex:12010,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 18px"}} onClick={()=>paymentFlow.phase===PAYMENT_PHASES.awaiting?null:(clearTrackedReference(),closePaymentFeedback())}><div style={{background:"#fff",borderRadius:20,padding:36,maxWidth:560,width:"100%",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.25)",border:"1px solid rgba(37,99,235,.10)"}} onClick={e=>e.stopPropagation()}>
+      {paymentFlow.phase===PAYMENT_PHASES.preparing&&<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:15,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>Preparando solicitud</div><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:0}}>{paymentFlow.message}</p></>}
+      {paymentFlow.phase===PAYMENT_PHASES.opening&&<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:15,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>Abriendo Wompi</div><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:0}}>{paymentFlow.message}</p></>}
+      {paymentFlow.phase===PAYMENT_PHASES.awaiting&&<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:15,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>Confirmando pago</div><div style={{width:56,height:56,borderRadius:"50%",border:"4px solid rgba(37,99,235,.12)",borderTopColor:"#2563EB",margin:"0 auto 18px",animation:"App-logo-spin 1s linear infinite"}}/><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:10}}>{paymentFlow.message}</p><p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:0}}>Referencia: <strong>{paymentFlow.reference}</strong></p></>}
+      {paymentFlow.phase===PAYMENT_PHASES.approved&&<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(37,99,235,.1)",fontSize:16,fontWeight:700,color:"#2563EB",marginBottom:14,fontFamily:F}}>{paymentFlow.consecutive?`Solicitud N° ${paymentFlow.consecutive}`:"Solicitud registrada"}</div><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:8}}>Pago confirmado. Su solicitud quedó aprobada en el sistema y uno de nuestros profesionales revisará la documentación que soporte la realidad económica de los ingresos reportados.</p><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:8}}>Envíe los soportes por WhatsApp o al correo <strong>{EM}</strong>. Ejemplos: contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones y demás documentos que acrediten la información suministrada.</p><p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:20}}>Referencia de pago: <strong>{paymentFlow.reference}</strong></p><div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"heroUp 1.38s ease-out"}}><a href={`${WL}?text=${waMsg}`} target="_blank" rel="noopener noreferrer" style={{padding:"12px 22px",borderRadius:11,background:"#25D366",color:"#fff",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Enviar soportes por WhatsApp</a><a href={`mailto:${EM}?subject=${encodeURIComponent(`Soportes solicitud ${paymentFlow.consecutive||paymentFlow.reference}`)}`} style={{padding:"12px 22px",borderRadius:11,background:"rgba(37,99,235,.08)",color:"#2563EB",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Enviar por correo</a><button type="button" onClick={()=>{closePaymentFeedback();resetForm();clearTrackedReference();}} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#5A6F8A",fontSize:14,fontWeight:600,border:"2px solid rgba(37,99,235,.12)",cursor:"pointer",fontFamily:F}}>Nueva solicitud</button></div></>}
+      {paymentFlow.phase===PAYMENT_PHASES.failed&&<><div style={{display:"inline-block",padding:"6px 18px",borderRadius:100,background:"rgba(220,38,38,.10)",fontSize:16,fontWeight:700,color:"#DC2626",marginBottom:14,fontFamily:F}}>Pago no confirmado</div><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F,marginBottom:8}}>{paymentFlow.message}</p><p style={{fontSize:13,color:"#7A8FA8",fontFamily:F,marginBottom:20}}>Referencia: <strong>{paymentFlow.reference||lastRef||"Pendiente"}</strong></p><div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}><a href={getPaymentSupportLink(paymentFlow.reference)} target="_blank" rel="noopener noreferrer" style={{padding:"12px 22px",borderRadius:11,background:"#25D366",color:"#fff",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Solicitar ayuda por WhatsApp</a><a href={`mailto:${EM}?subject=${encodeURIComponent(`Ayuda pago certificación ${paymentFlow.reference||lastRef||""}`)}`} style={{padding:"12px 22px",borderRadius:11,background:"rgba(37,99,235,.08)",color:"#2563EB",fontSize:14,fontWeight:600,textDecoration:"none",fontFamily:F}}>Solicitar ayuda por correo</a><button type="button" onClick={()=>{clearTrackedReference();closePaymentFeedback();sOpenForm(true);sStep(3);}} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#5A6F8A",fontSize:14,fontWeight:600,border:"2px solid rgba(37,99,235,.12)",cursor:"pointer",fontFamily:F}}>Volver al formulario</button></div></>}
     </div></div>, document.body)}</Sec>);
 }
 /* ══════ TOOLS (ALL VISIBLE) ══════ */

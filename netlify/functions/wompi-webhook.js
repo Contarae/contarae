@@ -135,7 +135,39 @@ export default async (req, context) => {
       );
     }
 
+    const store = getStore("certification-requests");
+    const finalFailedStatuses = new Set([
+      "DECLINED",
+      "ERROR",
+      "VOIDED",
+      "FAILED",
+      "REJECTED",
+      "CANCELED",
+      "CANCELLED"
+    ]);
+
     if (status !== "APPROVED") {
+      const pendingRecord = await store.get(`pending:${reference}`, { type: "json" });
+
+      if (pendingRecord) {
+        const isFinalFailure = finalFailedStatuses.has(status);
+
+        await store.setJSON(`pending:${reference}`, {
+          ...pendingRecord,
+          status: isFinalFailure ? status.toLowerCase() : pendingRecord.status || "pending",
+          lastEventStatus: status || pendingRecord.lastEventStatus || "",
+          lastEventAt: new Date().toISOString(),
+          wompiTransaction: {
+            id: transaction.id,
+            status: transaction.status,
+            amount_in_cents: transaction.amount_in_cents,
+            currency: transaction.currency,
+            payment_method_type: transaction.payment_method_type,
+            customer_email: transaction.customer_email
+          }
+        });
+      }
+
       console.log("Transacción no aprobada todavía:", status);
       return new Response(
         JSON.stringify({
@@ -150,7 +182,6 @@ export default async (req, context) => {
 
     console.log("Transacción aprobada, continúa procesamiento");
 
-    const store = getStore("certification-requests");
     const formName = process.env.NETLIFY_FORM_NAME || "certificacion";
 
     let paidRecord = await store.get(`paid:${reference}`, { type: "json" });
