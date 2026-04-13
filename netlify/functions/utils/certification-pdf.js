@@ -305,6 +305,12 @@ function buildDocumentLabel(documentType, documentNumber) {
   return [type, number].filter(Boolean).join(" ");
 }
 
+function buildCustomerIdentificationLabel(formData = {}) {
+  const documentLabel = buildDocumentLabel(formData.tipo_documento, formData.numero_documento) || "documento no informado";
+  const expeditionPlace = String(formData.lugar_expedicion || "").trim();
+  return expeditionPlace ? `${documentLabel}, documento expedido en ${expeditionPlace}` : documentLabel;
+}
+
 function buildIncomeConceptSentence(row, otherIncomeDetail) {
   if (!row) return "";
   const amountText = formatCurrencyCOP(row.numericValue);
@@ -320,6 +326,14 @@ function buildIncomeConceptOnlySentence(row, otherIncomeDetail) {
     return `por concepto de otros ingresos correspondientes a ${otherIncomeDetail.value}`;
   }
   return `por concepto de ${row.label.toLowerCase()}`;
+}
+
+function buildIncomeSourceLabel(row, otherIncomeDetail) {
+  if (!row) return "";
+  if (row.label === "Otros ingresos" && otherIncomeDetail?.value) {
+    return `otros ingresos correspondientes a ${otherIncomeDetail.value}`;
+  }
+  return row.label.toLowerCase();
 }
 
 function extractNumericToken(rawValue) {
@@ -435,31 +449,36 @@ export function buildCertificationNarrative(record = {}) {
   const totalNumeric = parseCurrency(formData.total_ingresos) || amountRows.reduce((sum, row) => sum + row.numericValue, 0);
   const totalInLetters = buildAmountInLetters(totalNumeric);
   const periodInMonths = buildCertifiedPeriodInMonths(formData.periodo);
-  const formattedCustomerDocument = buildDocumentLabel(formData.tipo_documento, formData.numero_documento) || "documento no informado";
+  const formattedCustomerDocument = buildCustomerIdentificationLabel(formData);
   const formattedAccountantDocument = formatDocumentNumber(profile.accountantDocumentNumber) || "POR CONFIGURAR";
   const formattedProfessionalCard = formatProfessionalCardNumber(profile.professionalCardNumber) || "POR CONFIGURAR";
+  const compactNarrative = amountRows.length > 0 && amountRows.length <= 2;
+
+  const compactIncomeParagraph = singleIncomeRow
+    ? `Con fundamento en la documentación examinada, se establece que el(la) solicitante acredita ingresos mensuales por concepto de ${buildIncomeSourceLabel(singleIncomeRow, otherIncomeDetail)}, ascendiendo el valor mensual certificado a ${totalInLetters}.`
+    : dualIncomeRows.length === 2
+      ? `Con fundamento en la documentación examinada, se establece que el(la) solicitante acredita ingresos mensuales derivados de ${buildIncomeSourceLabel(dualIncomeRows[0], otherIncomeDetail)} por valor de ${formatCurrencyCOP(dualIncomeRows[0].numericValue)} y de ${buildIncomeSourceLabel(dualIncomeRows[1], otherIncomeDetail)} por valor de ${formatCurrencyCOP(dualIncomeRows[1].numericValue)}, ascendiendo el valor mensual certificado a ${totalInLetters}.`
+      : "";
 
   return {
     amountRows,
     detailedRows: incomeRows,
     showIncomeList: amountRows.length > 2,
+    compactNarrative,
+    hasSeparateTotalParagraph: amountRows.length > 2,
     formattedAccountantDocument,
     formattedCustomerDocument,
     formattedProfessionalCard,
     paragraphs: [
-      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument}, titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que revisé la información suministrada y los documentos soporte aportados por ${formData.nombre || "el solicitante"}, identificado(a) con ${formattedCustomerDocument}, con el fin de verificar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`,
-      singleIncomeRow
-        ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales ${buildIncomeConceptOnlySentence(singleIncomeRow, otherIncomeDetail)}.`
-        : dualIncomeRows.length === 2
-          ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales por valor de ${buildIncomeConceptSentence(dualIncomeRows[0], otherIncomeDetail)} y ${buildIncomeConceptSentence(dualIncomeRows[1], otherIncomeDetail)}.`
-        : amountRows.length > 1
-          ? "Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos provenientes de los conceptos que se relacionan a continuación, de acuerdo con la información económica acreditada y verificada en los soportes aportados."
-          : "Con fundamento en la documentación examinada, se verificó la información económica acreditada por el(la) solicitante para el período certificado.",
-      `En consecuencia, certifico que el total de ingresos mensuales asciende a ${totalInLetters}.`,
+      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument}, titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que revisé la información suministrada y los documentos soporte aportados por ${formData.nombre || "la parte interesada"}, identificado(a) con ${formattedCustomerDocument}, con el propósito de evaluar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`,
+      compactNarrative
+        ? compactIncomeParagraph
+        : "Con fundamento en la documentación examinada, se establece que el(la) solicitante acredita ingresos mensuales derivados de los conceptos que se relacionan a continuación, conforme a la información económica respaldada en los soportes aportados.",
+      ...(amountRows.length > 2 ? [`En consecuencia, certifico que el total de ingresos mensuales asciende a ${totalInLetters}.`] : []),
       destination
-        ? `La presente certificación se expide a solicitud del interesado para ser presentada ante ${destination}, y se emite exclusivamente con base en los documentos y soportes puestos a disposición para su análisis. En consecuencia, este documento no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.`
-        : "La presente certificación se expide a solicitud del interesado y se emite exclusivamente con base en los documentos y soportes puestos a disposición para su análisis. En consecuencia, este documento no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.",
-      `Se expide en ${profile.city}, el ${formatLongDate(new Date())}, dejando constancia de que cualquier modificación posterior en la situación económica del solicitante requerirá nueva validación documental para efectos de emitir una certificación actualizada.`
+        ? `La presente certificación se expide a solicitud de la parte interesada para ser presentada ante ${destination}, con base exclusiva en los documentos y soportes puestos a disposición para su análisis. En tal sentido, no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.`
+        : "La presente certificación se expide a solicitud de la parte interesada, con base exclusiva en los documentos y soportes puestos a disposición para su análisis. En tal sentido, no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.",
+      `Se expide en ${profile.city}, el ${formatLongDate(new Date())}, dejando constancia de que cualquier modificación posterior en la situación económica de la parte interesada requerirá nueva validación documental para efectos de emitir una certificación actualizada.`
     ],
     totalInLetters,
     totalNumeric
@@ -479,7 +498,7 @@ export async function generateCertificationPdf(record = {}) {
   const logoImage = await pdf.embedPng(await readAssetBytes("contarae-logo-completo.png"));
   const signatureImage = await pdf.embedPng(await readAssetBytes("contarae-firma.png"));
   const baseLogoDims = logoImage.scale(Math.min(0.42, 164 / logoImage.width));
-  const baseSignatureDims = signatureImage.scale(Math.min(0.28, 156 / signatureImage.width));
+  const baseSignatureDims = signatureImage.scale(Math.min(0.34, 192 / signatureImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   let scale = 1;
   const fitSafetyPadding = 22;
@@ -493,7 +512,7 @@ export async function generateCertificationPdf(record = {}) {
     height += 10.5 * currentScale + 16 * currentScale + 16 * currentScale;
     height += 12 * currentScale;
     certificationContent.paragraphs.forEach((paragraph, index) => {
-      const isTotalParagraph = index === 2;
+      const isTotalParagraph = certificationContent.hasSeparateTotalParagraph && index === 2;
       const lines = wrapText(paragraph, isTotalParagraph ? bodyBold : bodyFont, isTotalParagraph ? 10.8 * currentScale : 10.7 * currentScale, contentWidth);
       height += lines.length * (isTotalParagraph ? 14.8 : 14.4) * currentScale + (isTotalParagraph ? 10 : 7) * currentScale;
     });
@@ -559,18 +578,18 @@ export async function generateCertificationPdf(record = {}) {
     page.drawText(label.toUpperCase(), {
       x: BODY_X,
       y,
-      size: 9.9 * scale,
+      size: 9.4 * scale,
       font: sectionFont,
       color: ACCENT
     });
-    const lineWidth = Math.min(contentWidth, Math.max(156 * scale, sectionFont.widthOfTextAtSize(label.toUpperCase(), 9.9 * scale) + 10 * scale));
+    const lineWidth = Math.min(contentWidth, Math.max(144 * scale, sectionFont.widthOfTextAtSize(label.toUpperCase(), 9.4 * scale) + 10 * scale));
     page.drawLine({
       start: { x: BODY_X, y: y - 3 * scale },
       end: { x: BODY_X + lineWidth, y: y - 3 * scale },
       thickness: 0.55,
       color: BORDER
     });
-    y -= 16 * scale;
+    y -= 18 * scale;
   };
 
   const drawCentered = (text, font, fontSize, color) => {
@@ -624,19 +643,19 @@ export async function generateCertificationPdf(record = {}) {
     color: BORDER
   });
   y -= 16 * scale;
-  certificationContent.paragraphs.slice(0, 2).forEach((paragraph) => {
+  certificationContent.paragraphs.slice(0, 2).forEach((paragraph, index) => {
     drawParagraph(paragraph, {
       font: bodyFont,
       fontSize: (compactIncomeMode ? 11 : 10.7) * scale,
       lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
       color: TEXT,
       justify: true,
-      marginAfter: (compactIncomeMode ? 9 : 6) * scale
+      marginAfter: (compactIncomeMode ? (index === 1 ? 12 : 9) : 7) * scale
     });
   });
 
   if (certificationContent.showIncomeList && incomes.length) {
-    y -= 2 * scale;
+    y -= 4 * scale;
     drawSectionHeading("Conceptos de ingresos certificados");
     incomes.forEach(({ label, value }) => {
       const valueColumnWidth = 170 * scale;
@@ -677,17 +696,17 @@ export async function generateCertificationPdf(record = {}) {
 
       y -= rowLines * 11.8 * scale + 2;
     });
-    y -= 10 * scale;
+    y -= 12 * scale;
   }
 
   certificationContent.paragraphs.slice(2).forEach((paragraph, index) => {
-    if (index === 0) {
+    if (certificationContent.hasSeparateTotalParagraph && index === 0) {
       drawParagraph(paragraph, {
         font: bodyBold,
         fontSize: (compactIncomeMode ? 11.1 : 10.8) * scale,
         lineHeight: (compactIncomeMode ? 15.2 : 14.8) * scale,
         color: TEXT,
-        justify: false,
+        justify: true,
         marginAfter: (compactIncomeMode ? 11 : 10) * scale
       });
       return;
@@ -703,51 +722,64 @@ export async function generateCertificationPdf(record = {}) {
     });
   });
 
-  y = Math.max(y - (compactIncomeMode ? 4 : 10) * scale, signatureBlockTopY + (compactIncomeMode ? 20 : 14) * scale);
-  const signatureLineY = BOTTOM_MARGIN + (compactIncomeMode ? 76 : 68) * scale;
+  y = Math.max(y - (compactIncomeMode ? 4 : 10) * scale, signatureBlockTopY + (compactIncomeMode ? 18 : 14) * scale);
+  const signatureLineY = BOTTOM_MARGIN + (compactIncomeMode ? 86 : 76) * scale;
+  const signatureCenterX = PAGE_WIDTH / 2;
+  const signatureLineWidth = (compactIncomeMode ? 292 : 266) * scale;
+  const signatureLineStartX = signatureCenterX - signatureLineWidth / 2;
+  const drawCenteredFooterText = (text, yPos, size, font, color) => {
+    const width = font.widthOfTextAtSize(text, size);
+    page.drawText(text, {
+      x: signatureCenterX - width / 2,
+      y: yPos,
+      size,
+      font,
+      color
+    });
+  };
 
   page.drawImage(signatureImage, {
-    x: MARGIN_X,
+    x: signatureCenterX - signatureDims.width / 2,
     y: signatureLineY + 12 * scale,
     width: signatureDims.width,
     height: signatureDims.height
   });
 
   page.drawLine({
-    start: { x: MARGIN_X, y: signatureLineY },
-    end: { x: MARGIN_X + (compactIncomeMode ? 264 : 248) * scale, y: signatureLineY },
+    start: { x: signatureLineStartX, y: signatureLineY },
+    end: { x: signatureLineStartX + signatureLineWidth, y: signatureLineY },
     thickness: 0.7,
     color: BORDER
   });
 
-  page.drawText(profile.accountantName, {
-    x: MARGIN_X,
-    y: signatureLineY - 22 * scale,
-    size: (compactIncomeMode ? 11.2 : 11) * scale,
-    font: bodyBold,
-    color: ACCENT
-  });
-  page.drawText(profile.title, {
-    x: MARGIN_X,
-    y: signatureLineY - 38 * scale,
-    size: (compactIncomeMode ? 10.2 : 10) * scale,
-    font: bodyFont,
-    color: TEXT
-  });
-  page.drawText(`C.C. No. ${certificationContent.formattedAccountantDocument}`, {
-    x: MARGIN_X,
-    y: signatureLineY - 54 * scale,
-    size: (compactIncomeMode ? 10 : 9.8) * scale,
-    font: bodyFont,
-    color: TEXT
-  });
-  page.drawText(`Tarjeta Profesional No. ${certificationContent.formattedProfessionalCard}`, {
-    x: MARGIN_X,
-    y: signatureLineY - 70 * scale,
-    size: (compactIncomeMode ? 10 : 9.8) * scale,
-    font: bodyFont,
-    color: TEXT
-  });
+  drawCenteredFooterText(
+    profile.accountantName,
+    signatureLineY - 22 * scale,
+    (compactIncomeMode ? 11.2 : 11) * scale,
+    bodyBold,
+    ACCENT
+  );
+  drawCenteredFooterText(
+    profile.title,
+    signatureLineY - 38 * scale,
+    (compactIncomeMode ? 10.2 : 10) * scale,
+    bodyFont,
+    TEXT
+  );
+  drawCenteredFooterText(
+    `C.C. No. ${certificationContent.formattedAccountantDocument}`,
+    signatureLineY - 54 * scale,
+    (compactIncomeMode ? 10 : 9.8) * scale,
+    bodyFont,
+    TEXT
+  );
+  drawCenteredFooterText(
+    `Tarjeta Profesional No. ${certificationContent.formattedProfessionalCard}`,
+    signatureLineY - 70 * scale,
+    (compactIncomeMode ? 10 : 9.8) * scale,
+    bodyFont,
+    TEXT
+  );
 
   const pdfBytes = await pdf.save();
 
