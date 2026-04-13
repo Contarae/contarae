@@ -1,8 +1,14 @@
 import fs from "fs/promises";
 import path from "path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import QRCode from "qrcode";
 import { getProfessionalProfile } from "./professional-documents.js";
 import { buildCertificateData } from "./certification-admin.js";
+import {
+  buildCertificateVerificationCode,
+  buildCertificateVerificationDisplayUrl,
+  buildCertificateVerificationUrl
+} from "./certificate-verification.js";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -15,6 +21,21 @@ const ACCENT_SOFT = rgb(0.9, 0.95, 1);
 const TEXT = rgb(0.16, 0.2, 0.28);
 const TEXT_SOFT = rgb(0.38, 0.44, 0.54);
 const BORDER = rgb(0.82, 0.88, 0.95);
+
+async function createQrPngBytes(value) {
+  const dataUrl = await QRCode.toDataURL(String(value || ""), {
+    errorCorrectionLevel: "M",
+    margin: 0,
+    width: 320,
+    color: {
+      dark: "#0F264A",
+      light: "#FFFFFF"
+    }
+  });
+
+  const base64 = dataUrl.split(",")[1] || "";
+  return Buffer.from(base64, "base64");
+}
 
 function parseCurrency(value) {
   const raw = String(value || "").trim();
@@ -491,17 +512,30 @@ export async function generateCertificationPdf(record = {}) {
   const certificationContent = buildCertificationNarrative(record);
   const incomes = certificationContent.detailedRows || [];
   const pdf = await PDFDocument.create();
+  const verificationCode = buildCertificateVerificationCode(record);
+  const verificationUrl = buildCertificateVerificationUrl(record);
+  const verificationDisplayUrl = buildCertificateVerificationDisplayUrl();
+  const verificationConsecutive = String(record.consecutive || record.reference || "").trim() || "POR ASIGNAR";
   const titleFont = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const sectionFont = await pdf.embedFont(StandardFonts.HelveticaBold);
   const bodyFont = await pdf.embedFont(StandardFonts.Helvetica);
   const bodyBold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const logoImage = await pdf.embedPng(await readAssetBytes("contarae-logo-completo.png"));
   const signatureImage = await pdf.embedPng(await readAssetBytes("contarae-firma.png"));
+  const qrImage = await pdf.embedPng(await createQrPngBytes(verificationUrl));
   const baseLogoDims = logoImage.scale(Math.min(0.42, 164 / logoImage.width));
   const baseSignatureDims = signatureImage.scale(Math.min(0.34, 192 / signatureImage.width));
+  const baseQrDims = qrImage.scale(Math.min(0.24, 72 / qrImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   let scale = 1;
   const fitSafetyPadding = 22;
+
+  pdf.setTitle(`Certificación de ingresos ${record.consecutive || record.reference || "CONTARAE"}`);
+  pdf.setAuthor(profile.accountantName || "CONTARAE");
+  pdf.setCreator("CONTARAE");
+  pdf.setProducer("CONTARAE");
+  pdf.setSubject("Certificación de ingresos con validación por QR");
+  pdf.setKeywords(["certificación de ingresos", "CONTARAE", "validación", verificationCode]);
 
   const estimateBodyHeight = (currentScale) => {
     const contentWidth = PAGE_WIDTH - BODY_X * 2;
@@ -513,8 +547,8 @@ export async function generateCertificationPdf(record = {}) {
     height += 12 * currentScale;
     certificationContent.paragraphs.forEach((paragraph, index) => {
       const isTotalParagraph = certificationContent.hasSeparateTotalParagraph && index === 2;
-      const lines = wrapText(paragraph, isTotalParagraph ? bodyBold : bodyFont, isTotalParagraph ? 10.8 * currentScale : 10.7 * currentScale, contentWidth);
-      height += lines.length * (isTotalParagraph ? 14.8 : 14.4) * currentScale + (isTotalParagraph ? 10 : 7) * currentScale;
+      const lines = wrapText(paragraph, isTotalParagraph ? bodyBold : bodyFont, isTotalParagraph ? 11 * currentScale : 10.9 * currentScale, contentWidth);
+      height += lines.length * (isTotalParagraph ? 15.1 : 14.8) * currentScale + (isTotalParagraph ? 10 : 7) * currentScale;
     });
 
     if (certificationContent.showIncomeList && incomes.length) {
@@ -530,7 +564,7 @@ export async function generateCertificationPdf(record = {}) {
   };
 
   const estimateSignatureBlockHeight = (currentScale) => {
-    return baseSignatureDims.height * currentScale + 108 * currentScale;
+    return baseSignatureDims.height * currentScale + baseQrDims.height * currentScale + 154 * currentScale;
   };
 
   while (estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + fitSafetyPadding > availableHeight && scale > 0.42) {
@@ -547,6 +581,10 @@ export async function generateCertificationPdf(record = {}) {
   const signatureDims = {
     width: baseSignatureDims.width * scale,
     height: baseSignatureDims.height * scale
+  };
+  const qrDims = {
+    width: baseQrDims.width * scale,
+    height: baseQrDims.height * scale
   };
   const signatureBlockTopY = BOTTOM_MARGIN + estimateSignatureBlockHeight(scale);
   const compactIncomeMode = !certificationContent.showIncomeList && certificationContent.amountRows.length <= 2;
@@ -631,7 +669,7 @@ export async function generateCertificationPdf(record = {}) {
   });
   y -= logoDims.height + 20 * scale;
 
-  drawCentered("CERTIFICACIÓN DE INGRESOS", titleFont, 21.5 * scale, ACCENT);
+  drawCentered("CERTIFICACIÓN DE INGRESOS", titleFont, 20.7 * scale, ACCENT);
   y -= 20 * scale;
   drawCentered(`${profile.city}, ${formatLongDate(new Date())}`, bodyFont, 10 * scale, TEXT_SOFT);
   y -= 18 * scale;
@@ -646,8 +684,8 @@ export async function generateCertificationPdf(record = {}) {
   certificationContent.paragraphs.slice(0, 2).forEach((paragraph, index) => {
     drawParagraph(paragraph, {
       font: bodyFont,
-      fontSize: (compactIncomeMode ? 11 : 10.7) * scale,
-      lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
+      fontSize: (compactIncomeMode ? 11.2 : 10.9) * scale,
+      lineHeight: (compactIncomeMode ? 15.4 : 14.7) * scale,
       color: TEXT,
       justify: true,
       marginAfter: (compactIncomeMode ? (index === 1 ? 13 : 10) : 8) * scale
@@ -677,7 +715,7 @@ export async function generateCertificationPdf(record = {}) {
         page.drawText(line, {
           x: BODY_X + 12 * scale,
           y: y - index * 11.8 * scale,
-          size: 10.4 * scale,
+          size: 10.5 * scale,
           font: bodyBold,
           color: ACCENT
         });
@@ -688,7 +726,7 @@ export async function generateCertificationPdf(record = {}) {
         page.drawText(line, {
           x: (PAGE_WIDTH - BODY_X) - lineWidth,
           y: y - index * 11.8 * scale,
-          size: 10.2 * scale,
+          size: 10.3 * scale,
           font: bodyFont,
           color: TEXT
         });
@@ -703,8 +741,8 @@ export async function generateCertificationPdf(record = {}) {
     if (certificationContent.hasSeparateTotalParagraph && index === 0) {
       drawParagraph(paragraph, {
         font: bodyBold,
-        fontSize: (compactIncomeMode ? 11.1 : 10.8) * scale,
-        lineHeight: (compactIncomeMode ? 15.2 : 14.8) * scale,
+        fontSize: (compactIncomeMode ? 11.3 : 11) * scale,
+        lineHeight: (compactIncomeMode ? 15.4 : 15) * scale,
         color: TEXT,
         justify: true,
         marginAfter: (compactIncomeMode ? 12 : 11) * scale
@@ -714,8 +752,8 @@ export async function generateCertificationPdf(record = {}) {
 
     drawParagraph(paragraph, {
       font: bodyFont,
-      fontSize: (compactIncomeMode ? 11 : 10.7) * scale,
-      lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
+      fontSize: (compactIncomeMode ? 11.2 : 10.9) * scale,
+      lineHeight: (compactIncomeMode ? 15.4 : 14.7) * scale,
       color: TEXT,
       justify: true,
       marginAfter: (compactIncomeMode ? 10 : 7) * scale
@@ -723,7 +761,7 @@ export async function generateCertificationPdf(record = {}) {
   });
 
   y = Math.max(y - (compactIncomeMode ? 4 : 10) * scale, signatureBlockTopY + (compactIncomeMode ? 18 : 14) * scale);
-  const signatureLineY = BOTTOM_MARGIN + (compactIncomeMode ? 86 : 76) * scale;
+  const signatureLineY = BOTTOM_MARGIN + (compactIncomeMode ? 92 : 82) * scale;
   const signatureCenterX = PAGE_WIDTH / 2;
   const signatureLineWidth = (compactIncomeMode ? 292 : 266) * scale;
   const signatureLineStartX = signatureCenterX - signatureLineWidth / 2;
@@ -780,6 +818,50 @@ export async function generateCertificationPdf(record = {}) {
     bodyFont,
     TEXT
   );
+
+  const verificationNoteTopY = signatureLineY + 54 * scale;
+  const verificationTextWidth = contentWidth - qrDims.width - 18 * scale;
+  const verificationTextX = BODY_X;
+  const verificationTextY = verificationNoteTopY + qrDims.height - 2 * scale;
+  const verificationLines = [
+    "VALIDAR VALIDEZ",
+    `Escanee el código QR o ingrese a ${verificationDisplayUrl}`,
+    `Código: ${verificationCode} · Consecutivo: ${verificationConsecutive}`,
+    "La firma y la validez de este certificado se pierden ante cualquier alteración, conversión o modificación posterior del archivo."
+  ];
+
+  page.drawText(verificationLines[0], {
+    x: verificationTextX,
+    y: verificationTextY + 18 * scale,
+    size: 7.6 * scale,
+    font: sectionFont,
+    color: ACCENT
+  });
+
+  let verificationCursorY = verificationTextY + 4 * scale;
+  verificationLines.slice(1).forEach((line, index) => {
+    const font = index === 1 ? bodyBold : bodyFont;
+    const fontSize = (index === 1 ? 7.25 : 6.95) * scale;
+    const lines = wrapText(line, font, fontSize, verificationTextWidth);
+    lines.forEach((wrappedLine) => {
+      page.drawText(wrappedLine, {
+        x: verificationTextX,
+        y: verificationCursorY,
+        size: fontSize,
+        font,
+        color: index === 1 ? TEXT : TEXT_SOFT
+      });
+      verificationCursorY -= 8.3 * scale;
+    });
+    verificationCursorY -= 1.5 * scale;
+  });
+
+  page.drawImage(qrImage, {
+    x: PAGE_WIDTH - BODY_X - qrDims.width,
+    y: verificationNoteTopY,
+    width: qrDims.width,
+    height: qrDims.height
+  });
 
   const pdfBytes = await pdf.save();
 

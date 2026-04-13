@@ -210,6 +210,9 @@ function summarizeRecord(record, source) {
     totalIncome: formData.total_ingresos || "",
     fee: formData.tarifa_pagada || "",
     consecutive: record.consecutive || "",
+    certificateVersion: Number(record.certificateVersion || 0) || null,
+    certificateVerificationCode: record.certificateVerificationCode || "",
+    certificateIssuedAt: record.certificateIssuedAt || "",
     supportFilesCount: supportFiles.length,
     createdAt: record.createdAt || "",
     approvedAt: record.approvedAt || "",
@@ -248,6 +251,12 @@ function buildDetail(record, source) {
       email: customerEmail,
       rawPhone: certificateData.telefono || formData.telefono || "",
       whatsappPhone: normalizedPhone
+    },
+    certificateSecurity: {
+      version: Number(record.certificateVersion || 0) || null,
+      verificationCode: record.certificateVerificationCode || "",
+      verificationUrl: record.certificateVerificationUrl || "",
+      hash: record.certificateHash || ""
     }
   };
 }

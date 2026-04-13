@@ -7,6 +7,12 @@ import {
   getProfessionalProfile
 } from "./utils/professional-documents.js";
 import { sendResendEmail } from "./utils/resend-email.js";
+import {
+  buildCertificateVerificationCode,
+  buildCertificateVerificationPath,
+  buildCertificateVerificationUrl,
+  computeCertificateSha256
+} from "./utils/certificate-verification.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -22,6 +28,10 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
   const certificateData = detail.certificateData || {};
   const profile = getProfessionalProfile();
   const customerName = certificateData.nombre || summary.customerName || "";
+  const verificationCode =
+    detail.record?.certificateVerificationCode || buildCertificateVerificationCode(detail.record || {});
+  const verificationUrl =
+    detail.record?.certificateVerificationUrl || buildCertificateVerificationUrl(detail.record || {});
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
@@ -39,6 +49,7 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
             <strong>Documento principal adjunto:</strong> Certificación de ingresos firmada por ${escapeHtml(profile.accountantName)}${profile.professionalCardNumber ? `, T.P. No. ${escapeHtml(profile.professionalCardNumber)}` : ""}.<br/>
             ${includeProfessionalCard ? "Incluye copia de la tarjeta profesional.<br/>" : ""}
             ${includeJccBackground ? "Incluye antecedentes vigentes ante la Junta Central de Contadores.<br/>" : ""}
+            <strong>Validación:</strong> puede verificar la validez escaneando el código QR del PDF o consultando el código ${escapeHtml(verificationCode)} en <a href="${escapeHtml(verificationUrl)}" style="color:#2563eb;text-decoration:none;">${escapeHtml(verificationUrl)}</a>.<br/>
             Si la entidad receptora requiere un formato o vigencia específica, puede responder este mismo correo para validarlo.
           </div>
         </div>
@@ -52,6 +63,10 @@ function buildCustomerCertificationEmailText(detail, includeProfessionalCard, in
   const certificateData = detail.certificateData || {};
   const profile = getProfessionalProfile();
   const customerName = certificateData.nombre || summary.customerName || "";
+  const verificationCode =
+    detail.record?.certificateVerificationCode || buildCertificateVerificationCode(detail.record || {});
+  const verificationUrl =
+    detail.record?.certificateVerificationUrl || buildCertificateVerificationUrl(detail.record || {});
 
   return [
     `Hola ${customerName},`,
@@ -61,6 +76,7 @@ function buildCustomerCertificationEmailText(detail, includeProfessionalCard, in
     `Documento principal: Certificación de ingresos firmada por ${profile.accountantName}${profile.professionalCardNumber ? `, T.P. No. ${profile.professionalCardNumber}` : ""}.`,
     includeProfessionalCard ? "Incluye copia de la tarjeta profesional." : "",
     includeJccBackground ? "Incluye antecedentes vigentes ante la Junta Central de Contadores." : "",
+    `Validación: puede verificar la validez escaneando el código QR del PDF o consultando el código ${verificationCode} en ${verificationUrl}.`,
     "",
     "Si la entidad receptora requiere un formato o vigencia específica, puede responder este mismo correo para validarlo."
   ]
@@ -198,13 +214,31 @@ export default async (req) => {
       }
     }
 
+    const certificateVersion = Number(result.record?.certificateVersion || 0) + 1;
+    const certificateHash = computeCertificateSha256(pdf.bytes);
+    const certificateVerificationCode = buildCertificateVerificationCode(result.record || {});
+    const certificateVerificationPath = buildCertificateVerificationPath(result.record || {});
+    const certificateVerificationUrl = buildCertificateVerificationUrl(result.record || {});
+
+    const detailForEmail = {
+      ...result.detail,
+      record: {
+        ...(result.record || {}),
+        certificateVersion,
+        certificateHash,
+        certificateVerificationCode,
+        certificateVerificationPath,
+        certificateVerificationUrl
+      }
+    };
+
     const emailResult = await sendResendEmail({
       apiKey: resendApiKey,
       from: resendFromEmail,
       to: customerEmail,
       subject: `CONTARAE | Certificación de ingresos ${result.detail.summary.consecutive ? `N° ${result.detail.summary.consecutive}` : reference}`,
-      html: buildCustomerCertificationEmailHtml(result.detail, includeProfessionalCard, includeJccBackground),
-      text: buildCustomerCertificationEmailText(result.detail, includeProfessionalCard, includeJccBackground),
+      html: buildCustomerCertificationEmailHtml(detailForEmail, includeProfessionalCard, includeJccBackground),
+      text: buildCustomerCertificationEmailText(detailForEmail, includeProfessionalCard, includeJccBackground),
       replyTo: replyToBusinessEmail,
       idempotencyKey: `${reference}:final-certificate`,
       attachments
@@ -219,6 +253,13 @@ export default async (req) => {
         professionalCard: includeProfessionalCard,
         jccBackground: includeJccBackground
       },
+      certificateVersion,
+      certificateHash,
+      certificateVerificationCode,
+      certificateVerificationPath,
+      certificateVerificationUrl,
+      certificateIssuedAt: new Date().toISOString(),
+      certificateFileName: pdf.fileName,
       updatedAt: new Date().toISOString(),
       lastReviewedAt: new Date().toISOString(),
       lastReviewedBy: session.username

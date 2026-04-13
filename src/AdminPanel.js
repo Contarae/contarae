@@ -360,6 +360,13 @@ export default function AdminPanel() {
   const [unlockError, setUnlockError] = useState("");
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
+  const [sendSuccessDialog, setSendSuccessDialog] = useState({
+    open: false,
+    title: "",
+    message: "",
+    whatsappLink: "",
+    customerEmail: ""
+  });
   const [sendDraft, setSendDraft] = useState({
     includeProfessionalCard: false,
     includeJccBackground: false,
@@ -462,8 +469,10 @@ export default function AdminPanel() {
       setUnlockDialogOpen(false);
       setPendingSupportFiles([]);
       setPdfEditMode(false);
+      return data.detail;
     } catch (error) {
       setDetailError(error.message);
+      return null;
     } finally {
       setDetailLoading(false);
     }
@@ -873,11 +882,12 @@ export default function AdminPanel() {
     setDetailError("");
 
     try {
+      const reference = detail.summary.reference;
       const response = await fetch("/api/admin-send-certification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reference: detail.summary.reference,
+          reference,
           includeProfessionalCard: sendDraft.includeProfessionalCard,
           includeJccBackground: sendDraft.includeJccBackground,
           confirmedReview: sendDraft.confirmedReview
@@ -889,17 +899,23 @@ export default function AdminPanel() {
         throw new Error(data.detail || data.error || "No fue posible enviar la certificación.");
       }
 
-      setDetail(data.detail);
-      setDraft((current) => ({
-        ...current,
-        certificationStatus: data.detail?.summary?.certificationStatus || current.certificationStatus
-      }));
       setEditOverridePassword("");
       setPdfEditMode(false);
       setSendDialogOpen(false);
+      const refreshedDetail = (await loadDetail(reference)) || data.detail;
       await loadRecords();
+      const whatsappLink = buildDeliveryWhatsappLink(refreshedDetail);
+      setSendSuccessDialog({
+        open: true,
+        title: "Certificación enviada correctamente",
+        message: refreshedDetail?.contact?.email
+          ? `El PDF fue enviado al correo ${refreshedDetail.contact.email}. El expediente ya quedó actualizado y puedes continuar con la notificación por WhatsApp si lo deseas.`
+          : "El PDF fue enviado correctamente al cliente. El expediente ya quedó actualizado y puedes continuar con la notificación por WhatsApp si lo deseas.",
+        whatsappLink,
+        customerEmail: refreshedDetail?.contact?.email || ""
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
-      setNotice("Certificación enviada correctamente al cliente por correo. Ya puedes usar la opción de notificación por WhatsApp en este expediente.");
+      setNotice("Certificación enviada correctamente. El expediente ya fue actualizado.");
     } catch (error) {
       setDetailError(error.message);
     } finally {
@@ -1723,6 +1739,42 @@ export default function AdminPanel() {
                 }}
               >
                 {sendBusy ? "Enviando..." : "Confirmar envío definitivo"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {sendSuccessDialog.open && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15100, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setSendSuccessDialog((current) => ({ ...current, open: false }))}>
+          <div style={{ width: "min(560px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#15803D", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>ENVÍO CONFIRMADO</div>
+            <h3 style={{ margin: 0, fontFamily: FH, fontSize: 32, lineHeight: 1.08, color: "#0B1D3A" }}>{sendSuccessDialog.title}</h3>
+            <p style={{ margin: "14px 0 0", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
+              {sendSuccessDialog.message}
+            </p>
+            {sendSuccessDialog.customerEmail ? (
+              <div style={{ marginTop: 16, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F, fontSize: 13, color: "#334155", lineHeight: 1.7 }}>
+                Correo registrado del cliente: <strong>{sendSuccessDialog.customerEmail}</strong>
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 20 }}>
+              {sendSuccessDialog.whatsappLink ? (
+                <a
+                  href={sendSuccessDialog.whatsappLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 800, textDecoration: "none" }}
+                >
+                  Notificar por WhatsApp
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setSendSuccessDialog((current) => ({ ...current, open: false }))}
+                style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: "pointer" }}
+              >
+                Cerrar
               </button>
             </div>
           </div>

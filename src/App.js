@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import AdminPanel from "./AdminPanel";
+import CertificateVerificationPage from "./CertificateVerificationPage";
 
 const WA="573013101050",WL=`https://wa.me/${WA}`,EM="info@contarae.com",F="'Outfit',sans-serif",FH="'Libre Baskerville',serif";
 const fm=n=>new Intl.NumberFormat("es-CO").format(n);
@@ -19,10 +20,13 @@ const CERT_ROUTE="/certificacion";
 const CERT_ROUTE_ALIASES=new Set([CERT_ROUTE,"/certificacion-de-ingresos"]);
 const ADMIN_ROUTE="/admin/certificaciones";
 const ADMIN_ROUTE_ALIASES=new Set([ADMIN_ROUTE,"/admin"]);
+const VERIFY_ROUTE="/verificar-certificado";
+const VERIFY_ROUTE_ALIASES=new Set([VERIFY_ROUTE,"/verificar-certificacion"]);
 const OPEN_CERT_FORM_EVENT="contarae:open-certification-form";
 const normPath=p=>{if(!p)return"/";const c=p.replace(/\/+$/,"");return c||"/";};
 const isCertificationPath=p=>CERT_ROUTE_ALIASES.has(normPath(p));
 const isAdminPath=p=>ADMIN_ROUTE_ALIASES.has(normPath(p));
+const isVerifyPath=p=>VERIFY_ROUTE_ALIASES.has(normPath(p));
 const getCurrentPath=()=>typeof window==="undefined"?"/":normPath(window.location.pathname);
 const getSectionHref=(id,path)=>isCertificationPath(path)&&id!=="certificacion"?`/#${id}`:`#${id}`;
 const scrollToId=(id,behavior="smooth")=>{if(typeof window==="undefined")return false;const el=document.getElementById(id);if(!el)return false;const top=el.getBoundingClientRect().top+window.pageYOffset-156;window.scrollTo({top,behavior});return true;};
@@ -1457,16 +1461,17 @@ export default function App(){
   const[path,sPath]=useState(getCurrentPath());
   const certRoute=isCertificationPath(path);
   const adminRoute=isAdminPath(path);
+  const verifyRoute=isVerifyPath(path);
 
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
-  useEffect(()=>{if(adminRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute]);
-  useEffect(()=>{if(adminRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute]);
-  useEffect(()=>{if(adminRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute]);
-  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,adminRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute]);
+  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":verifyRoute?"Validación de certificados | CONTARAE":certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":verifyRoute?"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.":certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,adminRoute,verifyRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}}`}</style>
-    {adminRoute?<AdminPanel/>:<>
+    {adminRoute?<AdminPanel/>:verifyRoute?<CertificateVerificationPage/>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573013101050","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
     <Nav path={path}/><Banner path={path}/>
