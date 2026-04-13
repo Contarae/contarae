@@ -117,7 +117,35 @@ function normalizeCurrencyInput(value) {
 }
 
 function parseCurrency(value) {
-  return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+
+  const normalized = raw.replace(/\$/g, "").replace(/\s+/g, "").replace(/[^\d,.-]/g, "");
+  if (!normalized) return 0;
+
+  if (normalized.includes(",") && normalized.includes(".")) {
+    return Number(normalized.replace(/\./g, "").replace(",", ".")) || 0;
+  }
+
+  if (normalized.includes(",")) {
+    const commaParts = normalized.split(",");
+    if (commaParts.length === 2 && commaParts[1].length <= 2) {
+      return Number(normalized.replace(/\./g, "").replace(",", ".")) || 0;
+    }
+    return Number(normalized.replace(/,/g, "")) || 0;
+  }
+
+  if (normalized.includes(".")) {
+    const dotParts = normalized.split(".");
+    if (dotParts.length > 2) {
+      return Number(dotParts.join("")) || 0;
+    }
+    if (dotParts.length === 2 && dotParts[1].length === 3) {
+      return Number(dotParts.join("")) || 0;
+    }
+  }
+
+  return Number(normalized) || 0;
 }
 
 function hasMeaningfulCurrencyValue(value) {

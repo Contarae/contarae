@@ -16,7 +16,35 @@ const TEXT_SOFT = rgb(0.38, 0.44, 0.54);
 const BORDER = rgb(0.82, 0.88, 0.95);
 
 function parseCurrency(value) {
-  return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+
+  const normalized = raw.replace(/\$/g, "").replace(/\s+/g, "").replace(/[^\d,.-]/g, "");
+  if (!normalized) return 0;
+
+  if (normalized.includes(",") && normalized.includes(".")) {
+    return Number(normalized.replace(/\./g, "").replace(",", ".")) || 0;
+  }
+
+  if (normalized.includes(",")) {
+    const commaParts = normalized.split(",");
+    if (commaParts.length === 2 && commaParts[1].length <= 2) {
+      return Number(normalized.replace(/\./g, "").replace(",", ".")) || 0;
+    }
+    return Number(normalized.replace(/,/g, "")) || 0;
+  }
+
+  if (normalized.includes(".")) {
+    const dotParts = normalized.split(".");
+    if (dotParts.length > 2) {
+      return Number(dotParts.join("")) || 0;
+    }
+    if (dotParts.length === 2 && dotParts[1].length === 3) {
+      return Number(dotParts.join("")) || 0;
+    }
+  }
+
+  return Number(normalized) || 0;
 }
 
 function hasMeaningfulCurrencyValue(value) {
@@ -381,51 +409,31 @@ export async function generateCertificationPdf(record = {}) {
   const logoImage = await pdf.embedPng(await readAssetBytes("contarae-logo-completo.png"));
   const signatureImage = await pdf.embedPng(await readAssetBytes("contarae-firma.png"));
   const baseLogoDims = logoImage.scale(Math.min(0.46, 178 / logoImage.width));
-  const baseSignatureDims = signatureImage.scale(Math.min(0.22, 114 / signatureImage.width));
+  const baseSignatureDims = signatureImage.scale(Math.min(0.26, 146 / signatureImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   let scale = 1;
   const fitSafetyPadding = 22;
 
   const estimateBodyHeight = (currentScale) => {
     const contentWidth = PAGE_WIDTH - MARGIN_X * 2;
-    const labelWidth = 126 * currentScale;
-    const gap = 12;
-    const valueWidth = contentWidth - labelWidth - gap;
     let height = 0;
 
     height += baseLogoDims.height * currentScale + 18 * currentScale;
     height += 22 * currentScale + 18 * currentScale;
     height += 10.5 * currentScale + 16 * currentScale + 16 * currentScale;
-    height += 26 * currentScale;
-
-    const introRows = [
-      ["Solicitante", formData.nombre || "No informado"],
-      ["Documento", [formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "No informado"],
-      ["Lugar de expedición", formData.lugar_expedicion || "No informado"],
-      ["Destino", getRequestedPurpose(formData) || "No informado"],
-      ["Período certificado", formData.periodo || "No informado"]
-    ];
-
-    height += 22 * currentScale;
-    introRows.forEach(([, value]) => {
-      const lines = wrapText(String(value || ""), bodyFont, 9.8 * currentScale, valueWidth);
-      height += Math.max(14 * currentScale, lines.length * 11.4 * currentScale + 1);
-    });
-
-    height += 8 * currentScale;
-    height += 22 * currentScale;
+    height += 12 * currentScale;
     certificationContent.paragraphs.forEach((paragraph, index) => {
-      const lines = wrapText(paragraph, bodyFont, 10.1 * currentScale, contentWidth);
-      height += lines.length * 13.2 * currentScale + (index === 2 ? 8 : 5) * currentScale;
+      const isTotalParagraph = index === 2;
+      const lines = wrapText(paragraph, isTotalParagraph ? bodyBold : bodyFont, isTotalParagraph ? 10.8 * currentScale : 10.7 * currentScale, contentWidth);
+      height += lines.length * (isTotalParagraph ? 14.4 : 14.2) * currentScale + (isTotalParagraph ? 8 : 6) * currentScale;
     });
 
     if (certificationContent.showIncomeList && incomes.length) {
-      height += 6 * currentScale;
-      height += 22 * currentScale;
+      height += 16 * currentScale;
       incomes.forEach(({ label, value }) => {
-        const valueLines = wrapText(String(value || ""), bodyFont, 9.6 * currentScale, 172 * currentScale);
-        const labelLines = wrapText(label, bodyBold, 9.9 * currentScale, 210 * currentScale);
-        height += Math.max(valueLines.length, labelLines.length) * 11.1 * currentScale + 1;
+        const valueLines = wrapText(String(value || ""), bodyFont, 10.2 * currentScale, 162 * currentScale);
+        const labelLines = wrapText(label, bodyBold, 10.4 * currentScale, 232 * currentScale);
+        height += Math.max(valueLines.length, labelLines.length) * 11.8 * currentScale + 2;
       });
     }
 
@@ -433,7 +441,7 @@ export async function generateCertificationPdf(record = {}) {
   };
 
   const estimateSignatureBlockHeight = (currentScale) => {
-    return baseSignatureDims.height * currentScale + 86 * currentScale;
+    return baseSignatureDims.height * currentScale + 108 * currentScale;
   };
 
   while (estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + fitSafetyPadding > availableHeight && scale > 0.42) {
@@ -451,9 +459,6 @@ export async function generateCertificationPdf(record = {}) {
     width: baseSignatureDims.width * scale,
     height: baseSignatureDims.height * scale
   };
-  const labelWidth = 126 * scale;
-  const gap = 12;
-  const valueWidth = contentWidth - labelWidth - gap;
   const signatureBlockTopY = BOTTOM_MARGIN + estimateSignatureBlockHeight(scale);
 
   page.drawRectangle({
@@ -480,23 +485,21 @@ export async function generateCertificationPdf(record = {}) {
   });
 
   const drawSectionHeading = (label) => {
-    page.drawRectangle({
-      x: MARGIN_X,
-      y: y - 14 * scale,
-      width: 172 * scale,
-      height: 16 * scale,
-      color: ACCENT_SOFT,
-      borderColor: BORDER,
-      borderWidth: 0.5
-    });
     page.drawText(label.toUpperCase(), {
-      x: MARGIN_X + 7 * scale,
-      y: y - 10.5 * scale,
-      size: 8.9 * scale,
+      x: MARGIN_X,
+      y,
+      size: 10.4 * scale,
       font: sectionFont,
       color: ACCENT
     });
-    y -= 24 * scale;
+    const lineWidth = Math.min(contentWidth, Math.max(180 * scale, sectionFont.widthOfTextAtSize(label.toUpperCase(), 10.4 * scale) + 12 * scale));
+    page.drawLine({
+      start: { x: MARGIN_X, y: y - 3 * scale },
+      end: { x: MARGIN_X + lineWidth, y: y - 3 * scale },
+      thickness: 0.8,
+      color: BORDER
+    });
+    y -= 18 * scale;
   };
 
   const drawCentered = (text, font, fontSize, color) => {
@@ -546,48 +549,15 @@ export async function generateCertificationPdf(record = {}) {
   page.drawLine({
     start: { x: MARGIN_X + 8, y },
     end: { x: PAGE_WIDTH - MARGIN_X - 8, y },
-    thickness: 1,
+    thickness: 0.8,
     color: BORDER
   });
-  y -= 18 * scale;
-
-  drawSectionHeading("Datos del solicitante");
-  [
-    ["Solicitante", formData.nombre || "No informado"],
-    ["Documento", [formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "No informado"],
-    ["Lugar de expedición", formData.lugar_expedicion || "No informado"],
-    ["Destino", getRequestedPurpose(formData) || "No informado"],
-    ["Período certificado", formData.periodo || "No informado"]
-  ].forEach(([label, value]) => {
-    const lines = wrapText(String(value || ""), bodyFont, 9.8 * scale, valueWidth);
-    page.drawText(`${label}:`, {
-      x: MARGIN_X,
-      y,
-      size: 9.8 * scale,
-      font: bodyBold,
-      color: ACCENT
-    });
-
-    lines.forEach((line, lineIndex) => {
-      page.drawText(line, {
-        x: MARGIN_X + labelWidth + gap,
-        y: y - lineIndex * 11.4 * scale,
-        size: 9.8 * scale,
-        font: bodyFont,
-        color: TEXT
-      });
-    });
-
-    y -= Math.max(14 * scale, lines.length * 11.4 * scale + 1);
-  });
-
-  y -= 6 * scale;
-  drawSectionHeading("Certificación");
+  y -= 14 * scale;
   certificationContent.paragraphs.slice(0, 2).forEach((paragraph) => {
     drawParagraph(paragraph, {
       font: bodyFont,
-      fontSize: 10.1 * scale,
-      lineHeight: 13.2 * scale,
+      fontSize: 10.7 * scale,
+      lineHeight: 14.2 * scale,
       color: TEXT,
       justify: true
     });
@@ -596,14 +566,14 @@ export async function generateCertificationPdf(record = {}) {
   if (certificationContent.showIncomeList && incomes.length) {
     drawSectionHeading("Conceptos de ingresos certificados");
     incomes.forEach(({ label, value }) => {
-      const labelLines = wrapText(label, bodyBold, 9.9 * scale, 210 * scale);
-      const valueLines = wrapText(String(value || ""), bodyFont, 9.6 * scale, 172 * scale);
+      const labelLines = wrapText(label, bodyBold, 10.4 * scale, 232 * scale);
+      const valueLines = wrapText(String(value || ""), bodyFont, 10.2 * scale, 162 * scale);
       const rowLines = Math.max(labelLines.length, valueLines.length);
 
       page.drawText("•", {
         x: MARGIN_X,
         y,
-        size: 11 * scale,
+        size: 11.2 * scale,
         font: bodyBold,
         color: ACCENT
       });
@@ -611,8 +581,8 @@ export async function generateCertificationPdf(record = {}) {
       labelLines.forEach((line, index) => {
         page.drawText(line, {
           x: MARGIN_X + 12 * scale,
-          y: y - index * 11.5 * scale,
-          size: 9.9 * scale,
+          y: y - index * 11.8 * scale,
+          size: 10.4 * scale,
           font: bodyBold,
           color: ACCENT
         });
@@ -620,101 +590,83 @@ export async function generateCertificationPdf(record = {}) {
 
       valueLines.forEach((line, index) => {
         page.drawText(line, {
-          x: PAGE_WIDTH - MARGIN_X - 172 * scale,
-          y: y - index * 11.1 * scale,
-          size: 9.6 * scale,
+          x: PAGE_WIDTH - MARGIN_X - 162 * scale,
+          y: y - index * 11.8 * scale,
+          size: 10.2 * scale,
           font: bodyFont,
           color: TEXT
         });
       });
 
-      y -= rowLines * 11.1 * scale + 1;
+      y -= rowLines * 11.8 * scale + 2;
     });
+    y -= 6 * scale;
   }
 
   certificationContent.paragraphs.slice(2).forEach((paragraph, index) => {
     if (index === 0) {
-      page.drawRectangle({
-        x: MARGIN_X,
-        y: y - 20 * scale,
-        width: contentWidth,
-        height: 34 * scale,
-        color: ACCENT_SOFT,
-        borderColor: BORDER,
-        borderWidth: 0.8
+      drawSectionHeading("Ingresos mensuales certificados");
+      drawParagraph(paragraph, {
+        font: bodyBold,
+        fontSize: 10.8 * scale,
+        lineHeight: 14.4 * scale,
+        color: TEXT,
+        justify: false
       });
-      page.drawText("INGRESOS MENSUALES CERTIFICADOS", {
-        x: MARGIN_X + 10 * scale,
-        y: y + 4.5 * scale,
-        size: 8.8 * scale,
-        font: sectionFont,
-        color: ACCENT
-      });
-      const totalLines = wrapText(paragraph, bodyBold, 10 * scale, contentWidth - 20 * scale);
-      totalLines.forEach((line, lineIndex) => {
-        page.drawText(line, {
-          x: MARGIN_X + 10 * scale,
-          y: y - 8.5 * scale - lineIndex * 12 * scale,
-          size: 10 * scale,
-          font: bodyBold,
-          color: TEXT
-        });
-      });
-      y -= 38 * scale + Math.max(0, (totalLines.length - 1) * 12 * scale);
       return;
     }
 
     drawParagraph(paragraph, {
       font: bodyFont,
-      fontSize: 10 * scale,
-      lineHeight: 13.2 * scale,
+      fontSize: 10.7 * scale,
+      lineHeight: 14.2 * scale,
       color: TEXT,
       justify: true
     });
   });
 
-  y = Math.max(y - 8 * scale, signatureBlockTopY + 10 * scale);
-  const signatureLineY = BOTTOM_MARGIN + 58 * scale;
+  y = Math.max(y - 10 * scale, signatureBlockTopY + 14 * scale);
+  const signatureLineY = BOTTOM_MARGIN + 64 * scale;
 
   page.drawImage(signatureImage, {
     x: MARGIN_X,
-    y: signatureLineY + 8 * scale,
+    y: signatureLineY + 12 * scale,
     width: signatureDims.width,
     height: signatureDims.height
   });
 
   page.drawLine({
     start: { x: MARGIN_X, y: signatureLineY },
-    end: { x: MARGIN_X + 200 * scale, y: signatureLineY },
+    end: { x: MARGIN_X + 230 * scale, y: signatureLineY },
     thickness: 1,
     color: BORDER
   });
 
   page.drawText(profile.accountantName, {
     x: MARGIN_X,
-    y: signatureLineY - 18 * scale,
-    size: 10.4 * scale,
+    y: signatureLineY - 20 * scale,
+    size: 11 * scale,
     font: bodyBold,
     color: ACCENT
   });
   page.drawText(profile.title, {
     x: MARGIN_X,
-    y: signatureLineY - 31 * scale,
-    size: 9.6 * scale,
+    y: signatureLineY - 35 * scale,
+    size: 10 * scale,
     font: bodyFont,
     color: TEXT
   });
   page.drawText(`C.C. No. ${profile.accountantDocumentNumber || "POR CONFIGURAR"}`, {
     x: MARGIN_X,
-    y: signatureLineY - 44 * scale,
-    size: 9.4 * scale,
+    y: signatureLineY - 50 * scale,
+    size: 9.8 * scale,
     font: bodyFont,
     color: TEXT
   });
   page.drawText(`Tarjeta Profesional No. ${profile.professionalCardNumber || "POR CONFIGURAR"}`, {
     x: MARGIN_X,
-    y: signatureLineY - 57 * scale,
-    size: 9.4 * scale,
+    y: signatureLineY - 65 * scale,
+    size: 9.8 * scale,
     font: bodyFont,
     color: TEXT
   });
