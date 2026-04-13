@@ -40,6 +40,36 @@ const CERTIFICATE_INCOME_LABELS = [
   ["otros_ingresos", "Otros ingresos"]
 ];
 
+const ORIGINAL_FORM_FIELDS = [
+  ["nombre", "Nombre completo"],
+  ["tipo_documento", "Tipo de documento"],
+  ["numero_documento", "Número de documento"],
+  ["lugar_expedicion", "Lugar de expedición"],
+  ["correo", "Correo electrónico"],
+  ["telefono", "Teléfono / WhatsApp"],
+  ["destino", "Destino del documento"],
+  ["entidad", "Entidad receptora"],
+  ["periodo", "Período a certificar"],
+  ["total_ingresos", "Total reportado"]
+];
+
+const PDF_PRIMARY_FIELDS = [
+  ["nombre", "Nombre para el PDF"],
+  ["tipo_documento", "Tipo de documento"],
+  ["numero_documento", "Número de documento"],
+  ["lugar_expedicion", "Lugar de expedición"],
+  ["correo", "Correo para envío"],
+  ["telefono", "WhatsApp para contacto"],
+  ["destino", "Destino"],
+  ["entidad", "Entidad"],
+  ["periodo", "Período"],
+  ["total_ingresos", "Total mensual certificado"]
+];
+
+const PDF_NOTE_FIELDS = [
+  ["otros_descripcion", "Detalle otros ingresos"]
+];
+
 const shell = {
   minHeight: "100vh",
   background:
@@ -96,6 +126,49 @@ function hasMeaningfulCurrencyValue(value) {
   return parseCurrency(raw) > 0;
 }
 
+function normalizeComparableValue(field, value) {
+  if (CERTIFICATE_CURRENCY_FIELDS.includes(field) || field === "total_ingresos") {
+    return String(parseCurrency(value));
+  }
+  return String(value || "").trim();
+}
+
+function buildReviewDraft(detail = null) {
+  return {
+    certificationStatus: detail?.summary?.certificationStatus || "en_revision",
+    adminNotes: detail?.record?.adminNotes || "",
+    certificateAdjustmentNote: detail?.record?.certificateAdjustmentNote || "",
+    requestedDocumentsMessage: detail?.record?.requestedDocumentsMessage || ""
+  };
+}
+
+function buildCertificateDraftState(source = {}) {
+  return {
+    nombre: source?.nombre || "",
+    tipo_documento: source?.tipo_documento || "",
+    numero_documento: source?.numero_documento || "",
+    lugar_expedicion: source?.lugar_expedicion || "",
+    correo: source?.correo || source?.email || "",
+    telefono: source?.telefono || "",
+    destino: source?.destino || "",
+    entidad: source?.entidad || "",
+    periodo: source?.periodo || "",
+    ingresos_laborales: source?.ingresos_laborales || "",
+    pensiones: source?.pensiones || "",
+    dividendos: source?.dividendos || "",
+    inversiones: source?.inversiones || "",
+    arriendos: source?.arriendos || "",
+    remesas: source?.remesas || "",
+    otros_ingresos: source?.otros_ingresos || "",
+    otros_descripcion: source?.otros_descripcion || "",
+    total_ingresos: source?.total_ingresos || ""
+  };
+}
+
+function isFieldModified(originalValues = {}, draftValues = {}, field) {
+  return normalizeComparableValue(field, originalValues?.[field]) !== normalizeComparableValue(field, draftValues?.[field]);
+}
+
 function recalculateCertificateTotal(values = {}) {
   const total = CERTIFICATE_CURRENCY_FIELDS.reduce((sum, field) => sum + parseCurrency(values[field]), 0);
   return total ? normalizeCurrencyInput(total) : "";
@@ -129,8 +202,10 @@ function getPaymentMeta(status) {
 
 function buildSupportMessage(detail, customMessage) {
   const summary = detail?.summary || {};
+  const certificateData = detail?.certificateData || {};
+  const customerName = certificateData.nombre || summary.customerName || "";
   const base = [
-    `Hola ${summary.customerName || ""},`,
+    `Hola ${customerName},`,
     "",
     `Tu solicitud ${summary.consecutive ? `N° ${summary.consecutive}` : ""} de certificacion de ingresos en CONTARAE se encuentra en revision.`,
     "",
@@ -163,9 +238,11 @@ function buildDeliveryWhatsappLink(detail) {
   const phone = detail?.contact?.whatsappPhone;
   if (!phone) return "";
   const summary = detail?.summary || {};
+  const certificateData = detail?.certificateData || {};
   const customerEmail = detail?.contact?.email;
+  const customerName = certificateData.nombre || summary.customerName || "";
   const message = [
-    `Hola ${summary.customerName || ""},`,
+    `Hola ${customerName},`,
     "",
     `Tu certificación de ingresos de CONTARAE ${summary.consecutive ? `N° ${summary.consecutive}` : ""} ya fue emitida.`,
     customerEmail ? `La enviamos al correo registrado: ${customerEmail}.` : "La enviamos al correo registrado en la solicitud.",
@@ -238,29 +315,9 @@ export default function AdminPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [professionalConfig, setProfessionalConfig] = useState(null);
-  const [draft, setDraft] = useState({
-    certificationStatus: "en_revision",
-    adminNotes: "",
-    requestedDocumentsMessage: ""
-  });
-  const [certificateDraft, setCertificateDraft] = useState({
-    nombre: "",
-    tipo_documento: "",
-    numero_documento: "",
-    lugar_expedicion: "",
-    destino: "",
-    entidad: "",
-    periodo: "",
-    ingresos_laborales: "",
-    pensiones: "",
-    dividendos: "",
-    inversiones: "",
-    arriendos: "",
-    remesas: "",
-    otros_ingresos: "",
-    otros_descripcion: "",
-    total_ingresos: ""
-  });
+  const [draft, setDraft] = useState(buildReviewDraft());
+  const [certificateDraft, setCertificateDraft] = useState(buildCertificateDraftState());
+  const [pdfEditMode, setPdfEditMode] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [notice, setNotice] = useState("");
@@ -289,6 +346,23 @@ export default function AdminPanel() {
   const lockedStatuses = new Set(["enviada", "pago_no_confirmado", "rechazada"]);
   const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
   const editLocked = Boolean(isLockedStatus && !editOverridePassword);
+  const originalFormData = detail?.formData || {};
+
+  const handleTogglePdfEditMode = () => {
+    if (editLocked) {
+      setUnlockDialogOpen(true);
+      return;
+    }
+    setPdfEditMode((current) => !current);
+  };
+
+  const getModifiedFieldMeta = (field) => {
+    const modified = isFieldModified(originalFormData, certificateDraft, field);
+    return {
+      modified,
+      label: modified ? "Modificado" : "Original"
+    };
+  };
 
   const loadSession = async () => {
     try {
@@ -352,35 +426,14 @@ export default function AdminPanel() {
 
       setDetail(data.detail);
       setProfessionalConfig(data.professionalConfig || null);
-      setDraft({
-        certificationStatus:
-          data.detail?.summary?.certificationStatus || "en_revision",
-        adminNotes: data.detail?.record?.adminNotes || "",
-        requestedDocumentsMessage: data.detail?.record?.requestedDocumentsMessage || ""
-      });
-      setCertificateDraft({
-        nombre: data.detail?.certificateData?.nombre || "",
-        tipo_documento: data.detail?.certificateData?.tipo_documento || "",
-        numero_documento: data.detail?.certificateData?.numero_documento || "",
-        lugar_expedicion: data.detail?.certificateData?.lugar_expedicion || "",
-        destino: data.detail?.certificateData?.destino || "",
-        entidad: data.detail?.certificateData?.entidad || "",
-        periodo: data.detail?.certificateData?.periodo || "",
-        ingresos_laborales: data.detail?.certificateData?.ingresos_laborales || "",
-        pensiones: data.detail?.certificateData?.pensiones || "",
-        dividendos: data.detail?.certificateData?.dividendos || "",
-        inversiones: data.detail?.certificateData?.inversiones || "",
-        arriendos: data.detail?.certificateData?.arriendos || "",
-        remesas: data.detail?.certificateData?.remesas || "",
-        otros_ingresos: data.detail?.certificateData?.otros_ingresos || "",
-        otros_descripcion: data.detail?.certificateData?.otros_descripcion || "",
-        total_ingresos: data.detail?.certificateData?.total_ingresos || ""
-      });
+      setDraft(buildReviewDraft(data.detail));
+      setCertificateDraft(buildCertificateDraftState(data.detail?.certificateData));
       setEditOverridePassword("");
       setUnlockPassword("");
       setUnlockError("");
       setUnlockDialogOpen(false);
       setPendingSupportFiles([]);
+      setPdfEditMode(false);
     } catch (error) {
       setDetailError(error.message);
     } finally {
@@ -409,6 +462,26 @@ export default function AdminPanel() {
     const timer = window.setTimeout(() => setNotice(""), 5200);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!session.authenticated) return undefined;
+
+    const handlePageHide = () => {
+      try {
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon("/api/admin-logout");
+          return;
+        }
+      } catch {
+        // Fall back to fetch keepalive below.
+      }
+
+      fetch("/api/admin-logout", { method: "POST", keepalive: true }).catch(() => {});
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [session.authenticated]);
 
   const filteredRecords = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
@@ -466,15 +539,13 @@ export default function AdminPanel() {
     setRecords([]);
     setSelectedReference("");
     setDetail(null);
-    setDraft({
-      certificationStatus: "en_revision",
-      adminNotes: "",
-      requestedDocumentsMessage: ""
-    });
+    setDraft(buildReviewDraft());
+    setCertificateDraft(buildCertificateDraftState());
     setEditOverridePassword("");
     setUnlockPassword("");
     setUnlockError("");
     setUnlockDialogOpen(false);
+    setPdfEditMode(false);
     loadSession();
   };
 
@@ -488,6 +559,7 @@ export default function AdminPanel() {
         reference: detail.summary.reference,
         certificationStatus: draft.certificationStatus,
         adminNotes: draft.adminNotes,
+        certificateAdjustmentNote: draft.certificateAdjustmentNote,
         requestedDocumentsMessage: draft.requestedDocumentsMessage,
         certificateOverrides: certificateDraft,
         overridePassword: editOverridePassword,
@@ -502,29 +574,8 @@ export default function AdminPanel() {
     }
 
     setDetail(data.detail);
-    setDraft({
-      certificationStatus: data.detail?.summary?.certificationStatus || draft.certificationStatus,
-      adminNotes: data.detail?.record?.adminNotes || "",
-      requestedDocumentsMessage: data.detail?.record?.requestedDocumentsMessage || ""
-    });
-    setCertificateDraft({
-      nombre: data.detail?.certificateData?.nombre || "",
-      tipo_documento: data.detail?.certificateData?.tipo_documento || "",
-      numero_documento: data.detail?.certificateData?.numero_documento || "",
-      lugar_expedicion: data.detail?.certificateData?.lugar_expedicion || "",
-      destino: data.detail?.certificateData?.destino || "",
-      entidad: data.detail?.certificateData?.entidad || "",
-      periodo: data.detail?.certificateData?.periodo || "",
-      ingresos_laborales: data.detail?.certificateData?.ingresos_laborales || "",
-      pensiones: data.detail?.certificateData?.pensiones || "",
-      dividendos: data.detail?.certificateData?.dividendos || "",
-      inversiones: data.detail?.certificateData?.inversiones || "",
-      arriendos: data.detail?.certificateData?.arriendos || "",
-      remesas: data.detail?.certificateData?.remesas || "",
-      otros_ingresos: data.detail?.certificateData?.otros_ingresos || "",
-      otros_descripcion: data.detail?.certificateData?.otros_descripcion || "",
-      total_ingresos: data.detail?.certificateData?.total_ingresos || ""
-    });
+    setDraft(buildReviewDraft(data.detail));
+    setCertificateDraft(buildCertificateDraftState(data.detail?.certificateData));
     await loadRecords();
     return data.detail;
   };
@@ -532,6 +583,7 @@ export default function AdminPanel() {
   const handleSave = async () => {
     try {
       await persistDraft("save");
+      setPdfEditMode(false);
       setNotice("Cambios guardados.");
     } catch (error) {
       setDetailError(error.message);
@@ -548,6 +600,7 @@ export default function AdminPanel() {
         reference: detail.summary.reference,
         certificationStatus: nextStatus,
         adminNotes: draft.adminNotes,
+        certificateAdjustmentNote: draft.certificateAdjustmentNote,
         requestedDocumentsMessage: draft.requestedDocumentsMessage,
         certificateOverrides: certificateDraft,
         overridePassword: editOverridePassword,
@@ -557,29 +610,8 @@ export default function AdminPanel() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "No fue posible actualizar el estado.");
         setDetail(data.detail);
-        setDraft({
-          certificationStatus: data.detail?.summary?.certificationStatus || nextStatus,
-          adminNotes: data.detail?.record?.adminNotes || "",
-          requestedDocumentsMessage: data.detail?.record?.requestedDocumentsMessage || ""
-        });
-        setCertificateDraft({
-          nombre: data.detail?.certificateData?.nombre || "",
-          tipo_documento: data.detail?.certificateData?.tipo_documento || "",
-          numero_documento: data.detail?.certificateData?.numero_documento || "",
-          lugar_expedicion: data.detail?.certificateData?.lugar_expedicion || "",
-          destino: data.detail?.certificateData?.destino || "",
-          entidad: data.detail?.certificateData?.entidad || "",
-          periodo: data.detail?.certificateData?.periodo || "",
-          ingresos_laborales: data.detail?.certificateData?.ingresos_laborales || "",
-          pensiones: data.detail?.certificateData?.pensiones || "",
-          dividendos: data.detail?.certificateData?.dividendos || "",
-          inversiones: data.detail?.certificateData?.inversiones || "",
-          arriendos: data.detail?.certificateData?.arriendos || "",
-          remesas: data.detail?.certificateData?.remesas || "",
-          otros_ingresos: data.detail?.certificateData?.otros_ingresos || "",
-          otros_descripcion: data.detail?.certificateData?.otros_descripcion || "",
-          total_ingresos: data.detail?.certificateData?.total_ingresos || ""
-        });
+        setDraft(buildReviewDraft(data.detail));
+        setCertificateDraft(buildCertificateDraftState(data.detail?.certificateData));
       });
       await loadRecords();
       setNotice("Estado actualizado.");
@@ -691,24 +723,8 @@ export default function AdminPanel() {
   };
 
   const handleResetCertificateDraft = () => {
-    setCertificateDraft({
-      nombre: detail?.formData?.nombre || "",
-      tipo_documento: detail?.formData?.tipo_documento || "",
-      numero_documento: detail?.formData?.numero_documento || "",
-      lugar_expedicion: detail?.formData?.lugar_expedicion || "",
-      destino: detail?.formData?.destino || "",
-      entidad: detail?.formData?.entidad || "",
-      periodo: detail?.formData?.periodo || "",
-      ingresos_laborales: detail?.formData?.ingresos_laborales || "",
-      pensiones: detail?.formData?.pensiones || "",
-      dividendos: detail?.formData?.dividendos || "",
-      inversiones: detail?.formData?.inversiones || "",
-      arriendos: detail?.formData?.arriendos || "",
-      remesas: detail?.formData?.remesas || "",
-      otros_ingresos: detail?.formData?.otros_ingresos || "",
-      otros_descripcion: detail?.formData?.otros_descripcion || "",
-      total_ingresos: detail?.formData?.total_ingresos || ""
-    });
+    setCertificateDraft(buildCertificateDraftState(detail?.formData));
+    setDraft((current) => ({ ...current, certificateAdjustmentNote: "" }));
   };
 
   const handleOpenPreviewPdf = async () => {
@@ -792,6 +808,7 @@ export default function AdminPanel() {
     setUnlockPassword("");
     setUnlockError("");
     setUnlockDialogOpen(false);
+    setPdfEditMode(false);
     setNotice("La certificación volvió a quedar protegida contra edición.");
   };
 
@@ -850,6 +867,7 @@ export default function AdminPanel() {
         certificationStatus: data.detail?.summary?.certificationStatus || current.certificationStatus
       }));
       setEditOverridePassword("");
+      setPdfEditMode(false);
       setSendDialogOpen(false);
       await loadRecords();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -972,8 +990,8 @@ export default function AdminPanel() {
                   </option>
                 ))}
               </select>
-              <div style={{ padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7 }}>
-                Las solicitudes se muestran siempre por fecha de registro, de la más antigua a la más reciente.
+              <div style={{ padding: "11px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.6 }}>
+                Orden: fecha de registro, de la más antigua a la más reciente.
               </div>
             </div>
 
@@ -1056,10 +1074,10 @@ export default function AdminPanel() {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 18 }}>
-                  <InfoTile label="Correo" value={detail.contact.email} />
-                  <InfoTile label="Telefono" value={detail.contact.rawPhone} />
-                  <InfoTile label="Periodo" value={detail.summary.period} />
-                  <InfoTile label="Total ingresos" value={detail.summary.totalIncome} />
+                  <InfoTile label="Correo operativo" value={detail.contact.email} />
+                  <InfoTile label="WhatsApp operativo" value={detail.contact.rawPhone} />
+                  <InfoTile label="Periodo original" value={detail.summary.period} />
+                  <InfoTile label="Total reportado" value={detail.summary.totalIncome} />
                   <InfoTile label="Tarifa pagada" value={detail.summary.fee} />
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>
@@ -1087,15 +1105,42 @@ export default function AdminPanel() {
                 ) : null}
 
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 420px)", gap: 18, alignItems: "start" }}>
-                  <div style={{ display: "grid", gap: 18 }}>
+                  <div style={{ display: "grid", gap: 18, position: "sticky", top: 20 }}>
                     <div style={{ padding: "0 2px" }}>
-                      <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>EXPEDIENTE Y CONTENIDO</div>
+                      <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>EXPEDIENTE</div>
                       <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7 }}>
-                        Formulario original, datos ajustados para emisión, soportes y notas internas.
+                        Evidencia original del cliente y versión operativa para emitir el PDF.
                       </div>
                     </div>
+                    <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                      <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>FORMULARIO ORIGINAL DEL CLIENTE</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
+                        {ORIGINAL_FORM_FIELDS.map(([field, label]) => (
+                          <div
+                            key={field}
+                            style={{
+                              padding: "12px 14px",
+                              borderRadius: 16,
+                              background: "#F8FBFF",
+                              border: "1px solid rgba(37,99,235,.10)"
+                            }}
+                          >
+                            <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.1px", fontWeight: 800, color: "#64748B", marginBottom: 6 }}>
+                              {label}
+                            </div>
+                            <div style={{ fontFamily: F, fontSize: 14, color: "#0F172A", lineHeight: 1.6, fontWeight: 700 }}>
+                              {String(originalFormData[field] || "").trim() || "Sin dato"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
                     <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
-                      <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>INGRESOS REPORTADOS EN FORMULARIO</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F }}>INGRESOS REPORTADOS EN FORMULARIO</div>
+                        <div style={{ fontSize: 12, color: "#64748B", fontFamily: F }}>Solo lectura</div>
+                      </div>
                       {detail.incomes.length ? (
                         <div style={{ display: "grid", gap: 10 }}>
                           {detail.incomes.map((item) => (
@@ -1112,60 +1157,191 @@ export default function AdminPanel() {
 
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-                        <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F }}>DATOS PARA EMISIÓN DEL PDF</div>
-                        <button
-                          type="button"
-                          onClick={handleResetCertificateDraft}
-                          disabled={editLocked}
-                          style={{
-                            padding: "9px 12px",
-                            borderRadius: 14,
-                            border: "1px solid rgba(37,99,235,.14)",
-                            background: "#fff",
-                            color: "#1D4ED8",
-                            fontFamily: F,
-                            fontWeight: 800,
-                            cursor: editLocked ? "not-allowed" : "pointer",
-                            opacity: editLocked ? 0.65 : 1
-                          }}
-                        >
-                          Restaurar datos del formulario
-                        </button>
-                      </div>
-                      <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.8, marginBottom: 14 }}>
-                        Aquí puedes corregir manualmente la información que saldrá en la certificación. El formulario original del cliente se conserva; el PDF usará estos datos ajustados cuando los guardes.
+                        <div>
+                          <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>DATOS PARA EMISIÓN DEL PDF</div>
+                          <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7 }}>
+                            Aquí ajustas la versión que sí se usará para emitir y enviar el certificado.
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={handleTogglePdfEditMode}
+                            style={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: 14,
+                              border: "1px solid rgba(37,99,235,.14)",
+                              background: pdfEditMode && !editLocked ? "rgba(37,99,235,.10)" : "#fff",
+                              color: "#1D4ED8",
+                              fontFamily: F,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              fontSize: 18
+                            }}
+                            aria-label={pdfEditMode ? "Desactivar edición" : "Activar edición"}
+                            title={pdfEditMode ? "Desactivar edición" : "Activar edición"}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleResetCertificateDraft}
+                            disabled={editLocked || !pdfEditMode}
+                            style={{
+                              padding: "9px 12px",
+                              borderRadius: 14,
+                              border: "1px solid rgba(37,99,235,.14)",
+                              background: "#fff",
+                              color: "#1D4ED8",
+                              fontFamily: F,
+                              fontWeight: 800,
+                              cursor: editLocked || !pdfEditMode ? "not-allowed" : "pointer",
+                              opacity: editLocked || !pdfEditMode ? 0.65 : 1
+                            }}
+                          >
+                            Restaurar base original
+                          </button>
+                        </div>
                       </div>
                       {editLocked ? (
                         <div style={{ marginBottom: 14, padding: 12, borderRadius: 16, background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.18)", fontFamily: F, fontSize: 13, color: "#92400E", lineHeight: 1.7 }}>
                           La edición está bloqueada porque el PDF ya fue enviado. Usa la opción <strong>Habilitar edición con contraseña</strong> para modificar esta certificación.
                         </div>
                       ) : null}
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 12 }}>
-                        <input disabled={editLocked} style={inputStyle} placeholder="Nombre para el PDF" value={certificateDraft.nombre} onChange={(event) => handleCertificateFieldChange("nombre", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Tipo de documento" value={certificateDraft.tipo_documento} onChange={(event) => handleCertificateFieldChange("tipo_documento", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Número de documento" value={certificateDraft.numero_documento} onChange={(event) => handleCertificateFieldChange("numero_documento", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Lugar de expedición" value={certificateDraft.lugar_expedicion} onChange={(event) => handleCertificateFieldChange("lugar_expedicion", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Destino" value={certificateDraft.destino} onChange={(event) => handleCertificateFieldChange("destino", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Entidad" value={certificateDraft.entidad} onChange={(event) => handleCertificateFieldChange("entidad", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Período" value={certificateDraft.periodo} onChange={(event) => handleCertificateFieldChange("periodo", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Total mensual certificado" value={certificateDraft.total_ingresos} onChange={(event) => setCertificateDraft((current) => ({ ...current, total_ingresos: normalizeCurrencyInput(event.target.value) }))} />
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
+                        {PDF_PRIMARY_FIELDS.map(([field, label]) => {
+                          const fieldMeta = getModifiedFieldMeta(field);
+                          return (
+                            <div
+                              key={field}
+                              style={{
+                                padding: 12,
+                                borderRadius: 16,
+                                border: fieldMeta.modified ? "1px solid rgba(245,158,11,.24)" : "1px solid rgba(37,99,235,.10)",
+                                background: fieldMeta.modified ? "rgba(245,158,11,.08)" : "#F8FBFF"
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                                <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.1px", fontWeight: 800, color: "#64748B" }}>{label}</div>
+                                {fieldMeta.modified ? (
+                                  <span style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(245,158,11,.16)", color: "#B45309", fontFamily: F, fontSize: 11, fontWeight: 800 }}>
+                                    Modificado
+                                  </span>
+                                ) : null}
+                              </div>
+                              <input
+                                disabled={!pdfEditMode || editLocked}
+                                style={{ ...inputStyle, background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
+                                placeholder={label}
+                                value={certificateDraft[field]}
+                                onChange={(event) => {
+                                  if (field === "total_ingresos") {
+                                    setCertificateDraft((current) => ({ ...current, total_ingresos: normalizeCurrencyInput(event.target.value) }));
+                                    return;
+                                  }
+                                  handleCertificateFieldChange(field, event.target.value);
+                                }}
+                              />
+                              {fieldMeta.modified ? (
+                                <div style={{ fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+                                  Original: {String(originalFormData[field] || "").trim() || "Sin dato"}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 10 }}>
-                        <input disabled={editLocked} style={inputStyle} placeholder="Ingresos laborales" value={certificateDraft.ingresos_laborales} onChange={(event) => handleCertificateFieldChange("ingresos_laborales", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Pensiones" value={certificateDraft.pensiones} onChange={(event) => handleCertificateFieldChange("pensiones", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Dividendos" value={certificateDraft.dividendos} onChange={(event) => handleCertificateFieldChange("dividendos", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Inversiones" value={certificateDraft.inversiones} onChange={(event) => handleCertificateFieldChange("inversiones", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Arriendos" value={certificateDraft.arriendos} onChange={(event) => handleCertificateFieldChange("arriendos", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Remesas" value={certificateDraft.remesas} onChange={(event) => handleCertificateFieldChange("remesas", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Otros ingresos" value={certificateDraft.otros_ingresos} onChange={(event) => handleCertificateFieldChange("otros_ingresos", event.target.value)} />
-                        <input disabled={editLocked} style={inputStyle} placeholder="Detalle otros ingresos" value={certificateDraft.otros_descripcion} onChange={(event) => handleCertificateFieldChange("otros_descripcion", event.target.value)} />
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
+                        {CERTIFICATE_INCOME_LABELS.map(([field, label]) => {
+                          const fieldMeta = getModifiedFieldMeta(field);
+                          return (
+                            <div
+                              key={field}
+                              style={{
+                                padding: 12,
+                                borderRadius: 16,
+                                border: fieldMeta.modified ? "1px solid rgba(245,158,11,.24)" : "1px solid rgba(37,99,235,.10)",
+                                background: fieldMeta.modified ? "rgba(245,158,11,.08)" : "#F8FBFF"
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                                <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.1px", fontWeight: 800, color: "#64748B" }}>{label}</div>
+                                {fieldMeta.modified ? (
+                                  <span style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(245,158,11,.16)", color: "#B45309", fontFamily: F, fontSize: 11, fontWeight: 800 }}>
+                                    Modificado
+                                  </span>
+                                ) : null}
+                              </div>
+                              <input
+                                disabled={!pdfEditMode || editLocked}
+                                style={{ ...inputStyle, background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
+                                placeholder={label}
+                                value={certificateDraft[field]}
+                                onChange={(event) => handleCertificateFieldChange(field, event.target.value)}
+                              />
+                              {fieldMeta.modified ? (
+                                <div style={{ fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+                                  Original: {String(originalFormData[field] || "").trim() || "Sin dato"}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                        {PDF_NOTE_FIELDS.map(([field, label]) => {
+                          const fieldMeta = getModifiedFieldMeta(field);
+                          return (
+                            <div
+                              key={field}
+                              style={{
+                                padding: 12,
+                                borderRadius: 16,
+                                border: fieldMeta.modified ? "1px solid rgba(245,158,11,.24)" : "1px solid rgba(37,99,235,.10)",
+                                background: fieldMeta.modified ? "rgba(245,158,11,.08)" : "#F8FBFF",
+                                gridColumn: "1 / -1"
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                                <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.1px", fontWeight: 800, color: "#64748B" }}>{label}</div>
+                                {fieldMeta.modified ? (
+                                  <span style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(245,158,11,.16)", color: "#B45309", fontFamily: F, fontSize: 11, fontWeight: 800 }}>
+                                    Modificado
+                                  </span>
+                                ) : null}
+                              </div>
+                              <textarea
+                                disabled={!pdfEditMode || editLocked}
+                                style={{ ...inputStyle, minHeight: 88, resize: "vertical", background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
+                                placeholder={label}
+                                value={certificateDraft[field]}
+                                onChange={(event) => handleCertificateFieldChange(field, event.target.value)}
+                              />
+                              {fieldMeta.modified ? (
+                                <div style={{ fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+                                  Original: {String(originalFormData[field] || "").trim() || "Sin dato"}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginBottom: 12, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+                        <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>ANOTACIÓN DEL AJUSTE</div>
+                        <textarea
+                          disabled={!pdfEditMode || editLocked}
+                          style={{ ...inputStyle, minHeight: 92, resize: "vertical", background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff" }}
+                          value={draft.certificateAdjustmentNote}
+                          onChange={(event) => setDraft((current) => ({ ...current, certificateAdjustmentNote: event.target.value }))}
+                          placeholder="Uso interno. Ejemplo: se corrigió el correo de entrega y se agregó ingreso por arriendos con soporte bancario."
+                        />
+                        <div style={{ marginTop: 8, fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
+                          Esta nota es interna y nunca saldrá en la certificación.
+                        </div>
                       </div>
                       <div style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
                           <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#1D4ED8", fontFamily: F }}>ASÍ SALDRÁ EN LA CERTIFICACIÓN</div>
-                          <div style={{ fontFamily: F, fontSize: 12, color: "#52647F" }}>
-                            Aquí aparecen también los conceptos que agregues manualmente.
-                          </div>
+                          <div style={{ fontFamily: F, fontSize: 12, color: "#52647F" }}>Vista de los conceptos que realmente se emitirán.</div>
                         </div>
                         {certificateIncomePreview.length ? (
                           <div style={{ display: "grid", gap: 10 }}>
@@ -1326,14 +1502,17 @@ export default function AdminPanel() {
                         onChange={(event) => setDraft((current) => ({ ...current, adminNotes: event.target.value }))}
                         placeholder="Aqui puedes dejar hallazgos, validaciones pendientes, notas de revision o instrucciones internas."
                       />
+                      <div style={{ marginTop: 8, fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
+                        Estas observaciones son internas y no se incluyen en la certificación.
+                      </div>
                     </section>
                   </div>
 
                   <div style={{ display: "grid", gap: 18 }}>
                     <div style={{ padding: "0 2px" }}>
-                      <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>GESTIÓN Y ENVÍO</div>
+                      <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>CONTROL DEL EXPEDIENTE</div>
                       <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7 }}>
-                        Estado del expediente, borrador PDF, adjuntos profesionales y contacto con el cliente.
+                        Estado, borrador, envío y documentos profesionales.
                       </div>
                     </div>
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
@@ -1344,7 +1523,7 @@ export default function AdminPanel() {
                           {getStatusMeta(detail.summary.certificationStatus).label}
                         </Badge>
                         <div style={{ marginTop: 10, fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.8 }}>
-                          El estado ya no se cambia manualmente. Se actualiza automáticamente según el resultado del pago, la solicitud de documentos, el envío final o el rechazo del expediente.
+                          Se actualiza con el pago, la solicitud de documentos, el envío final o el rechazo del expediente.
                         </div>
                       </div>
 
@@ -1361,7 +1540,7 @@ export default function AdminPanel() {
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>BORRADOR Y ENVÍO FINAL</div>
                       <div style={{ fontFamily: F, fontSize: 14, color: "#334155", lineHeight: 1.8, marginBottom: 14 }}>
-                        El borrador PDF incluirá logo CONTARAE, firma, desglose de ingresos diligenciados, destino del documento, total reportado y la línea profesional con tarjeta profesional.
+                        Revisa el borrador actualizado y, cuando esté listo, envía el PDF definitivo al cliente.
                       </div>
                       <div style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 14 }}>
                         <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#64748B", fontFamily: F, marginBottom: 6 }}>FIRMA PROFESIONAL</div>

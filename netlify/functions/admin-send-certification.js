@@ -19,7 +19,9 @@ function escapeHtml(value) {
 
 function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, includeJccBackground) {
   const summary = detail.summary || {};
+  const certificateData = detail.certificateData || {};
   const profile = getProfessionalProfile();
+  const customerName = certificateData.nombre || summary.customerName || "";
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
@@ -31,7 +33,7 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
         </div>
         <div style="padding:24px 28px;">
           <p style="margin:0 0 14px;color:#334155;line-height:1.8;">
-            Hola ${escapeHtml(summary.customerName || "")}, adjuntamos la certificación de ingresos correspondiente a su solicitud ${summary.consecutive ? `N° ${escapeHtml(summary.consecutive)}` : escapeHtml(summary.reference || "")}.
+            Hola ${escapeHtml(customerName)}, adjuntamos la certificación de ingresos correspondiente a su solicitud ${summary.consecutive ? `N° ${escapeHtml(summary.consecutive)}` : escapeHtml(summary.reference || "")}.
           </p>
           <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.8;">
             <strong>Documento principal adjunto:</strong> Certificación de ingresos firmada por ${escapeHtml(profile.accountantName)}${profile.professionalCardNumber ? `, T.P. No. ${escapeHtml(profile.professionalCardNumber)}` : ""}.<br/>
@@ -47,10 +49,12 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
 
 function buildCustomerCertificationEmailText(detail, includeProfessionalCard, includeJccBackground) {
   const summary = detail.summary || {};
+  const certificateData = detail.certificateData || {};
   const profile = getProfessionalProfile();
+  const customerName = certificateData.nombre || summary.customerName || "";
 
   return [
-    `Hola ${summary.customerName || ""},`,
+    `Hola ${customerName},`,
     "",
     `Adjuntamos la certificación de ingresos correspondiente a su solicitud ${summary.consecutive ? `N° ${summary.consecutive}` : summary.reference || ""}.`,
     "",

@@ -64,6 +64,8 @@ const CERTIFICATE_EDITABLE_FIELDS = [
   "tipo_documento",
   "numero_documento",
   "lugar_expedicion",
+  "correo",
+  "telefono",
   "destino",
   "entidad",
   "periodo",
@@ -194,8 +196,9 @@ function summarizeRecord(record, source) {
 function buildDetail(record, source) {
   const formData = record.formData || {};
   const certificateData = buildCertificateData(record);
-  const normalizedPhone = normalizePhone(formData.telefono);
+  const normalizedPhone = normalizePhone(certificateData.telefono || formData.telefono);
   const customerEmail =
+    certificateData.correo ||
     formData.correo ||
     formData.email ||
     record.wompiTransaction?.customer_email ||
@@ -215,7 +218,7 @@ function buildDetail(record, source) {
     })),
     contact: {
       email: customerEmail,
-      rawPhone: formData.telefono || "",
+      rawPhone: certificateData.telefono || formData.telefono || "",
       whatsappPhone: normalizedPhone
     }
   };
@@ -319,6 +322,10 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
       updates.requestedDocumentsMessage !== undefined
         ? String(updates.requestedDocumentsMessage || "")
         : String(record.requestedDocumentsMessage || ""),
+    certificateAdjustmentNote:
+      updates.certificateAdjustmentNote !== undefined
+        ? String(updates.certificateAdjustmentNote || "")
+        : String(record.certificateAdjustmentNote || ""),
     certificateOverrides:
       updates.certificateOverrides !== undefined
         ? { ...(updates.certificateOverrides || {}) }

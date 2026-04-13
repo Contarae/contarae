@@ -380,7 +380,7 @@ function Nav({path}){
 }
 
 
-function Banner({path}){const[s,sS]=useState(true);if(!s)return null;return(<div style={{position:"fixed",top:84,left:"50%",transform:"translateX(-50%)",width:"min(1120px,calc(100% - 24px))",zIndex:190,pointerEvents:"none"}}><div style={{background:"linear-gradient(90deg,#163457,#2563EB)",padding:"10px 18px",borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"wrap",boxShadow:"0 16px 34px rgba(15,23,42,.16)",border:"1px solid rgba(255,255,255,.12)",pointerEvents:"auto"}}><span style={{fontSize:13,color:"#fff",fontFamily:F,lineHeight:1.5,textAlign:"center"}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href={getSectionHref("certificacion",path)} style={{fontSize:12,color:"#fff",fontWeight:800,background:"rgba(255,255,255,.18)",padding:"7px 14px",borderRadius:999,textDecoration:"none",fontFamily:F,letterSpacing:".2px"}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.65)",cursor:"pointer",fontSize:15,padding:0,marginLeft:2,fontFamily:F}}>✕</button></div></div>)}
+function Banner({path}){const[s,sS]=useState(true);if(!s)return null;return(<div style={{position:"fixed",top:88,left:"50%",transform:"translateX(-50%)",width:"min(840px,calc(100% - 32px))",zIndex:190,pointerEvents:"none"}}><div style={{background:"linear-gradient(90deg,#163457,#2563EB)",padding:"8px 16px",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",gap:10,flexWrap:"wrap",boxShadow:"0 14px 28px rgba(15,23,42,.14)",border:"1px solid rgba(255,255,255,.12)",pointerEvents:"auto"}}><span style={{fontSize:12,color:"#fff",fontFamily:F,lineHeight:1.45,textAlign:"center"}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href={getSectionHref("certificacion",path)} style={{fontSize:12,color:"#fff",fontWeight:800,background:"rgba(255,255,255,.18)",padding:"6px 13px",borderRadius:999,textDecoration:"none",fontFamily:F,letterSpacing:".2px"}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.65)",cursor:"pointer",fontSize:14,padding:0,marginLeft:2,fontFamily:F}}>✕</button></div></div>)}
 
 /* HERO WITH ANIMATED BG */
 
@@ -832,61 +832,122 @@ function MiniTrustIcon({kind}){
 
 function CertificationHero(){
   const heroMetrics=[["Tiempo estimado","Menos de 1 día hábil"],["Proceso","100% online"],["Pago","Wompi seguro"]];
+  const priceRanges=[["Hasta $2.000.000","$80.000"],["$2.000.001 a $4.000.000","$100.000"],["$4.000.001 a $7.000.000","$120.000"],["$7.000.001 a $12.000.000","$150.000"],["$12.000.001 a $20.000.000","$180.000"],["Más de $20.000.000","$200.000"]];
   const recipientTags=[{label:"Bancos",kind:"bank"},{label:"Inmobiliarias",kind:"home"},{label:"Embajadas",kind:"globe"},{label:"Concesionarios",kind:"car"},{label:"Licitaciones",kind:"doc"},{label:"Arrendadores",kind:"shield"}];
-  const processSteps=["Completa el formulario","Paga seguro con Wompi","Revisión profesional","Recibe el PDF listo para presentar"];
+  const processSteps=["Completa el formulario","Paga seguro con Wompi","Recibe el PDF listo para presentar"];
   const proofPoints=["Soportes verificables","Firma profesional","Seguimiento de referencia","Atención humana"];
   return(
-    <section style={{padding:"176px 24px 56px",background:"linear-gradient(135deg,#F4F8FF 0%,#EEF5FF 38%,#F8FBFF 100%)",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 14% 18%, rgba(59,130,246,.14) 0%, rgba(59,130,246,0) 24%), radial-gradient(circle at 84% 20%, rgba(14,165,233,.12) 0%, rgba(14,165,233,0) 20%)"}}/>
-      <div style={{maxWidth:1140,margin:"0 auto",position:"relative",zIndex:1}}>
-        <div style={{display:"flex",justifyContent:"center",marginBottom:18}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:12,padding:"12px 18px",borderRadius:999,background:"linear-gradient(135deg,#DC2626,#F97316)",color:"#fff",boxShadow:"0 18px 34px rgba(220,38,38,.24)",border:"1px solid rgba(255,255,255,.22)",fontFamily:F,flexWrap:"wrap",justifyContent:"center"}}>
+    <section style={{padding:"164px 24px 48px",position:"relative",overflow:"hidden",background:"linear-gradient(135deg,#F4F8FF 0%,#E7F0FF 20%,#EAF7FF 52%,#F8FBFF 100%)",backgroundSize:"220% 220%",animation:"gradBg 20s ease-in-out infinite"}}>
+      <style>{`
+        @keyframes gradBg{
+          0%{background-position:0% 50%}
+          50%{background-position:100% 50%}
+          100%{background-position:0% 50%}
+        }
+        @keyframes driftWave{
+          0%{transform:translate3d(-18px,-6px,0) scale(1.01)}
+          50%{transform:translate3d(56px,18px,0) scale(1.045)}
+          100%{transform:translate3d(-18px,-6px,0) scale(1.01)}
+        }
+        @keyframes driftWaveAlt{
+          0%{transform:translate3d(16px,8px,0) scale(1.01)}
+          50%{transform:translate3d(-48px,-18px,0) scale(1.04)}
+          100%{transform:translate3d(16px,8px,0) scale(1.01)}
+        }
+        @keyframes floatSoft{
+          0%{transform:translateY(0px) scale(1)}
+          50%{transform:translateY(-16px) scale(1.04)}
+          100%{transform:translateY(0px) scale(1)}
+        }
+        @keyframes glowPulse{
+          0%{opacity:.72}
+          50%{opacity:1}
+          100%{opacity:.72}
+        }
+      `}</style>
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 14% 18%, rgba(59,130,246,.16) 0%, rgba(59,130,246,0) 24%), radial-gradient(circle at 84% 18%, rgba(14,165,233,.13) 0%, rgba(14,165,233,0) 22%), radial-gradient(circle at 74% 74%, rgba(96,165,250,.10) 0%, rgba(96,165,250,0) 20%)"}}/>
+      <div style={{position:"absolute",top:"10%",left:"-7%",width:360,height:360,borderRadius:"50%",background:"radial-gradient(circle, rgba(59,130,246,.18) 0%, rgba(59,130,246,0) 70%)",filter:"blur(18px)",animation:"floatSoft 13s ease-in-out infinite"}}/>
+      <div style={{position:"absolute",bottom:"-12%",right:"-5%",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle, rgba(14,165,233,.16) 0%, rgba(14,165,233,0) 72%)",filter:"blur(18px)",animation:"floatSoft 16s ease-in-out infinite"}}/>
+      <div style={{position:"absolute",top:"16%",left:"50%",transform:"translateX(-50%)",width:620,height:620,borderRadius:"50%",background:"radial-gradient(circle, rgba(96,165,250,.10) 0%, rgba(255,255,255,0) 67%)",filter:"blur(26px)",animation:"glowPulse 12s ease-in-out infinite"}}/>
+      <svg viewBox="0 0 1600 900" preserveAspectRatio="none" style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.58,animation:"driftWave 15s ease-in-out infinite"}}>
+        <defs>
+          <linearGradient id="certWaveStroke1" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(96,165,250,0)" />
+            <stop offset="30%" stopColor="rgba(59,130,246,.24)" />
+            <stop offset="60%" stopColor="rgba(14,165,233,.18)" />
+            <stop offset="100%" stopColor="rgba(96,165,250,0)" />
+          </linearGradient>
+          <linearGradient id="certWaveStroke2" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(59,130,246,0)" />
+            <stop offset="45%" stopColor="rgba(59,130,246,.18)" />
+            <stop offset="75%" stopColor="rgba(125,211,252,.15)" />
+            <stop offset="100%" stopColor="rgba(59,130,246,0)" />
+          </linearGradient>
+        </defs>
+        <path d="M-80 240 C 180 150, 360 350, 620 255 S 1120 130, 1680 270" fill="none" stroke="url(#certWaveStroke1)" strokeWidth="3" strokeLinecap="round"/>
+        <path d="M-120 640 C 220 500, 480 760, 820 625 S 1280 520, 1720 690" fill="none" stroke="url(#certWaveStroke2)" strokeWidth="2.5" strokeLinecap="round"/>
+        <path d="M1060 160 C 1220 230, 1280 340, 1170 470 C 1070 585, 1090 705, 1330 760" fill="none" stroke="rgba(59,130,246,.08)" strokeWidth="52" strokeLinecap="round"/>
+      </svg>
+      <svg viewBox="0 0 1600 900" preserveAspectRatio="none" style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.5,animation:"driftWaveAlt 17s ease-in-out infinite"}}>
+        <path d="M-120 330 C 140 250, 390 440, 660 360 S 1130 255, 1720 410" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M-100 710 C 180 610, 470 820, 820 710 S 1270 620, 1710 760" fill="none" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+      <div style={{maxWidth:1080,margin:"0 auto",position:"relative",zIndex:1}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:12,padding:"10px 16px",borderRadius:999,background:"linear-gradient(135deg,#DC2626,#F97316)",color:"#fff",boxShadow:"0 16px 30px rgba(220,38,38,.22)",border:"1px solid rgba(255,255,255,.22)",fontFamily:F,flexWrap:"wrap",justifyContent:"center",maxWidth:"620px"}}>
             <span style={{fontSize:11,letterSpacing:"1.7px",fontWeight:800,opacity:.92}}>PROMOCIÓN VIGENTE</span>
             <span style={{width:1,height:18,background:"rgba(255,255,255,.28)"}}/>
-            <span style={{fontSize:19,fontWeight:800,lineHeight:1}}>25% OFF</span>
-            <span style={{fontSize:13,fontWeight:600,opacity:.96}}>en tu certificación de ingresos</span>
+            <span style={{fontSize:18,fontWeight:800,lineHeight:1}}>25% OFF</span>
+            <span style={{fontSize:12,fontWeight:600,opacity:.96}}>en tu certificación de ingresos</span>
           </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.08fr) minmax(320px,.92fr)",gap:22,alignItems:"stretch"}}>
-          <div style={{padding:"34px 34px 30px",borderRadius:28,background:"linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.90))",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
-            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.02fr) minmax(320px,.88fr)",gap:20,alignItems:"start"}}>
+          <div style={{padding:"30px 30px 26px",borderRadius:28,background:"linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.90))",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
+            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:12}}>
               <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"8px 16px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:700,color:"#2563EB",letterSpacing:"1.6px",fontFamily:F}}>EMISIÓN ÁGIL Y 100% ONLINE</div>
               <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:999,background:"rgba(220,38,38,.08)",border:"1px solid rgba(220,38,38,.14)",fontSize:11,fontWeight:800,color:"#DC2626",letterSpacing:"1.2px",fontFamily:F}}>25% DE DESCUENTO ACTIVO</div>
             </div>
             <div style={{fontSize:11,letterSpacing:"1.8px",fontWeight:800,color:"#64748B",fontFamily:F,marginBottom:10}}>CERTIFICACIÓN DE INGRESOS CON RESPALDO CONTABLE</div>
-            <h1 style={{fontFamily:FH,fontSize:"clamp(33px,5vw,54px)",fontWeight:700,lineHeight:1.02,color:"#0B1D3A",marginBottom:14,maxWidth:760}}>Recibe tu certificación de ingresos lista para presentar y con respaldo profesional</h1>
-            <p style={{fontSize:17,color:"#3F5A7A",lineHeight:1.82,fontFamily:F,maxWidth:700,marginBottom:20}}>Documento firmado por Contador Público, ideal para bancos, arriendos, embajadas y otros trámites que requieren una certificación seria, clara y bien presentada.</p>
-            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14}}>
+            <h1 style={{fontFamily:FH,fontSize:"clamp(28px,4.2vw,44px)",fontWeight:700,lineHeight:1.04,color:"#0B1D3A",marginBottom:12,maxWidth:640}}>Recibe tu certificación de ingresos lista para presentar y con respaldo profesional</h1>
+            <p style={{fontSize:16,color:"#3F5A7A",lineHeight:1.78,fontFamily:F,maxWidth:620,marginBottom:18}}>Documento firmado por Contador Público, ideal para bancos, arriendos, embajadas y otros trámites que requieren una certificación seria, clara y bien presentada.</p>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
               <a href="#certificacion-info" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Conoce más sobre la certificación</a>
               <button type="button" onClick={openCertificationForm} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)",border:"none",cursor:"pointer"}}>Iniciar solicitud</button>
             </div>
-            <div style={{fontSize:14,color:"#52647F",fontFamily:F,marginBottom:18,lineHeight:1.7}}>Si los soportes están claros, en muchos casos puede quedar lista <strong style={{color:"#0B1D3A"}}>el mismo día o en menos de 1 día hábil</strong>.</div>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:18}}>
+            <div style={{fontSize:14,color:"#52647F",fontFamily:F,marginBottom:16,lineHeight:1.7}}>Si los soportes están claros, en muchos casos puede quedar lista <strong style={{color:"#0B1D3A"}}>el mismo día o en menos de 1 día hábil</strong>.</div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
               {proofPoints.map((item,i)=><div key={i} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"10px 14px",borderRadius:999,background:"rgba(11,29,58,.04)",border:"1px solid rgba(37,99,235,.08)",fontSize:12,fontWeight:700,color:"#37506F",fontFamily:F}}><span style={{width:20,height:20,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",background:"rgba(37,99,235,.10)",color:"#2563EB",fontSize:12}}>✓</span>{item}</div>)}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
               {heroMetrics.map(([label,value],i)=><div key={i} style={{padding:"16px 16px",borderRadius:18,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)"}}><div style={{fontSize:11,letterSpacing:"1.3px",fontWeight:800,color:"#64748B",fontFamily:F,marginBottom:6}}>{label}</div><div style={{fontSize:22,fontWeight:800,color:"#0B1D3A",lineHeight:1.1,fontFamily:F}}>{value}</div></div>)}
             </div>
           </div>
-          <div style={{padding:"26px 24px",borderRadius:28,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:16,alignContent:"start"}}>
+          <div style={{padding:"24px 22px",borderRadius:28,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:14,alignContent:"start"}}>
+            <div style={{padding:"18px 18px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:11,letterSpacing:"1.6px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:6}}>TARIFAS CON DESCUENTO</div>
+                  <div style={{fontSize:30,fontWeight:800,lineHeight:1,color:"#fff",fontFamily:F}}>Desde $80.000</div>
+                </div>
+                <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:11,fontWeight:800,color:"#FDBA74",fontFamily:F}}>25% OFF vigente</div>
+              </div>
+              <div style={{display:"grid",gap:8}}>
+                {priceRanges.map(([range,price],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:i===priceRanges.length-1?"none":"1px solid rgba(125,211,252,.10)"}}><div style={{fontSize:12,color:"rgba(226,232,240,.76)",fontFamily:F,lineHeight:1.6}}>{range}</div><div style={{fontSize:13,fontWeight:800,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>{price}</div></div>)}
+              </div>
+            </div>
             <div style={{padding:"16px 16px 14px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
               <div style={{fontSize:11,letterSpacing:"1.7px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:12}}>VÁLIDA PARA PRESENTAR ANTE</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
                 {recipientTags.map((item,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(125,211,252,.08)"}}><div style={{width:32,height:32,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(147,197,253,.12)",color:"#BBDDFF"}}><MiniTrustIcon kind={item.kind}/></div><div style={{fontSize:13,fontWeight:700,color:"#E8F2FF",fontFamily:F,lineHeight:1.35}}>{item.label}</div></div>)}
               </div>
             </div>
-            <div style={{padding:"18px 18px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
+            <div style={{padding:"16px 16px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
               <div style={{fontSize:11,letterSpacing:"1.5px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:10}}>PROCESO CLARO</div>
               <div style={{display:"grid",gap:10}}>
                 {processSteps.map((item,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr)",gap:10,alignItems:"start"}}><div style={{width:28,height:28,borderRadius:"50%",background:"rgba(96,165,250,.18)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",fontFamily:F}}>{i+1}</div><div style={{fontSize:14,color:"rgba(226,232,240,.86)",lineHeight:1.65,fontFamily:F,fontWeight:600}}>{item}</div></div>)}
               </div>
             </div>
             <div style={{padding:"16px 18px",borderRadius:18,background:"rgba(255,255,255,.08)",border:"1px solid rgba(125,211,252,.12)",fontSize:13,color:"rgba(226,232,240,.84)",lineHeight:1.75,fontFamily:F}}>Atención humana por WhatsApp y correo, revisión profesional antes de emitir y seguimiento por referencia durante todo el proceso.</div>
-          </div>
-        </div>
-        <div style={{marginTop:18,padding:"14px 16px",borderRadius:22,background:"rgba(255,255,255,.72)",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 12px 26px rgba(15,23,42,.05)",backdropFilter:"blur(10px)"}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
-            {proofPoints.map((item,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px 14px",borderRadius:16,background:"linear-gradient(180deg, rgba(255,255,255,.90), rgba(248,251,255,.80))",border:"1px solid rgba(37,99,235,.08)",fontSize:13,fontWeight:800,color:"#31527A",fontFamily:F,textAlign:"center"}}><span style={{width:22,height:22,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",background:"rgba(37,99,235,.10)",color:"#1D4ED8",fontSize:12}}>✓</span>{item}</div>)}
           </div>
         </div>
       </div>

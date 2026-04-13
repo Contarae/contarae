@@ -50,6 +50,7 @@ export default async (req) => {
       {
         certificationStatus: body?.certificationStatus,
         adminNotes: body?.adminNotes,
+        certificateAdjustmentNote: body?.certificateAdjustmentNote,
         requestedDocumentsMessage: body?.requestedDocumentsMessage,
         certificateOverrides: body?.certificateOverrides,
         overridePassword: body?.overridePassword,
