@@ -1,5 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { getSupportDownloadPath } from "./certification-supports.js";
+import { authenticateAdminCredentials } from "./admin-auth.js";
 
 const FINAL_FAILED_STATUSES = new Set([
   "declined",
@@ -276,6 +277,14 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
 
   if (!record) {
     throw new Error("Solicitud no encontrada");
+  }
+
+  if (record.certificationStatus === "enviada") {
+    const overridePassword = String(updates.overridePassword || "");
+    const auth = authenticateAdminCredentials(actor, overridePassword);
+    if (!auth.ok) {
+      throw new Error("Esta certificación ya fue enviada. Ingresa nuevamente la contraseña para habilitar su edición.");
+    }
   }
 
   const now = new Date().toISOString();

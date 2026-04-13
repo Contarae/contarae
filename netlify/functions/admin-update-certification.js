@@ -52,6 +52,7 @@ export default async (req) => {
         adminNotes: body?.adminNotes,
         requestedDocumentsMessage: body?.requestedDocumentsMessage,
         certificateOverrides: body?.certificateOverrides,
+        overridePassword: body?.overridePassword,
         action: body?.action,
         contactChannel: body?.contactChannel
       },

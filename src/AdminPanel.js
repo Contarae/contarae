@@ -257,7 +257,6 @@ export default function AdminPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [professionalConfig, setProfessionalConfig] = useState(null);
-  const [expectedSendPhrase, setExpectedSendPhrase] = useState("");
   const [draft, setDraft] = useState({
     certificationStatus: "pendiente_revision",
     adminNotes: "",
@@ -289,13 +288,17 @@ export default function AdminPanel() {
   const [uploadingSupports, setUploadingSupports] = useState(false);
   const [uploadingProfessionalType, setUploadingProfessionalType] = useState("");
   const [preparingOutput, setPreparingOutput] = useState("");
+  const [editOverridePassword, setEditOverridePassword] = useState("");
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockError, setUnlockError] = useState("");
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [sendDraft, setSendDraft] = useState({
     includeProfessionalCard: false,
     includeJccBackground: false,
-    confirmedReview: false,
-    phrase: ""
+    confirmedReview: false
   });
 
   const deferredSearch = useDeferredValue(search);
@@ -303,6 +306,8 @@ export default function AdminPanel() {
     () => buildCertificateIncomePreview(certificateDraft),
     [certificateDraft]
   );
+  const isSent = detail?.summary?.certificationStatus === "enviada";
+  const editLocked = Boolean(isSent && !editOverridePassword);
 
   const loadSession = async () => {
     try {
@@ -366,7 +371,6 @@ export default function AdminPanel() {
 
       setDetail(data.detail);
       setProfessionalConfig(data.professionalConfig || null);
-      setExpectedSendPhrase(data.expectedSendPhrase || "");
       setDraft({
         certificationStatus:
           data.detail?.summary?.certificationStatus || "pendiente_revision",
@@ -391,6 +395,10 @@ export default function AdminPanel() {
         otros_descripcion: data.detail?.certificateData?.otros_descripcion || "",
         total_ingresos: data.detail?.certificateData?.total_ingresos || ""
       });
+      setEditOverridePassword("");
+      setUnlockPassword("");
+      setUnlockError("");
+      setUnlockDialogOpen(false);
       setPendingSupportFiles([]);
     } catch (error) {
       setDetailError(error.message);
@@ -512,6 +520,10 @@ export default function AdminPanel() {
       adminNotes: "",
       requestedDocumentsMessage: ""
     });
+    setEditOverridePassword("");
+    setUnlockPassword("");
+    setUnlockError("");
+    setUnlockDialogOpen(false);
     loadSession();
   };
 
@@ -527,6 +539,7 @@ export default function AdminPanel() {
         adminNotes: draft.adminNotes,
         requestedDocumentsMessage: draft.requestedDocumentsMessage,
         certificateOverrides: certificateDraft,
+        overridePassword: editOverridePassword,
         action,
         ...extra
       })
@@ -534,7 +547,7 @@ export default function AdminPanel() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "No fue posible guardar los cambios.");
+      throw new Error(data.detail || data.error || "No fue posible guardar los cambios.");
     }
 
     setDetail(data.detail);
@@ -580,17 +593,18 @@ export default function AdminPanel() {
       await fetch("/api/admin-update-certification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reference: detail.summary.reference,
-          certificationStatus: nextStatus,
-          adminNotes: draft.adminNotes,
-          requestedDocumentsMessage: draft.requestedDocumentsMessage,
-          certificateOverrides: certificateDraft,
-          action: "save"
-        })
-      }).then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "No fue posible actualizar el estado.");
+      body: JSON.stringify({
+        reference: detail.summary.reference,
+        certificationStatus: nextStatus,
+        adminNotes: draft.adminNotes,
+        requestedDocumentsMessage: draft.requestedDocumentsMessage,
+        certificateOverrides: certificateDraft,
+        overridePassword: editOverridePassword,
+        action: "save"
+      })
+    }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "No fue posible actualizar el estado.");
         setDetail(data.detail);
         setDraft({
           certificationStatus: data.detail?.summary?.certificationStatus || nextStatus,
@@ -792,8 +806,47 @@ export default function AdminPanel() {
     }
   };
 
+  const handleUnlockEditing = async () => {
+    setUnlockBusy(true);
+    setUnlockError("");
+
+    try {
+      const response = await fetch("/api/admin-verify-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: unlockPassword })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible validar la contraseña.");
+      }
+
+      setEditOverridePassword(unlockPassword);
+      setUnlockDialogOpen(false);
+      setUnlockPassword("");
+      setNotice("Edición habilitada para esta certificación enviada.");
+    } catch (error) {
+      setUnlockError(error.message);
+    } finally {
+      setUnlockBusy(false);
+    }
+  };
+
+  const handleRelockEditing = () => {
+    setEditOverridePassword("");
+    setUnlockPassword("");
+    setUnlockError("");
+    setUnlockDialogOpen(false);
+    setNotice("La certificación volvió a quedar protegida contra edición.");
+  };
+
   const openSendDialog = async () => {
     if (!detail?.summary?.reference) return;
+    if (detail?.summary?.certificationStatus === "enviada") {
+      setDetailError("Esta certificación ya fue enviada al cliente.");
+      return;
+    }
 
     setPreparingOutput("send");
     setDetailError("");
@@ -803,8 +856,7 @@ export default function AdminPanel() {
       setSendDraft({
         includeProfessionalCard: false,
         includeJccBackground: false,
-        confirmedReview: false,
-        phrase: ""
+        confirmedReview: false
       });
       setSendDialogOpen(true);
       setNotice("Datos de emisión guardados antes de confirmar el envío.");
@@ -829,7 +881,7 @@ export default function AdminPanel() {
           reference: detail.summary.reference,
           includeProfessionalCard: sendDraft.includeProfessionalCard,
           includeJccBackground: sendDraft.includeJccBackground,
-          confirmedPhrase: sendDraft.phrase
+          confirmedReview: sendDraft.confirmedReview
         })
       });
       const data = await response.json();
@@ -843,6 +895,7 @@ export default function AdminPanel() {
         ...current,
         certificationStatus: data.detail?.summary?.certificationStatus || current.certificationStatus
       }));
+      setEditOverridePassword("");
       setSendDialogOpen(false);
       await loadRecords();
       setNotice("Certificación enviada al cliente.");
@@ -1060,8 +1113,36 @@ export default function AdminPanel() {
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>
 
+                {isSent ? (
+                  <div style={{ marginBottom: 18, padding: 18, borderRadius: 22, background: editLocked ? "rgba(245,158,11,.10)" : "rgba(34,197,94,.10)", border: editLocked ? "1px solid rgba(245,158,11,.18)" : "1px solid rgba(34,197,94,.18)", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: editLocked ? "#B45309" : "#15803D", fontFamily: F, marginBottom: 6 }}>
+                        EXPEDIENTE {editLocked ? "PROTEGIDO" : "DESBLOQUEADO"}
+                      </div>
+                      <div style={{ fontFamily: F, fontSize: 14, color: "#334155", lineHeight: 1.8 }}>
+                        Esta certificación ya fue enviada al cliente. {editLocked ? "Para volver a modificarla debes ingresar nuevamente la contraseña del usuario." : "La edición temporal quedó habilitada para esta sesión."}
+                      </div>
+                    </div>
+                    {editLocked ? (
+                      <button type="button" onClick={() => setUnlockDialogOpen(true)} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#B45309,#F59E0B)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        Habilitar edición con contraseña
+                      </button>
+                    ) : (
+                      <button type="button" onClick={handleRelockEditing} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(220,38,38,.14)", background: "#fff", color: "#DC2626", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        Volver a bloquear
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 420px)", gap: 18, alignItems: "start" }}>
                   <div style={{ display: "grid", gap: 18 }}>
+                    <div style={{ padding: "0 2px" }}>
+                      <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>EXPEDIENTE Y CONTENIDO</div>
+                      <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7 }}>
+                        Formulario original, datos ajustados para emisión, soportes y notas internas.
+                      </div>
+                    </div>
                     <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>INGRESOS REPORTADOS EN FORMULARIO</div>
                       {detail.incomes.length ? (
@@ -1084,6 +1165,7 @@ export default function AdminPanel() {
                         <button
                           type="button"
                           onClick={handleResetCertificateDraft}
+                          disabled={editLocked}
                           style={{
                             padding: "9px 12px",
                             borderRadius: 14,
@@ -1092,7 +1174,8 @@ export default function AdminPanel() {
                             color: "#1D4ED8",
                             fontFamily: F,
                             fontWeight: 800,
-                            cursor: "pointer"
+                            cursor: editLocked ? "not-allowed" : "pointer",
+                            opacity: editLocked ? 0.65 : 1
                           }}
                         >
                           Restaurar datos del formulario
@@ -1101,25 +1184,30 @@ export default function AdminPanel() {
                       <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.8, marginBottom: 14 }}>
                         Aquí puedes corregir manualmente la información que saldrá en la certificación. El formulario original del cliente se conserva; el PDF usará estos datos ajustados cuando los guardes.
                       </div>
+                      {editLocked ? (
+                        <div style={{ marginBottom: 14, padding: 12, borderRadius: 16, background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.18)", fontFamily: F, fontSize: 13, color: "#92400E", lineHeight: 1.7 }}>
+                          La edición está bloqueada porque el PDF ya fue enviado. Usa la opción <strong>Habilitar edición con contraseña</strong> para modificar esta certificación.
+                        </div>
+                      ) : null}
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 12 }}>
-                        <input style={inputStyle} placeholder="Nombre para el PDF" value={certificateDraft.nombre} onChange={(event) => handleCertificateFieldChange("nombre", event.target.value)} />
-                        <input style={inputStyle} placeholder="Tipo de documento" value={certificateDraft.tipo_documento} onChange={(event) => handleCertificateFieldChange("tipo_documento", event.target.value)} />
-                        <input style={inputStyle} placeholder="Número de documento" value={certificateDraft.numero_documento} onChange={(event) => handleCertificateFieldChange("numero_documento", event.target.value)} />
-                        <input style={inputStyle} placeholder="Lugar de expedición" value={certificateDraft.lugar_expedicion} onChange={(event) => handleCertificateFieldChange("lugar_expedicion", event.target.value)} />
-                        <input style={inputStyle} placeholder="Destino" value={certificateDraft.destino} onChange={(event) => handleCertificateFieldChange("destino", event.target.value)} />
-                        <input style={inputStyle} placeholder="Entidad" value={certificateDraft.entidad} onChange={(event) => handleCertificateFieldChange("entidad", event.target.value)} />
-                        <input style={inputStyle} placeholder="Período" value={certificateDraft.periodo} onChange={(event) => handleCertificateFieldChange("periodo", event.target.value)} />
-                        <input style={inputStyle} placeholder="Total mensual certificado" value={certificateDraft.total_ingresos} onChange={(event) => setCertificateDraft((current) => ({ ...current, total_ingresos: normalizeCurrencyInput(event.target.value) }))} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Nombre para el PDF" value={certificateDraft.nombre} onChange={(event) => handleCertificateFieldChange("nombre", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Tipo de documento" value={certificateDraft.tipo_documento} onChange={(event) => handleCertificateFieldChange("tipo_documento", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Número de documento" value={certificateDraft.numero_documento} onChange={(event) => handleCertificateFieldChange("numero_documento", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Lugar de expedición" value={certificateDraft.lugar_expedicion} onChange={(event) => handleCertificateFieldChange("lugar_expedicion", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Destino" value={certificateDraft.destino} onChange={(event) => handleCertificateFieldChange("destino", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Entidad" value={certificateDraft.entidad} onChange={(event) => handleCertificateFieldChange("entidad", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Período" value={certificateDraft.periodo} onChange={(event) => handleCertificateFieldChange("periodo", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Total mensual certificado" value={certificateDraft.total_ingresos} onChange={(event) => setCertificateDraft((current) => ({ ...current, total_ingresos: normalizeCurrencyInput(event.target.value) }))} />
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 10 }}>
-                        <input style={inputStyle} placeholder="Ingresos laborales" value={certificateDraft.ingresos_laborales} onChange={(event) => handleCertificateFieldChange("ingresos_laborales", event.target.value)} />
-                        <input style={inputStyle} placeholder="Pensiones" value={certificateDraft.pensiones} onChange={(event) => handleCertificateFieldChange("pensiones", event.target.value)} />
-                        <input style={inputStyle} placeholder="Dividendos" value={certificateDraft.dividendos} onChange={(event) => handleCertificateFieldChange("dividendos", event.target.value)} />
-                        <input style={inputStyle} placeholder="Inversiones" value={certificateDraft.inversiones} onChange={(event) => handleCertificateFieldChange("inversiones", event.target.value)} />
-                        <input style={inputStyle} placeholder="Arriendos" value={certificateDraft.arriendos} onChange={(event) => handleCertificateFieldChange("arriendos", event.target.value)} />
-                        <input style={inputStyle} placeholder="Remesas" value={certificateDraft.remesas} onChange={(event) => handleCertificateFieldChange("remesas", event.target.value)} />
-                        <input style={inputStyle} placeholder="Otros ingresos" value={certificateDraft.otros_ingresos} onChange={(event) => handleCertificateFieldChange("otros_ingresos", event.target.value)} />
-                        <input style={inputStyle} placeholder="Detalle otros ingresos" value={certificateDraft.otros_descripcion} onChange={(event) => handleCertificateFieldChange("otros_descripcion", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Ingresos laborales" value={certificateDraft.ingresos_laborales} onChange={(event) => handleCertificateFieldChange("ingresos_laborales", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Pensiones" value={certificateDraft.pensiones} onChange={(event) => handleCertificateFieldChange("pensiones", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Dividendos" value={certificateDraft.dividendos} onChange={(event) => handleCertificateFieldChange("dividendos", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Inversiones" value={certificateDraft.inversiones} onChange={(event) => handleCertificateFieldChange("inversiones", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Arriendos" value={certificateDraft.arriendos} onChange={(event) => handleCertificateFieldChange("arriendos", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Remesas" value={certificateDraft.remesas} onChange={(event) => handleCertificateFieldChange("remesas", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Otros ingresos" value={certificateDraft.otros_ingresos} onChange={(event) => handleCertificateFieldChange("otros_ingresos", event.target.value)} />
+                        <input disabled={editLocked} style={inputStyle} placeholder="Detalle otros ingresos" value={certificateDraft.otros_descripcion} onChange={(event) => handleCertificateFieldChange("otros_descripcion", event.target.value)} />
                       </div>
                       <div style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
@@ -1165,6 +1253,7 @@ export default function AdminPanel() {
                           multiple
                           accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx"
                           onChange={handlePendingSupportSelection}
+                          disabled={editLocked}
                           style={{ ...inputStyle, padding: "10px 12px", cursor: "pointer", marginBottom: pendingSupportFiles.length ? 10 : 0 }}
                         />
                         {pendingSupportFiles.length ? (
@@ -1210,16 +1299,16 @@ export default function AdminPanel() {
                         <button
                           type="button"
                           onClick={handleUploadSupports}
-                          disabled={!pendingSupportFiles.length || uploadingSupports}
+                          disabled={editLocked || !pendingSupportFiles.length || uploadingSupports}
                           style={{
                             padding: "11px 14px",
                             borderRadius: 14,
                             border: "none",
-                            background: !pendingSupportFiles.length || uploadingSupports ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)",
+                            background: editLocked || !pendingSupportFiles.length || uploadingSupports ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)",
                             color: "#fff",
                             fontFamily: F,
                             fontWeight: 800,
-                            cursor: !pendingSupportFiles.length || uploadingSupports ? "not-allowed" : "pointer"
+                            cursor: editLocked || !pendingSupportFiles.length || uploadingSupports ? "not-allowed" : "pointer"
                           }}
                         >
                           {uploadingSupports ? "Cargando soportes..." : "Cargar soportes al expediente"}
@@ -1280,6 +1369,7 @@ export default function AdminPanel() {
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>OBSERVACIONES INTERNAS</div>
                       <textarea
+                        disabled={editLocked}
                         style={{ ...inputStyle, minHeight: 120, resize: "vertical" }}
                         value={draft.adminNotes}
                         onChange={(event) => setDraft((current) => ({ ...current, adminNotes: event.target.value }))}
@@ -1289,11 +1379,18 @@ export default function AdminPanel() {
                   </div>
 
                   <div style={{ display: "grid", gap: 18 }}>
+                    <div style={{ padding: "0 2px" }}>
+                      <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>GESTIÓN Y ENVÍO</div>
+                      <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7 }}>
+                        Estado del expediente, borrador PDF, adjuntos profesionales y contacto con el cliente.
+                      </div>
+                    </div>
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>ESTADO DE LA CERTIFICACION</div>
                       <select
                         style={inputStyle}
                         value={draft.certificationStatus}
+                        disabled={editLocked}
                         onChange={(event) => setDraft((current) => ({ ...current, certificationStatus: event.target.value }))}
                       >
                         {STATUS_OPTIONS.map((status) => (
@@ -1304,13 +1401,13 @@ export default function AdminPanel() {
                       </select>
 
                       <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-                        <button type="button" onClick={handleSave} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        <button type="button" onClick={handleSave} disabled={editLocked} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: editLocked ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer" }}>
                           Guardar cambios
                         </button>
-                        <button type="button" onClick={() => handleQuickStatus("en_revision")} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(13,148,136,.18)", background: "rgba(13,148,136,.08)", color: "#0F766E", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        <button type="button" onClick={() => handleQuickStatus("en_revision")} disabled={editLocked} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(13,148,136,.18)", background: editLocked ? "#E2E8F0" : "rgba(13,148,136,.08)", color: "#0F766E", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer", opacity: editLocked ? 0.7 : 1 }}>
                           Marcar en revision
                         </button>
-                        <button type="button" onClick={() => handleQuickStatus("lista_para_envio")} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(124,58,237,.18)", background: "rgba(124,58,237,.08)", color: "#7C3AED", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        <button type="button" onClick={() => handleQuickStatus("lista_para_envio")} disabled={editLocked} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(124,58,237,.18)", background: editLocked ? "#E2E8F0" : "rgba(124,58,237,.08)", color: "#7C3AED", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer", opacity: editLocked ? 0.7 : 1 }}>
                           Marcar lista para envio
                         </button>
                       </div>
@@ -1337,8 +1434,8 @@ export default function AdminPanel() {
                         <button type="button" onClick={handleOpenPreviewPdf} disabled={preparingOutput === "preview" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: preparingOutput === "preview" || sendBusy ? "not-allowed" : "pointer", opacity: preparingOutput === "preview" || sendBusy ? 0.7 : 1 }}>
                           {preparingOutput === "preview" ? "Guardando y preparando PDF..." : "Ver borrador PDF"}
                         </button>
-                        <button type="button" onClick={openSendDialog} disabled={preparingOutput === "send" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: preparingOutput === "send" || sendBusy ? "#86EFAC" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: preparingOutput === "send" || sendBusy ? "not-allowed" : "pointer", opacity: preparingOutput === "send" || sendBusy ? 0.8 : 1 }}>
-                          {preparingOutput === "send" ? "Guardando antes de enviar..." : "Enviar certificación al cliente"}
+                        <button type="button" onClick={openSendDialog} disabled={isSent || preparingOutput === "send" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: isSent || preparingOutput === "send" || sendBusy ? "#86EFAC" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: isSent || preparingOutput === "send" || sendBusy ? "not-allowed" : "pointer", opacity: isSent || preparingOutput === "send" || sendBusy ? 0.8 : 1 }}>
+                          {isSent ? "Certificación ya enviada" : preparingOutput === "send" ? "Guardando antes de enviar..." : "Enviar certificación al cliente"}
                         </button>
                       </div>
                     </section>
@@ -1382,6 +1479,7 @@ export default function AdminPanel() {
                     <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>SOLICITAR DOCUMENTOS ADICIONALES</div>
                       <textarea
+                        disabled={editLocked}
                         style={{ ...inputStyle, minHeight: 140, resize: "vertical", marginBottom: 12 }}
                         value={draft.requestedDocumentsMessage}
                         onChange={(event) => setDraft((current) => ({ ...current, requestedDocumentsMessage: event.target.value }))}
@@ -1391,10 +1489,10 @@ export default function AdminPanel() {
                         El texto se registrara en la solicitud y se usara como base para el mensaje de WhatsApp o el correo al cliente.
                       </div>
                       <div style={{ display: "grid", gap: 10 }}>
-                        <button type="button" onClick={() => handleRegisterAndOpen("whatsapp")} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        <button type="button" disabled={editLocked} onClick={() => handleRegisterAndOpen("whatsapp")} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: editLocked ? "#A7F3D0" : "#25D366", color: "#fff", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer", opacity: editLocked ? 0.8 : 1 }}>
                           Registrar y abrir WhatsApp
                         </button>
-                        <button type="button" onClick={() => handleRegisterAndOpen("email")} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: "pointer" }}>
+                        <button type="button" disabled={editLocked} onClick={() => handleRegisterAndOpen("email")} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer", opacity: editLocked ? 0.55 : 1 }}>
                           Registrar y abrir correo
                         </button>
                       </div>
@@ -1443,18 +1541,6 @@ export default function AdminPanel() {
               </span>
             </label>
 
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", marginBottom: 8 }}>
-                Para confirmar, escribe exactamente: <strong>{expectedSendPhrase}</strong>
-              </div>
-              <input
-                style={inputStyle}
-                value={sendDraft.phrase}
-                onChange={(event) => setSendDraft((current) => ({ ...current, phrase: event.target.value }))}
-                placeholder={expectedSendPhrase}
-              />
-            </div>
-
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button type="button" onClick={() => setSendDialogOpen(false)} disabled={sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: sendBusy ? "not-allowed" : "pointer" }}>
                 Cancelar
@@ -1462,19 +1548,65 @@ export default function AdminPanel() {
               <button
                 type="button"
                 onClick={handleSendCertification}
-                disabled={!sendDraft.confirmedReview || sendDraft.phrase.trim().toUpperCase() !== expectedSendPhrase.toUpperCase() || sendBusy || (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) || (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available)}
+                disabled={!sendDraft.confirmedReview || sendBusy || (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) || (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available)}
                 style={{
                   padding: "12px 18px",
                   borderRadius: 16,
                   border: "none",
-                  background: !sendDraft.confirmedReview || sendDraft.phrase.trim().toUpperCase() !== expectedSendPhrase.toUpperCase() || sendBusy || (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) || (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available) ? "#CBD5E1" : "linear-gradient(135deg,#15803D,#22C55E)",
+                  background: !sendDraft.confirmedReview || sendBusy || (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) || (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available) ? "#CBD5E1" : "linear-gradient(135deg,#15803D,#22C55E)",
                   color: "#fff",
                   fontFamily: F,
                   fontWeight: 800,
-                  cursor: !sendDraft.confirmedReview || sendDraft.phrase.trim().toUpperCase() !== expectedSendPhrase.toUpperCase() || sendBusy ? "not-allowed" : "pointer"
+                  cursor: !sendDraft.confirmedReview || sendBusy ? "not-allowed" : "pointer"
                 }}
               >
                 {sendBusy ? "Enviando..." : "Confirmar envío definitivo"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {unlockDialogOpen && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !unlockBusy && setUnlockDialogOpen(false)}>
+          <div style={{ width: "min(520px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#B45309", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>EXPEDIENTE PROTEGIDO</div>
+            <h3 style={{ margin: 0, fontFamily: FH, fontSize: 32, lineHeight: 1.08, color: "#0B1D3A" }}>Habilitar edición posterior al envío</h3>
+            <p style={{ margin: "12px 0 18px", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
+              Esta certificación ya fue enviada al cliente. Para volver a modificar datos, estado o soportes del expediente debes confirmar nuevamente la contraseña del usuario.
+            </p>
+            <input
+              type="password"
+              style={inputStyle}
+              value={unlockPassword}
+              onChange={(event) => setUnlockPassword(event.target.value)}
+              placeholder="Contraseña del panel"
+            />
+            {unlockError ? (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 600 }}>
+                {unlockError}
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 18 }}>
+              <button type="button" onClick={() => setUnlockDialogOpen(false)} disabled={unlockBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: unlockBusy ? "not-allowed" : "pointer" }}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleUnlockEditing}
+                disabled={!unlockPassword.trim() || unlockBusy}
+                style={{
+                  padding: "12px 18px",
+                  borderRadius: 16,
+                  border: "none",
+                  background: !unlockPassword.trim() || unlockBusy ? "#CBD5E1" : "linear-gradient(135deg,#B45309,#F59E0B)",
+                  color: "#fff",
+                  fontFamily: F,
+                  fontWeight: 800,
+                  cursor: !unlockPassword.trim() || unlockBusy ? "not-allowed" : "pointer"
+                }}
+              >
+                {unlockBusy ? "Verificando..." : "Habilitar edición"}
               </button>
             </div>
           </div>

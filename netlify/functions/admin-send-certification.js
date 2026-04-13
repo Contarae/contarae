@@ -17,10 +17,6 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function buildSendPhrase(detail) {
-  return `ENVIAR ${detail?.summary?.reference || ""}`.trim();
-}
-
 function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, includeJccBackground) {
   const summary = detail.summary || {};
   const profile = getProfessionalProfile();
@@ -103,7 +99,7 @@ export default async (req) => {
     const reference = String(body?.reference || "").trim();
     const includeProfessionalCard = Boolean(body?.includeProfessionalCard);
     const includeJccBackground = Boolean(body?.includeJccBackground);
-    const confirmedPhrase = String(body?.confirmedPhrase || "").trim().toUpperCase();
+    const confirmedReview = Boolean(body?.confirmedReview);
     const resendApiKey = process.env.RESEND_API_KEY;
     const resendFromEmail =
       process.env.RESEND_FROM_EMAIL || "CONTARAE <notificaciones@send.contarae.com>";
@@ -131,17 +127,18 @@ export default async (req) => {
       });
     }
 
-    const expectedPhrase = buildSendPhrase(result.detail).toUpperCase();
-    if (confirmedPhrase !== expectedPhrase) {
-      return new Response(
-        JSON.stringify({
-          error: `Debes confirmar escribiendo exactamente: ${expectedPhrase}`
-        }),
-        {
-          status: 400,
-          headers
-        }
-      );
+    if (!confirmedReview) {
+      return new Response(JSON.stringify({ error: "Debes confirmar que revisaste el borrador y la documentación soporte." }), {
+        status: 400,
+        headers
+      });
+    }
+
+    if (result.detail.summary?.certificationStatus === "enviada") {
+      return new Response(JSON.stringify({ error: "Esta certificación ya fue enviada al cliente." }), {
+        status: 400,
+        headers
+      });
     }
 
     const customerEmail = result.detail.contact?.email;

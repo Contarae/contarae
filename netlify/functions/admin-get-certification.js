@@ -61,8 +61,7 @@ export default async (req) => {
       JSON.stringify({
         ok: true,
         detail: result.detail,
-        professionalConfig,
-        expectedSendPhrase: `ENVIAR ${reference}`
+        professionalConfig
       }),
       {
         status: 200,
