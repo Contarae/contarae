@@ -524,7 +524,7 @@ export async function generateCertificationPdf(record = {}) {
   const signatureImage = await pdf.embedPng(await readAssetBytes("contarae-firma.png"));
   const qrImage = await pdf.embedPng(await createQrPngBytes(verificationUrl));
   const baseLogoDims = logoImage.scale(Math.min(0.42, 164 / logoImage.width));
-  const baseSignatureDims = signatureImage.scale(Math.min(0.34, 192 / signatureImage.width));
+  const baseSignatureDims = signatureImage.scale(Math.min(0.5, 220 / signatureImage.width));
   const baseQrDims = qrImage.scale(Math.min(0.24, 72 / qrImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   let scale = 1;
@@ -564,7 +564,9 @@ export async function generateCertificationPdf(record = {}) {
   };
 
   const estimateSignatureBlockHeight = (currentScale) => {
-    return baseSignatureDims.height * currentScale + baseQrDims.height * currentScale + 154 * currentScale;
+    const signatureColumnHeight = baseSignatureDims.height * currentScale + 94 * currentScale;
+    const qrColumnHeight = baseQrDims.height * currentScale + 102 * currentScale;
+    return Math.max(signatureColumnHeight, qrColumnHeight) + 22 * currentScale;
   };
 
   while (estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + fitSafetyPadding > availableHeight && scale > 0.42) {
@@ -761,14 +763,20 @@ export async function generateCertificationPdf(record = {}) {
   });
 
   y = Math.max(y - (compactIncomeMode ? 4 : 10) * scale, signatureBlockTopY + (compactIncomeMode ? 18 : 14) * scale);
-  const signatureLineY = BOTTOM_MARGIN + (compactIncomeMode ? 92 : 82) * scale;
-  const signatureCenterX = PAGE_WIDTH / 2;
-  const signatureLineWidth = (compactIncomeMode ? 292 : 266) * scale;
-  const signatureLineStartX = signatureCenterX - signatureLineWidth / 2;
-  const drawCenteredFooterText = (text, yPos, size, font, color) => {
+  const footerBottomY = BOTTOM_MARGIN + 6 * scale;
+  const footerTopY = footerBottomY + estimateSignatureBlockHeight(scale) - 12 * scale;
+  const footerGap = 28 * scale;
+  const leftColumnWidth = (contentWidth - footerGap) * 0.56;
+  const rightColumnWidth = contentWidth - footerGap - leftColumnWidth;
+  const leftColumnX = BODY_X;
+  const rightColumnX = leftColumnX + leftColumnWidth + footerGap;
+  const leftCenterX = leftColumnX + leftColumnWidth / 2;
+  const rightCenterX = rightColumnX + rightColumnWidth / 2;
+
+  const drawCenteredColumnText = (text, centerX, yPos, size, font, color) => {
     const width = font.widthOfTextAtSize(text, size);
     page.drawText(text, {
-      x: signatureCenterX - width / 2,
+      x: centerX - width / 2,
       y: yPos,
       size,
       font,
@@ -776,91 +784,79 @@ export async function generateCertificationPdf(record = {}) {
     });
   };
 
+  const leftSignatureY = footerTopY - signatureDims.height - 8 * scale;
   page.drawImage(signatureImage, {
-    x: signatureCenterX - signatureDims.width / 2,
-    y: signatureLineY + 12 * scale,
+    x: leftCenterX - signatureDims.width / 2,
+    y: leftSignatureY,
     width: signatureDims.width,
     height: signatureDims.height
   });
 
+  const signatureLineY = leftSignatureY - 8 * scale;
+  const signatureLineWidth = Math.min(leftColumnWidth * 0.8, 248 * scale);
   page.drawLine({
-    start: { x: signatureLineStartX, y: signatureLineY },
-    end: { x: signatureLineStartX + signatureLineWidth, y: signatureLineY },
+    start: { x: leftCenterX - signatureLineWidth / 2, y: signatureLineY },
+    end: { x: leftCenterX + signatureLineWidth / 2, y: signatureLineY },
     thickness: 0.7,
     color: BORDER
   });
 
-  drawCenteredFooterText(
+  drawCenteredColumnText(
     profile.accountantName,
+    leftCenterX,
     signatureLineY - 22 * scale,
     (compactIncomeMode ? 11.2 : 11) * scale,
     bodyBold,
     ACCENT
   );
-  drawCenteredFooterText(
+  drawCenteredColumnText(
     profile.title,
+    leftCenterX,
     signatureLineY - 38 * scale,
     (compactIncomeMode ? 10.2 : 10) * scale,
     bodyFont,
     TEXT
   );
-  drawCenteredFooterText(
+  drawCenteredColumnText(
     `C.C. No. ${certificationContent.formattedAccountantDocument}`,
+    leftCenterX,
     signatureLineY - 54 * scale,
     (compactIncomeMode ? 10 : 9.8) * scale,
     bodyFont,
     TEXT
   );
-  drawCenteredFooterText(
+  drawCenteredColumnText(
     `Tarjeta Profesional No. ${certificationContent.formattedProfessionalCard}`,
+    leftCenterX,
     signatureLineY - 70 * scale,
     (compactIncomeMode ? 10 : 9.8) * scale,
     bodyFont,
     TEXT
   );
 
-  const verificationNoteTopY = signatureLineY + 54 * scale;
-  const verificationTextWidth = contentWidth - qrDims.width - 18 * scale;
-  const verificationTextX = BODY_X;
-  const verificationTextY = verificationNoteTopY + qrDims.height - 2 * scale;
-  const verificationLines = [
-    "VALIDAR VALIDEZ",
-    `Escanee el código QR o ingrese a ${verificationDisplayUrl}`,
-    `Código: ${verificationCode} · Consecutivo: ${verificationConsecutive}`,
-    "La firma y la validez de este certificado se pierden ante cualquier alteración, conversión o modificación posterior del archivo."
-  ];
-
-  page.drawText(verificationLines[0], {
-    x: verificationTextX,
-    y: verificationTextY + 18 * scale,
-    size: 7.6 * scale,
-    font: sectionFont,
-    color: ACCENT
-  });
-
-  let verificationCursorY = verificationTextY + 4 * scale;
-  verificationLines.slice(1).forEach((line, index) => {
-    const font = index === 1 ? bodyBold : bodyFont;
-    const fontSize = (index === 1 ? 7.25 : 6.95) * scale;
-    const lines = wrapText(line, font, fontSize, verificationTextWidth);
-    lines.forEach((wrappedLine) => {
-      page.drawText(wrappedLine, {
-        x: verificationTextX,
-        y: verificationCursorY,
-        size: fontSize,
-        font,
-        color: index === 1 ? TEXT : TEXT_SOFT
-      });
-      verificationCursorY -= 8.3 * scale;
-    });
-    verificationCursorY -= 1.5 * scale;
-  });
-
+  const qrX = rightCenterX - qrDims.width / 2;
+  const qrY = footerTopY - qrDims.height - 2 * scale;
   page.drawImage(qrImage, {
-    x: PAGE_WIDTH - BODY_X - qrDims.width,
-    y: verificationNoteTopY,
+    x: qrX,
+    y: qrY,
     width: qrDims.width,
     height: qrDims.height
+  });
+
+  const verificationLines = [
+    { text: "VALIDAR VALIDEZ", font: sectionFont, size: 7.6 * scale, color: ACCENT },
+    { text: "Escanee el código QR", font: bodyFont, size: 6.95 * scale, color: TEXT_SOFT },
+    { text: `o ingrese a ${verificationDisplayUrl}`, font: bodyFont, size: 6.95 * scale, color: TEXT_SOFT },
+    { text: `Código: ${verificationCode}`, font: bodyBold, size: 7.05 * scale, color: TEXT },
+    { text: `Consecutivo: ${verificationConsecutive}`, font: bodyBold, size: 7.05 * scale, color: TEXT },
+    { text: "Toda alteración o modificación posterior", font: bodyFont, size: 6.75 * scale, color: TEXT_SOFT },
+    { text: "invalida este certificado.", font: bodyFont, size: 6.75 * scale, color: TEXT_SOFT }
+  ];
+
+  let verificationCursorY = qrY - 16 * scale;
+  verificationLines.forEach(({ text, font, size, color }) => {
+    drawCenteredColumnText(text, rightCenterX, verificationCursorY, size, font, color);
+    verificationCursorY -= 9.2 * scale;
   });
 
   const pdfBytes = await pdf.save();
