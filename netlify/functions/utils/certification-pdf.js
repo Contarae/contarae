@@ -784,7 +784,9 @@ export async function generateCertificationPdf(record = {}) {
     });
   };
 
-  const leftSignatureY = footerTopY - signatureDims.height - 8 * scale;
+  const signatureLineY = footerTopY - 16 * scale;
+  const signatureOverlap = 10 * scale;
+  const leftSignatureY = signatureLineY - signatureDims.height + signatureOverlap;
   page.drawImage(signatureImage, {
     x: leftCenterX - signatureDims.width / 2,
     y: leftSignatureY,
@@ -792,7 +794,6 @@ export async function generateCertificationPdf(record = {}) {
     height: signatureDims.height
   });
 
-  const signatureLineY = leftSignatureY - 8 * scale;
   const signatureLineWidth = Math.min(leftColumnWidth * 0.8, 248 * scale);
   page.drawLine({
     start: { x: leftCenterX - signatureLineWidth / 2, y: signatureLineY },

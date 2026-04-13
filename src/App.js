@@ -24,11 +24,169 @@ const VERIFY_ROUTE="/verificar-certificado";
 const VERIFY_ROUTE_ALIASES=new Set([VERIFY_ROUTE,"/verificar-certificacion"]);
 const OPEN_CERT_FORM_EVENT="contarae:open-certification-form";
 const normPath=p=>{if(!p)return"/";const c=p.replace(/\/+$/,"");return c||"/";};
+const TOOL_ROUTES=[
+  {
+    path:"/debo-declarar-renta",
+    aliases:["/debo-declarar-renta","/declarar-renta"],
+    toolId:"tool-renta",
+    sectionId:"tool-renta",
+    metaTitle:"¿Debo declarar renta? | CONTARAE",
+    metaDescription:"Verifique si podría estar obligado a declarar renta en Colombia con una herramienta orientativa basada en ingresos, patrimonio, compras, consumos y consignaciones.",
+    heroBadge:"ANÁLISIS TRIBUTARIO",
+    heroKicker:"VERIFIQUE TOPES Y OBLIGACIÓN POTENCIAL",
+    heroTitle:"Revise si podría estar obligado a declarar renta",
+    heroDesc:"Herramienta orientativa para validar topes tributarios de personas naturales en Colombia. Útil para campañas, consultas rápidas y una primera revisión antes de pasar a una asesoría formal.",
+    proof:["Topes clave","Orientación inicial","Resultado inmediato","Enfoque 2025 y 2026"],
+    highlights:[["Evalúa","Ingresos, patrimonio, compras, consumos y consignaciones"],["Ideal para","Personas naturales con ingresos variables, asalariados o independientes"],["Resultado","Una alerta clara para saber si conviene revisar su caso con mayor profundidad"]], 
+    audiences:["Asalariados","Independientes","Rentistas","Declarantes potenciales"],
+    steps:["Ingrese sus valores básicos del año gravable","Revise la lectura orientativa de topes","Si lo necesita, continúe con una revisión profesional"],
+    infoTitle:"¿Qué revisa esta herramienta?",
+    infoSub:"USO ORIENTATIVO",
+    infoCards:[["Topes tributarios frecuentes","Le ayuda a revisar si sus cifras podrían ubicarlo en escenario de obligación de declarar renta."],["Consulta rápida","Ideal para campañas, formularios de contacto y validaciones preliminares antes de una asesoría tributaria."],["Importante","El resultado es orientativo. La obligación real depende también de la situación fiscal, patrimonial y normativa del contribuyente."]],
+    stageKicker:"ANÁLISIS TRIBUTARIO",
+    stageTitle:"Herramienta para validar obligación de declarar renta",
+    stageDesc:"Ingrese sus cifras y obtenga una lectura inicial sobre topes tributarios. Si el resultado le genera dudas, podemos revisar su caso con enfoque técnico y soporte documental.",
+    supportText:"Si el resultado sugiere obligación o genera dudas, CONTARAE puede revisar su caso con soportes, topes y contexto tributario real."
+  },
+  {
+    path:"/retencion-en-la-fuente",
+    aliases:["/retencion-en-la-fuente","/calculadora-retencion"],
+    toolId:"tool-retencion",
+    sectionId:"tool-retencion",
+    metaTitle:"Retención en la fuente | CONTARAE",
+    metaDescription:"Estime la retención en la fuente aplicable con deducciones y rentas exentas, comparando escenarios 2025 y 2026.",
+    heroBadge:"CÁLCULO MENSUAL",
+    heroKicker:"PROYECCIÓN DE RETENCIÓN PARA PERSONAS NATURALES",
+    heroTitle:"Calcule la retención en la fuente con una lectura clara y útil",
+    heroDesc:"Herramienta para estimar la retención mensual sobre ingresos laborales, considerando deducciones, rentas exentas y diferencia de UVT entre 2025 y 2026.",
+    proof:["Comparativo 2025-2026","Cálculo inmediato","Deducciones aplicables","Lectura clara"],
+    highlights:[["Incluye","Deducciones, dependientes, salud prepagada y rentas exentas"],["Útil para","Trabajadores, empleadores y responsables de nómina"],["Resultado","Una estimación rápida para validar cuánto podría retenerse cada mes"]],
+    audiences:["Empleados","Áreas de nómina","Empresas","Profesionales independientes"],
+    steps:["Ingrese su salario e información base","Ajuste deducciones y rentas exentas","Compare el resultado estimado entre 2025 y 2026"],
+    infoTitle:"¿Cuándo conviene usarla?",
+    infoSub:"RETENCIÓN MENSUAL",
+    infoCards:[["Planeación laboral","Sirve para anticipar el efecto de la retención en el ingreso neto mensual del trabajador."],["Control de nómina","Ayuda a validar escenarios de cálculo antes de cerrar nómina o revisar liquidaciones internas."],["Importante","El resultado es una aproximación técnica. La aplicación real depende de la depuración final y de la situación particular del contribuyente."]],
+    stageKicker:"CÁLCULO MENSUAL",
+    stageTitle:"Estimador de retención en la fuente",
+    stageDesc:"Obtenga una estimación rápida y compare años gravables para tomar decisiones de planeación o validación mensual.",
+    supportText:"Si quiere validar el cálculo definitivo o revisar un caso especial, CONTARAE puede apoyarle con una revisión técnica."
+  },
+  {
+    path:"/planilla-independientes",
+    aliases:["/planilla-independientes","/seguridad-social-independientes"],
+    toolId:"tool-planilla",
+    sectionId:"tool-planilla",
+    metaTitle:"Planilla independientes | CONTARAE",
+    metaDescription:"Calcule salud, pensión y ARL para trabajadores independientes y contratistas con una simulación clara del IBC y el total mensual.",
+    heroBadge:"SEGURIDAD SOCIAL",
+    heroKicker:"SIMULADOR PARA INDEPENDIENTES Y CONTRATISTAS",
+    heroTitle:"Liquide su planilla de independientes con una vista clara del IBC y del total a pagar",
+    heroDesc:"Herramienta orientativa para estimar aportes a salud, pensión y ARL según su ingreso mensual y clase de riesgo, con una lectura simple del valor aproximado a pagar.",
+    proof:["IBC visible","ARL por nivel de riesgo","Total mensual","Lectura simple"],
+    highlights:[["Calcula","Salud, pensión y ARL sobre el IBC correspondiente"],["Ideal para","Contratistas, independientes y quienes necesitan una referencia antes de pagar"],["Resultado","Un valor estimado para planear caja y validar aportes mensuales"]],
+    audiences:["Contratistas","Prestadores de servicios","Independientes","Consultores"],
+    steps:["Ingrese ingreso y clase de riesgo","Revise el IBC calculado","Consulte el total estimado de aportes mensuales"],
+    infoTitle:"¿Qué le aporta esta herramienta?",
+    infoSub:"APORTES MENSUALES",
+    infoCards:[["Planeación","Le permite anticipar el valor de la planilla antes de ingresar al operador de pago."],["Validación","Sirve para revisar si el aporte mensual luce consistente con el ingreso reportado."],["Importante","El pago definitivo puede variar según reglas vigentes, novedad laboral y validaciones del operador PILA."]],
+    stageKicker:"SEGURIDAD SOCIAL",
+    stageTitle:"Liquidador de planilla para independientes",
+    stageDesc:"Simule el valor aproximado de salud, pensión y ARL con una vista clara del IBC y del total estimado a pagar cada mes.",
+    supportText:"Si necesita apoyo con seguridad social o revisión de bases de cotización, podemos acompañarle caso por caso."
+  },
+  {
+    path:"/liquidador-de-nomina",
+    aliases:["/liquidador-de-nomina","/nomina"],
+    toolId:"tool-nomina",
+    sectionId:"tool-nomina",
+    metaTitle:"Liquidador de nómina | CONTARAE",
+    metaDescription:"Calcule devengado, deducciones, prestaciones, parafiscales y costo total del trabajador en una sola herramienta.",
+    heroBadge:"GESTIÓN LABORAL",
+    heroKicker:"DEVENGADO, DEDUCCIONES Y COSTO EMPRESA",
+    heroTitle:"Calcule la nómina y visualice el costo laboral completo de cada trabajador",
+    heroDesc:"Herramienta diseñada para estimar salario, deducciones, prestaciones, aportes y costo total del empleado con una lectura clara para gestión laboral y administrativa.",
+    proof:["Devengado y neto","Prestaciones","Parafiscales","Costo empresa"],
+    highlights:[["Incluye","Deducciones, prestaciones sociales, seguridad social y costo total"],["Útil para","Empresas, empleadores y responsables de talento humano"],["Resultado","Una lectura práctica para validar liquidaciones y proyección de costos"]],
+    audiences:["Empresas","Empleadores","Talento humano","Emprendedores con personal"],
+    steps:["Ingrese salario y variables básicas","Revise deducciones y prestaciones","Analice el costo total del trabajador"],
+    infoTitle:"¿Para qué sirve?",
+    infoSub:"GESTIÓN DE NÓMINA",
+    infoCards:[["Control interno","Sirve para validar nóminas, revisar costos y anticipar obligaciones laborales."],["Planeación","Ayuda a estimar cuánto le cuesta realmente un colaborador a la empresa."],["Importante","La liquidación definitiva puede depender de novedades, días trabajados y condiciones particulares del vínculo laboral."]],
+    stageKicker:"GESTIÓN LABORAL",
+    stageTitle:"Liquidador integral de nómina",
+    stageDesc:"Calcule de forma rápida el neto del trabajador y el costo completo para la empresa con un esquema claro y profesional.",
+    supportText:"Si quiere validar nómina real, prestaciones o liquidaciones especiales, CONTARAE puede revisarlo con criterio técnico."
+  },
+  {
+    path:"/liquidador-de-iva",
+    aliases:["/liquidador-de-iva","/iva"],
+    toolId:"tool-iva",
+    sectionId:"tool-iva",
+    metaTitle:"Liquidador de IVA | CONTARAE",
+    metaDescription:"Obtenga el IVA correspondiente sobre un valor base y visualice subtotal y total de la operación para ventas, facturación y cotizaciones.",
+    heroBadge:"FACTURACIÓN Y VENTAS",
+    heroKicker:"CÁLCULO RÁPIDO DE IVA",
+    heroTitle:"Calcule IVA, subtotal y total de una operación en segundos",
+    heroDesc:"Herramienta práctica para ventas, cotizaciones y facturación. Ingrese el valor base y obtenga el cálculo del IVA con una presentación simple y clara.",
+    proof:["Subtotal y total","Uso comercial","Respuesta inmediata","Formato claro"],
+    highlights:[["Calcula","IVA sobre el valor base de la operación"],["Útil para","Ventas, cotizaciones, facturación y validaciones rápidas"],["Resultado","Subtotal, IVA y total con lectura inmediata"]],
+    audiences:["Comercios","Prestadores de servicios","Áreas comerciales","Facturación"],
+    steps:["Ingrese el valor base","Revise el IVA calculado","Use el resultado para cotizar o validar una operación"],
+    infoTitle:"¿Cuándo conviene usarlo?",
+    infoSub:"IVA Y FACTURACIÓN",
+    infoCards:[["Cotizaciones","Útil para presentar valores netos y totales con claridad ante clientes o proveedores."],["Validación comercial","Permite revisar rápidamente si un total facturado es consistente con la base gravable."],["Importante","Es una herramienta operativa. La aplicación tributaria real depende del régimen, tarifa y naturaleza de la operación."]],
+    stageKicker:"FACTURACIÓN Y VENTAS",
+    stageTitle:"Herramienta para liquidar IVA",
+    stageDesc:"Obtenga el IVA correspondiente sobre el valor base de una operación y visualice el total de manera clara para uso comercial y contable.",
+    supportText:"Si necesita validar IVA, facturación o estructura de precios, podemos revisar su caso con enfoque tributario."
+  },
+  {
+    path:"/precio-antes-de-iva",
+    aliases:["/precio-antes-de-iva","/precio-sin-iva"],
+    toolId:"tool-precio",
+    sectionId:"tool-precio",
+    metaTitle:"Precio antes de IVA | CONTARAE",
+    metaDescription:"Conozca el valor base de un producto o servicio a partir del precio final con IVA incluido.",
+    heroBadge:"CONVERSIÓN DE VALORES",
+    heroKicker:"PRECIO FINAL A BASE GRAVABLE",
+    heroTitle:"Obtenga el precio antes de IVA a partir del valor final cobrado",
+    heroDesc:"Herramienta útil para descomponer precios con IVA incluido y conocer la base gravable real de un producto o servicio antes de impuestos.",
+    proof:["Base gravable","Uso comercial","Conversión inmediata","Apoyo en márgenes"],
+    highlights:[["Calcula","El valor base antes de IVA a partir del precio final"],["Útil para","Análisis de precios, márgenes, cotizaciones y validaciones comerciales"],["Resultado","Separación rápida entre base gravable e impuesto"]],
+    audiences:["Empresas","Comercios","Áreas comerciales","Emprendedores"],
+    steps:["Ingrese el valor final con IVA","Obtenga la base antes del impuesto","Use el dato para análisis de precio o margen"],
+    infoTitle:"¿Por qué es útil?",
+    infoSub:"PRECIO BASE",
+    infoCards:[["Análisis de margen","Ayuda a entender el precio real antes del impuesto para evaluar rentabilidad."],["Validación comercial","Útil cuando recibe un precio final y necesita identificar rápidamente la base gravable."],["Importante","La lectura es operativa y asume una tarifa general; revise particularidades tributarias cuando el producto o servicio tenga tratamiento especial."]],
+    stageKicker:"CONVERSIÓN DE VALORES",
+    stageTitle:"Precio antes de IVA",
+    stageDesc:"Obtenga la base gravable a partir del valor final con IVA incluido y úselo como apoyo para cotizaciones, análisis comercial o control interno.",
+    supportText:"Si quiere revisar estructura de precios o impacto tributario en sus ventas, CONTARAE puede acompañarle."
+  }
+];
+const TOOL_ROUTE_BY_PATH=new Map();
+const TOOL_ROUTE_BY_ID=new Map();
+TOOL_ROUTES.forEach(cfg=>{
+  TOOL_ROUTE_BY_ID.set(cfg.toolId,cfg);
+  cfg.aliases.forEach(alias=>TOOL_ROUTE_BY_PATH.set(normPath(alias),cfg));
+});
 const isCertificationPath=p=>CERT_ROUTE_ALIASES.has(normPath(p));
 const isAdminPath=p=>ADMIN_ROUTE_ALIASES.has(normPath(p));
 const isVerifyPath=p=>VERIFY_ROUTE_ALIASES.has(normPath(p));
+const getToolRouteConfig=p=>TOOL_ROUTE_BY_PATH.get(normPath(p))||null;
+const isToolPath=p=>!!getToolRouteConfig(p);
 const getCurrentPath=()=>typeof window==="undefined"?"/":normPath(window.location.pathname);
-const getSectionHref=(id,path)=>isCertificationPath(path)&&id!=="certificacion"?`/#${id}`:`#${id}`;
+const getStandaloneLocalSectionId=path=>isCertificationPath(path)?"certificacion":getToolRouteConfig(path)?.sectionId||null;
+const getSectionHref=(id,path)=>{
+  const currentTool=getToolRouteConfig(path);
+  const targetTool=TOOL_ROUTE_BY_ID.get(id);
+  if(targetTool){
+    if(currentTool?.toolId===id)return `#${id}`;
+    if(currentTool||isCertificationPath(path))return targetTool.path;
+  }
+  const localId=getStandaloneLocalSectionId(path);
+  return localId&&id!==localId?`/#${id}`:`#${id}`;
+};
 const scrollToId=(id,behavior="smooth")=>{if(typeof window==="undefined")return false;const el=document.getElementById(id);if(!el)return false;const top=el.getBoundingClientRect().top+window.pageYOffset-156;window.scrollTo({top,behavior});return true;};
 const openCertificationForm=()=>{if(typeof window==="undefined")return;window.dispatchEvent(new CustomEvent(OPEN_CERT_FORM_EVENT));};
 
@@ -84,9 +242,12 @@ const Cd=({children,s,...props})=><div {...props} className="card-glow-shell" st
 
 function Nav({path}){
   const[op,sO]=useState(false);
-  const[act,sAct]=useState(isCertificationPath(path)?"certificacion":"inicio");
-  const[dd,sDD]=useState(null);
   const certRoute=isCertificationPath(path);
+  const toolConfig=getToolRouteConfig(path);
+  const standaloneRoute=certRoute||!!toolConfig;
+  const localStandaloneId=certRoute?"certificacion":toolConfig?.sectionId;
+  const[act,sAct]=useState(certRoute?"certificacion":toolConfig?"herramientas":"inicio");
+  const[dd,sDD]=useState(null);
 
   const menu=[
     {l:"Inicio",id:"inicio"},
@@ -99,8 +260,8 @@ function Nav({path}){
   ];
 
   useEffect(()=>{
-    if(certRoute){
-      sAct("certificacion");
+    if(standaloneRoute){
+      sAct(certRoute?"certificacion":"herramientas");
       return;
     }
     const ids=["inicio","servicios","planes","escenarios","tramites","certificacion","herramientas","tool-renta","tool-retencion","tool-planilla","tool-nomina","tool-iva","tool-precio","calendario","blog","descargas","faq","alertas","whyus","nosotros","contacto"];
@@ -116,7 +277,7 @@ function Nav({path}){
     });
 
     return()=>obs.disconnect();
-  },[certRoute]);
+  },[standaloneRoute,certRoute]);
 
   const navBase={
     textDecoration:"none",
@@ -131,7 +292,7 @@ function Nav({path}){
   };
 
   const goTo=id=>e=>{
-    if(certRoute&&id!=="certificacion"){
+    if(standaloneRoute&&id!==localStandaloneId){
       sDD(null);
       sO(false);
       return;
@@ -952,6 +1113,116 @@ function CertificationHero(){
     </section>
   )
 }
+function ToolRouteWidget({toolId}){
+  const uv25=49799,uv26=52374;
+  if(toolId==="tool-renta")return <ToolRenta uv={uv25}/>;
+  if(toolId==="tool-retencion")return <ToolRet uv25={uv25} uv26={uv26}/>;
+  if(toolId==="tool-planilla")return <ToolPlan/>;
+  if(toolId==="tool-nomina")return <ToolNom/>;
+  if(toolId==="tool-iva")return <ToolIVA/>;
+  if(toolId==="tool-precio")return <ToolPrIVA/>;
+  return null;
+}
+
+function ToolRouteHero({config}){
+  return(
+    <section style={{padding:"154px 24px 46px",position:"relative",overflow:"hidden",background:"linear-gradient(135deg,#F4F8FF 0%,#E7F0FF 20%,#EAF7FF 52%,#F8FBFF 100%)",backgroundSize:"220% 220%",animation:"gradBg 20s ease-in-out infinite"}}>
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 14% 18%, rgba(59,130,246,.16) 0%, rgba(59,130,246,0) 24%), radial-gradient(circle at 84% 18%, rgba(14,165,233,.13) 0%, rgba(14,165,233,0) 22%), radial-gradient(circle at 74% 74%, rgba(96,165,250,.10) 0%, rgba(96,165,250,0) 20%)"}}/>
+      <div style={{position:"absolute",top:"10%",left:"-7%",width:360,height:360,borderRadius:"50%",background:"radial-gradient(circle, rgba(59,130,246,.18) 0%, rgba(59,130,246,0) 70%)",filter:"blur(18px)",animation:"floatSoft 13s ease-in-out infinite"}}/>
+      <div style={{position:"absolute",bottom:"-12%",right:"-5%",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle, rgba(14,165,233,.16) 0%, rgba(14,165,233,0) 72%)",filter:"blur(18px)",animation:"floatSoft 16s ease-in-out infinite"}}/>
+      <div className="cert-hero-wrap" style={{maxWidth:1100,margin:"0 auto",position:"relative",zIndex:1,display:"grid",gap:18}}>
+        <div style={{display:"flex",justifyContent:"center"}}>
+          <div className="app-cert-banner" style={{width:"min(760px,calc(100% - 48px))",display:"flex",justifyContent:"center"}}>
+            <div className="app-cert-banner-inner" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:12,padding:"8px 18px",borderRadius:18,background:"linear-gradient(90deg,#1e3a8a 0%,#2563eb 100%)",color:"#fff",boxShadow:"0 18px 34px rgba(37,99,235,.16)"}}>
+              <span style={{fontSize:18,lineHeight:1}}>🧮</span>
+              <span style={{fontSize:14,fontWeight:800,letterSpacing:".02em"}}>{config.heroBadge}</span>
+              <a href={`#${config.sectionId}`} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"7px 14px",borderRadius:999,background:"rgba(255,255,255,.16)",color:"#fff",textDecoration:"none",fontSize:13,fontWeight:800,border:"1px solid rgba(255,255,255,.12)"}}>Usar herramienta</a>
+            </div>
+          </div>
+        </div>
+
+        <div className="cert-hero-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,1.03fr) minmax(320px,.87fr)",gap:20,alignItems:"start"}}>
+          <div className="cert-hero-copy" style={{padding:"30px 30px 26px",borderRadius:28,background:"linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.90))",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"8px 16px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:700,color:"#2563EB",letterSpacing:"1.6px",fontFamily:F,marginBottom:12}}>{config.heroKicker}</div>
+            <h1 style={{fontFamily:FH,fontSize:"clamp(30px,4.2vw,46px)",fontWeight:700,lineHeight:1.04,color:"#0B1D3A",marginBottom:12,maxWidth:690}}>{config.heroTitle}</h1>
+            <p style={{fontSize:17,color:"#3F5A7A",lineHeight:1.82,fontFamily:F,maxWidth:650,marginBottom:18}}>{config.heroDesc}</p>
+            <div className="cert-hero-actions" style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14}}>
+              <a href={`#${config.sectionId}-info`} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Conoce más sobre la herramienta</a>
+              <a href={`#${config.sectionId}`} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>Usar herramienta</a>
+            </div>
+            <div className="cert-proof-row" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12}}>
+              {config.highlights.map(([label,text],i)=>(
+                <div key={i} style={{padding:"14px 14px",borderRadius:16,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)"}}>
+                  <div style={{fontSize:11,letterSpacing:"1.4px",fontWeight:800,color:"#64748B",fontFamily:F,marginBottom:5}}>{label.toUpperCase()}</div>
+                  <div style={{fontSize:14,color:"#17376A",lineHeight:1.65,fontFamily:F,fontWeight:600}}>{text}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="cert-hero-side" style={{padding:"24px 22px",borderRadius:28,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:14,alignContent:"start"}}>
+            <div style={{padding:"16px 16px 14px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
+              <div style={{fontSize:11,letterSpacing:"1.7px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:12}}>IDEAL PARA</div>
+              <div className="cert-recipient-grid" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
+                {config.audiences.map((item,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(125,211,252,.08)"}}>
+                    <div style={{width:32,height:32,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(147,197,253,.12)",color:"#BBDDFF",fontSize:12,fontWeight:800}}>{i+1}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#E8F2FF",fontFamily:F,lineHeight:1.35}}>{item}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{padding:"16px 16px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
+              <div style={{fontSize:11,letterSpacing:"1.5px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:10}}>PROCESO CLARO</div>
+              <div style={{display:"grid",gap:10}}>
+                {config.steps.map((item,i)=>(
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr)",gap:10,alignItems:"start"}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(96,165,250,.18)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",fontFamily:F}}>{i+1}</div>
+                    <div style={{fontSize:14,color:"rgba(226,232,240,.86)",lineHeight:1.65,fontFamily:F,fontWeight:600}}>{item}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{padding:"16px 16px",borderRadius:20,background:"rgba(255,255,255,.05)",border:"1px solid rgba(125,211,252,.12)",fontSize:14,color:"rgba(226,232,240,.84)",lineHeight:1.75,fontFamily:F}}>
+              {config.supportText}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ToolRouteInfo({config}){
+  return(
+    <Sec id={`${config.sectionId}-info`} title={config.infoTitle} sub={config.infoSub} bg={B[1]} narrow>
+      <div style={{display:"grid",gap:14}}>
+        {config.infoCards.map(([title,desc],i)=>(
+          <div key={i} style={{padding:"24px 24px",borderRadius:20,background:"rgba(255,255,255,.92)",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 18px 36px rgba(15,23,42,.06)"}}>
+            <h3 style={{margin:"0 0 8px",fontSize:22,lineHeight:1.3,color:"#15366b"}}>{title}</h3>
+            <p style={{margin:0,fontSize:17,lineHeight:1.7,color:"#4b617c"}}>{desc}</p>
+          </div>
+        ))}
+      </div>
+    </Sec>
+  );
+}
+
+function ToolRouteShell({config}){
+  return(
+    <>
+      <ToolRouteHero config={config}/>
+      <ToolRouteInfo config={config}/>
+      <section style={{padding:"0 24px 48px",background:B[6]}}>
+        <div style={{maxWidth:1140,margin:"0 auto"}}>
+          <ToolStage id={config.sectionId} kicker={config.stageKicker} title={config.stageTitle} desc={config.stageDesc} tone={1}>
+            <ToolRouteWidget toolId={config.toolId}/>
+          </ToolStage>
+        </div>
+      </section>
+    </>
+  );
+}
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
   const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
@@ -1462,21 +1733,27 @@ export default function App(){
   const certRoute=isCertificationPath(path);
   const adminRoute=isAdminPath(path);
   const verifyRoute=isVerifyPath(path);
+  const toolConfig=getToolRouteConfig(path);
+  const toolRoute=!!toolConfig;
 
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
   useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute]);
-  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":verifyRoute?"Validación de certificados | CONTARAE":certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":verifyRoute?"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.":certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,adminRoute,verifyRoute]);
+  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":verifyRoute?"Validación de certificados | CONTARAE":toolRoute?toolConfig.metaTitle:certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":verifyRoute?"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.":toolRoute?toolConfig.metaDescription:certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,toolRoute,toolConfig,adminRoute,verifyRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}}`}</style>
     {adminRoute?<AdminPanel/>:verifyRoute?<CertificateVerificationPage/>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573013101050","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
-    <Nav path={path}/><Banner path={path}/>
+    <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
     <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="total_ingresos"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
-    {certRoute?<>
+    {toolRoute?<>
+      <ToolRouteShell config={toolConfig}/>
+      <div className="ai"><FaqS/></div>
+      <div className="ai"><Ftr/></div>
+    </>:certRoute?<>
       <CertificationHero/>
       <div className="ai"><CrtS/></div>
       <div className="ai"><FaqS/></div>
