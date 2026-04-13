@@ -784,9 +784,7 @@ export async function generateCertificationPdf(record = {}) {
     });
   };
 
-  const signatureLineY = footerTopY - 16 * scale;
-  const signatureOverlap = 10 * scale;
-  const leftSignatureY = signatureLineY - signatureDims.height + signatureOverlap;
+  const leftSignatureY = footerTopY - signatureDims.height - 6 * scale;
   page.drawImage(signatureImage, {
     x: leftCenterX - signatureDims.width / 2,
     y: leftSignatureY,
@@ -794,6 +792,7 @@ export async function generateCertificationPdf(record = {}) {
     height: signatureDims.height
   });
 
+  const signatureLineY = leftSignatureY - 10 * scale;
   const signatureLineWidth = Math.min(leftColumnWidth * 0.8, 248 * scale);
   page.drawLine({
     start: { x: leftCenterX - signatureLineWidth / 2, y: signatureLineY },
@@ -802,7 +801,7 @@ export async function generateCertificationPdf(record = {}) {
     color: BORDER
   });
 
-  const accountantInfoStartY = signatureLineY - 40 * scale;
+  const accountantInfoStartY = signatureLineY - 26 * scale;
   const accountantInfoStep = 16 * scale;
   drawCenteredColumnText(
     profile.accountantName,
