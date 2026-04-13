@@ -314,6 +314,14 @@ function buildIncomeConceptSentence(row, otherIncomeDetail) {
   return `${amountText} por concepto de ${row.label.toLowerCase()}`;
 }
 
+function buildIncomeConceptOnlySentence(row, otherIncomeDetail) {
+  if (!row) return "";
+  if (row.label === "Otros ingresos" && otherIncomeDetail?.value) {
+    return `por concepto de otros ingresos correspondientes a ${otherIncomeDetail.value}`;
+  }
+  return `por concepto de ${row.label.toLowerCase()}`;
+}
+
 function extractNumericToken(rawValue) {
   const digits = String(rawValue || "").match(/\d+/)?.[0];
   if (digits) return Number(digits);
@@ -434,14 +442,14 @@ export function buildCertificationNarrative(record = {}) {
   return {
     amountRows,
     detailedRows: incomeRows,
-    showIncomeList: amountRows.length > 1,
+    showIncomeList: amountRows.length > 2,
     formattedAccountantDocument,
     formattedCustomerDocument,
     formattedProfessionalCard,
     paragraphs: [
       `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument}, titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que revisé la información suministrada y los documentos soporte aportados por ${formData.nombre || "el solicitante"}, identificado(a) con ${formattedCustomerDocument}, con el fin de verificar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`,
       singleIncomeRow
-        ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales por valor de ${buildIncomeConceptSentence(singleIncomeRow, otherIncomeDetail)}.`
+        ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales ${buildIncomeConceptOnlySentence(singleIncomeRow, otherIncomeDetail)}.`
         : dualIncomeRows.length === 2
           ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales por valor de ${buildIncomeConceptSentence(dualIncomeRows[0], otherIncomeDetail)} y ${buildIncomeConceptSentence(dualIncomeRows[1], otherIncomeDetail)}.`
         : amountRows.length > 1
@@ -551,18 +559,18 @@ export async function generateCertificationPdf(record = {}) {
     page.drawText(label.toUpperCase(), {
       x: BODY_X,
       y,
-      size: 10.4 * scale,
+      size: 9.9 * scale,
       font: sectionFont,
       color: ACCENT
     });
-    const lineWidth = Math.min(contentWidth, Math.max(180 * scale, sectionFont.widthOfTextAtSize(label.toUpperCase(), 10.4 * scale) + 12 * scale));
+    const lineWidth = Math.min(contentWidth, Math.max(156 * scale, sectionFont.widthOfTextAtSize(label.toUpperCase(), 9.9 * scale) + 10 * scale));
     page.drawLine({
       start: { x: BODY_X, y: y - 3 * scale },
       end: { x: BODY_X + lineWidth, y: y - 3 * scale },
-      thickness: 0.65,
+      thickness: 0.55,
       color: BORDER
     });
-    y -= 18 * scale;
+    y -= 16 * scale;
   };
 
   const drawCentered = (text, font, fontSize, color) => {
@@ -628,6 +636,7 @@ export async function generateCertificationPdf(record = {}) {
   });
 
   if (certificationContent.showIncomeList && incomes.length) {
+    y -= 2 * scale;
     drawSectionHeading("Conceptos de ingresos certificados");
     incomes.forEach(({ label, value }) => {
       const valueColumnWidth = 170 * scale;
@@ -668,7 +677,7 @@ export async function generateCertificationPdf(record = {}) {
 
       y -= rowLines * 11.8 * scale + 2;
     });
-    y -= 6 * scale;
+    y -= 10 * scale;
   }
 
   certificationContent.paragraphs.slice(2).forEach((paragraph, index) => {
@@ -679,7 +688,7 @@ export async function generateCertificationPdf(record = {}) {
         lineHeight: (compactIncomeMode ? 15.2 : 14.8) * scale,
         color: TEXT,
         justify: false,
-        marginAfter: (compactIncomeMode ? 11 : 8) * scale
+        marginAfter: (compactIncomeMode ? 11 : 10) * scale
       });
       return;
     }
