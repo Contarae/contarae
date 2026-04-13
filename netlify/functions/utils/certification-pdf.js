@@ -629,12 +629,12 @@ export async function generateCertificationPdf(record = {}) {
     width: logoDims.width,
     height: logoDims.height
   });
-  y -= logoDims.height + 14 * scale;
+  y -= logoDims.height + 20 * scale;
 
   drawCentered("CERTIFICACIÓN DE INGRESOS", titleFont, 21.5 * scale, ACCENT);
-  y -= 16 * scale;
+  y -= 20 * scale;
   drawCentered(`${profile.city}, ${formatLongDate(new Date())}`, bodyFont, 10 * scale, TEXT_SOFT);
-  y -= 14 * scale;
+  y -= 18 * scale;
 
   page.drawLine({
     start: { x: BODY_X, y },
@@ -642,7 +642,7 @@ export async function generateCertificationPdf(record = {}) {
     thickness: 0.65,
     color: BORDER
   });
-  y -= 16 * scale;
+  y -= 20 * scale;
   certificationContent.paragraphs.slice(0, 2).forEach((paragraph, index) => {
     drawParagraph(paragraph, {
       font: bodyFont,
@@ -650,12 +650,12 @@ export async function generateCertificationPdf(record = {}) {
       lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
       color: TEXT,
       justify: true,
-      marginAfter: (compactIncomeMode ? (index === 1 ? 12 : 9) : 7) * scale
+      marginAfter: (compactIncomeMode ? (index === 1 ? 13 : 10) : 8) * scale
     });
   });
 
   if (certificationContent.showIncomeList && incomes.length) {
-    y -= 4 * scale;
+    y -= 6 * scale;
     drawSectionHeading("Conceptos de ingresos certificados");
     incomes.forEach(({ label, value }) => {
       const valueColumnWidth = 170 * scale;
@@ -696,7 +696,7 @@ export async function generateCertificationPdf(record = {}) {
 
       y -= rowLines * 11.8 * scale + 2;
     });
-    y -= 12 * scale;
+    y -= 14 * scale;
   }
 
   certificationContent.paragraphs.slice(2).forEach((paragraph, index) => {
@@ -707,7 +707,7 @@ export async function generateCertificationPdf(record = {}) {
         lineHeight: (compactIncomeMode ? 15.2 : 14.8) * scale,
         color: TEXT,
         justify: true,
-        marginAfter: (compactIncomeMode ? 11 : 10) * scale
+        marginAfter: (compactIncomeMode ? 12 : 11) * scale
       });
       return;
     }
@@ -718,7 +718,7 @@ export async function generateCertificationPdf(record = {}) {
       lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
       color: TEXT,
       justify: true,
-      marginAfter: (compactIncomeMode ? 9 : 6) * scale
+      marginAfter: (compactIncomeMode ? 10 : 7) * scale
     });
   });
 
