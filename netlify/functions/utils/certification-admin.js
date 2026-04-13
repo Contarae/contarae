@@ -13,14 +13,22 @@ const FINAL_FAILED_STATUSES = new Set([
 ]);
 
 export const CERTIFICATION_STATUSES = [
-  "pendiente_pago",
-  "pendiente_revision",
+  "pago_no_confirmado",
   "en_revision",
   "documentos_solicitados",
-  "lista_para_envio",
   "enviada",
-  "pago_no_confirmado"
+  "rechazada"
 ];
+
+export const LOCKED_CERTIFICATION_STATUSES = new Set([
+  "pago_no_confirmado",
+  "enviada",
+  "rechazada"
+]);
+
+export function isCertificationLockedStatus(status = "") {
+  return LOCKED_CERTIFICATION_STATUSES.has(String(status || "").trim());
+}
 
 export function getCertificationStore() {
   return getStore("certification-requests");
@@ -42,15 +50,13 @@ function normalizePhone(phone) {
 }
 
 export function inferCertificationStatus(record = {}, source = "pending") {
-  if (record.certificationStatus) return record.certificationStatus;
-
   const paymentStatus = String(record.status || "").toLowerCase();
 
   if (FINAL_FAILED_STATUSES.has(paymentStatus)) return "pago_no_confirmado";
-  if (paymentStatus === "pending") return "pendiente_pago";
-  if (paymentStatus === "approved" || source === "paid") return "pendiente_revision";
+  if (record.certificationStatus) return record.certificationStatus;
+  if (paymentStatus === "approved" || source === "paid") return "en_revision";
 
-  return "pendiente_revision";
+  return "en_revision";
 }
 
 const CERTIFICATE_EDITABLE_FIELDS = [
@@ -266,8 +272,8 @@ export async function listAllCertifications() {
   });
 
   return Array.from(entries.values()).sort((left, right) => {
-    return new Date(right.updatedAt || right.approvedAt || right.createdAt || 0) -
-      new Date(left.updatedAt || left.approvedAt || left.createdAt || 0);
+    return new Date(left.createdAt || left.approvedAt || left.updatedAt || 0) -
+      new Date(right.createdAt || right.approvedAt || right.updatedAt || 0);
   });
 }
 
@@ -279,11 +285,16 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
     throw new Error("Solicitud no encontrada");
   }
 
-  if (record.certificationStatus === "enviada") {
+  const currentCertificationStatus = inferCertificationStatus(
+    record,
+    paidRecord ? "paid" : "pending"
+  );
+
+  if (isCertificationLockedStatus(currentCertificationStatus)) {
     const overridePassword = String(updates.overridePassword || "");
     const auth = authenticateAdminCredentials(actor, overridePassword);
     if (!auth.ok) {
-      throw new Error("Esta certificación ya fue enviada. Ingresa nuevamente la contraseña para habilitar su edición.");
+      throw new Error("Este expediente está bloqueado. Ingresa nuevamente la contraseña para habilitar su edición.");
     }
   }
 
@@ -324,14 +335,6 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
     sharedUpdates.lastContactChannel = updates.contactChannel || record.lastContactChannel || "";
   }
 
-  if (sharedUpdates.certificationStatus === "en_revision" && !record.reviewStartedAt) {
-    sharedUpdates.reviewStartedAt = now;
-  }
-
-  if (sharedUpdates.certificationStatus === "lista_para_envio") {
-    sharedUpdates.readyToSendAt = now;
-  }
-
   if (sharedUpdates.certificationStatus === "enviada" && !record.sentToClientAt) {
     sharedUpdates.sentToClientAt = now;
   }
@@ -353,12 +356,25 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
   return getCertificationByReference(reference);
 }
 
-export async function appendSupportFilesToCertification(reference, supportFiles = [], actor = "admin") {
+export async function appendSupportFilesToCertification(reference, supportFiles = [], actor = "admin", options = {}) {
   const store = getCertificationStore();
   const { paidRecord, pendingRecord, record } = await getCertificationByReference(reference);
 
   if (!record) {
     throw new Error("Solicitud no encontrada");
+  }
+
+  const currentCertificationStatus = inferCertificationStatus(
+    record,
+    paidRecord ? "paid" : "pending"
+  );
+
+  if (isCertificationLockedStatus(currentCertificationStatus)) {
+    const overridePassword = String(options.overridePassword || "");
+    const auth = authenticateAdminCredentials(actor, overridePassword);
+    if (!auth.ok) {
+      throw new Error("Este expediente está bloqueado. Ingresa nuevamente la contraseña para cargar nuevos soportes.");
+    }
   }
 
   const existingSupportFiles = Array.isArray(record.supportFiles) ? record.supportFiles : [];
@@ -373,6 +389,10 @@ export async function appendSupportFilesToCertification(reference, supportFiles 
   const now = new Date().toISOString();
   const sharedUpdates = {
     supportFiles: mergedSupportFiles,
+    certificationStatus:
+      record.certificationStatus === "documentos_solicitados"
+        ? "en_revision"
+        : inferCertificationStatus(record, paidRecord ? "paid" : "pending"),
     updatedAt: now,
     lastReviewedAt: now,
     lastReviewedBy: actor

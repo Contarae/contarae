@@ -134,8 +134,8 @@ export default async (req) => {
       });
     }
 
-    if (result.detail.summary?.certificationStatus === "enviada") {
-      return new Response(JSON.stringify({ error: "Esta certificación ya fue enviada al cliente." }), {
+    if (["enviada", "rechazada", "pago_no_confirmado"].includes(result.detail.summary?.certificationStatus)) {
+      return new Response(JSON.stringify({ error: "Este expediente está cerrado y no permite un nuevo envío desde el panel." }), {
         status: 400,
         headers
       });

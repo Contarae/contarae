@@ -39,6 +39,7 @@ export default async (req) => {
   try {
     const body = await req.formData();
     const reference = normalizeReference(body.get("reference"));
+    const overridePassword = String(body.get("overridePassword") || "");
     const files = body.getAll("files").filter((file) => typeof file?.arrayBuffer === "function");
 
     if (!reference) {
@@ -65,7 +66,9 @@ export default async (req) => {
 
     const store = getStore("certification-requests");
     const supportFiles = await uploadIncomingSupportFiles(store, reference, files);
-    const updated = await appendSupportFilesToCertification(reference, supportFiles, session.username);
+    const updated = await appendSupportFilesToCertification(reference, supportFiles, session.username, {
+      overridePassword
+    });
 
     return new Response(
       JSON.stringify({

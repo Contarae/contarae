@@ -5,13 +5,11 @@ const F = "'Outfit',sans-serif";
 const FH = "'Libre Baskerville',serif";
 
 const STATUS_META = {
-  pendiente_pago: { label: "Pendiente de pago", tone: "#7C8CA3", bg: "rgba(100,116,139,.10)" },
-  pendiente_revision: { label: "Pendiente de revision", tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" },
+  pago_no_confirmado: { label: "Pago no confirmado", tone: "#DC2626", bg: "rgba(220,38,38,.10)" },
   en_revision: { label: "En revision", tone: "#0F766E", bg: "rgba(13,148,136,.10)" },
-  documentos_solicitados: { label: "Documentos solicitados", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
-  lista_para_envio: { label: "Lista para envio", tone: "#7C3AED", bg: "rgba(124,58,237,.12)" },
+  documentos_solicitados: { label: "Documentos solicitados al cliente", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
   enviada: { label: "Enviada", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
-  pago_no_confirmado: { label: "Pago no confirmado", tone: "#DC2626", bg: "rgba(220,38,38,.10)" }
+  rechazada: { label: "Rechazada", tone: "#7F1D1D", bg: "rgba(239,68,68,.12)" }
 };
 
 const PAYMENT_META = {
@@ -20,42 +18,6 @@ const PAYMENT_META = {
   declined: { label: "Declinado", tone: "#DC2626", bg: "rgba(220,38,38,.10)" },
   error: { label: "Error", tone: "#DC2626", bg: "rgba(220,38,38,.10)" },
   voided: { label: "Anulado", tone: "#B45309", bg: "rgba(245,158,11,.12)" }
-};
-
-const STATUS_OPTIONS = [
-  "pendiente_revision",
-  "en_revision",
-  "documentos_solicitados",
-  "lista_para_envio",
-  "enviada",
-  "pago_no_confirmado"
-];
-
-const SORT_OPTIONS = [
-  { value: "updated_desc", label: "Última actualización" },
-  { value: "created_desc", label: "Fecha de registro: más nuevas" },
-  { value: "created_asc", label: "Fecha de registro: más antiguas" },
-  { value: "status_asc", label: "Estado de certificación" },
-  { value: "payment_asc", label: "Estado del pago" },
-  { value: "customer_asc", label: "Cliente A-Z" }
-];
-
-const STATUS_ORDER = {
-  pendiente_pago: 0,
-  pendiente_revision: 1,
-  en_revision: 2,
-  documentos_solicitados: 3,
-  lista_para_envio: 4,
-  enviada: 5,
-  pago_no_confirmado: 6
-};
-
-const PAYMENT_ORDER = {
-  pending: 0,
-  approved: 1,
-  voided: 2,
-  declined: 3,
-  error: 4
 };
 
 const CERTIFICATE_CURRENCY_FIELDS = [
@@ -158,7 +120,7 @@ function buildCertificateIncomePreview(values = {}) {
 }
 
 function getStatusMeta(status) {
-  return STATUS_META[status] || STATUS_META.pendiente_revision;
+  return STATUS_META[status] || STATUS_META.en_revision;
 }
 
 function getPaymentMeta(status) {
@@ -195,6 +157,25 @@ function buildMailtoLink(detail, customMessage) {
   const summary = detail?.summary || {};
   const subject = `CONTARAE | Documentacion adicional ${summary.consecutive ? `N° ${summary.consecutive}` : summary.reference || ""}`;
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildSupportMessage(detail, customMessage))}`;
+}
+
+function buildDeliveryWhatsappLink(detail) {
+  const phone = detail?.contact?.whatsappPhone;
+  if (!phone) return "";
+  const summary = detail?.summary || {};
+  const customerEmail = detail?.contact?.email;
+  const message = [
+    `Hola ${summary.customerName || ""},`,
+    "",
+    `Tu certificación de ingresos de CONTARAE ${summary.consecutive ? `N° ${summary.consecutive}` : ""} ya fue emitida.`,
+    customerEmail ? `La enviamos al correo registrado: ${customerEmail}.` : "La enviamos al correo registrado en la solicitud.",
+    "",
+    "Si necesitas apoyo para presentarla o verificar algún adjunto, puedes responder este mensaje."
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
 function Badge({ children, meta }) {
@@ -258,7 +239,7 @@ export default function AdminPanel() {
   const [detailError, setDetailError] = useState("");
   const [professionalConfig, setProfessionalConfig] = useState(null);
   const [draft, setDraft] = useState({
-    certificationStatus: "pendiente_revision",
+    certificationStatus: "en_revision",
     adminNotes: "",
     requestedDocumentsMessage: ""
   });
@@ -282,7 +263,6 @@ export default function AdminPanel() {
   });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("updated_desc");
   const [notice, setNotice] = useState("");
   const [pendingSupportFiles, setPendingSupportFiles] = useState([]);
   const [uploadingSupports, setUploadingSupports] = useState(false);
@@ -306,8 +286,9 @@ export default function AdminPanel() {
     () => buildCertificateIncomePreview(certificateDraft),
     [certificateDraft]
   );
-  const isSent = detail?.summary?.certificationStatus === "enviada";
-  const editLocked = Boolean(isSent && !editOverridePassword);
+  const lockedStatuses = new Set(["enviada", "pago_no_confirmado", "rechazada"]);
+  const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
+  const editLocked = Boolean(isLockedStatus && !editOverridePassword);
 
   const loadSession = async () => {
     try {
@@ -373,7 +354,7 @@ export default function AdminPanel() {
       setProfessionalConfig(data.professionalConfig || null);
       setDraft({
         certificationStatus:
-          data.detail?.summary?.certificationStatus || "pendiente_revision",
+          data.detail?.summary?.certificationStatus || "en_revision",
         adminNotes: data.detail?.record?.adminNotes || "",
         requestedDocumentsMessage: data.detail?.record?.requestedDocumentsMessage || ""
       });
@@ -425,7 +406,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (!notice) return undefined;
-    const timer = window.setTimeout(() => setNotice(""), 2600);
+    const timer = window.setTimeout(() => setNotice(""), 5200);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
@@ -449,40 +430,10 @@ export default function AdminPanel() {
     });
 
     const sorted = [...filtered];
-    sorted.sort((left, right) => {
-      if (sortBy === "created_desc") {
-        return new Date(right.createdAt || 0) - new Date(left.createdAt || 0);
-      }
-
-      if (sortBy === "created_asc") {
-        return new Date(left.createdAt || 0) - new Date(right.createdAt || 0);
-      }
-
-      if (sortBy === "status_asc") {
-        const statusDiff =
-          (STATUS_ORDER[left.certificationStatus] ?? 999) - (STATUS_ORDER[right.certificationStatus] ?? 999);
-        if (statusDiff !== 0) return statusDiff;
-      }
-
-      if (sortBy === "payment_asc") {
-        const paymentDiff =
-          (PAYMENT_ORDER[left.paymentStatus] ?? 999) - (PAYMENT_ORDER[right.paymentStatus] ?? 999);
-        if (paymentDiff !== 0) return paymentDiff;
-      }
-
-      if (sortBy === "customer_asc") {
-        const nameDiff = String(left.customerName || "").localeCompare(String(right.customerName || ""), "es", {
-          sensitivity: "base"
-        });
-        if (nameDiff !== 0) return nameDiff;
-      }
-
-      return new Date(right.updatedAt || right.approvedAt || right.createdAt || 0) -
-        new Date(left.updatedAt || left.approvedAt || left.createdAt || 0);
-    });
+    sorted.sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0));
 
     return sorted;
-  }, [records, filter, deferredSearch, sortBy]);
+  }, [records, filter, deferredSearch]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -516,7 +467,7 @@ export default function AdminPanel() {
     setSelectedReference("");
     setDetail(null);
     setDraft({
-      certificationStatus: "pendiente_revision",
+      certificationStatus: "en_revision",
       adminNotes: "",
       requestedDocumentsMessage: ""
     });
@@ -691,6 +642,9 @@ export default function AdminPanel() {
     try {
       const body = new FormData();
       body.append("reference", detail.summary.reference);
+      if (editOverridePassword) {
+        body.append("overridePassword", editOverridePassword);
+      }
       pendingSupportFiles.forEach((file) => body.append("files", file));
 
       const response = await fetch("/api/admin-upload-certification-supports", {
@@ -898,7 +852,8 @@ export default function AdminPanel() {
       setEditOverridePassword("");
       setSendDialogOpen(false);
       await loadRecords();
-      setNotice("Certificación enviada al cliente.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setNotice("Certificación enviada correctamente al cliente por correo. Ya puedes usar la opción de notificación por WhatsApp en este expediente.");
     } catch (error) {
       setDetailError(error.message);
     } finally {
@@ -1011,19 +966,15 @@ export default function AdminPanel() {
               <input style={inputStyle} placeholder="Buscar por cliente, referencia o entidad" value={search} onChange={(event) => setSearch(event.target.value)} />
               <select style={inputStyle} value={filter} onChange={(event) => setFilter(event.target.value)}>
                 <option value="all">Todas las solicitudes</option>
-                {STATUS_OPTIONS.map((status) => (
+                {["pago_no_confirmado", "en_revision", "documentos_solicitados", "enviada", "rechazada"].map((status) => (
                   <option key={status} value={status}>
                     {getStatusMeta(status).label}
                   </option>
                 ))}
               </select>
-              <select style={inputStyle} value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    Ordenar por: {option.label}
-                  </option>
-                ))}
-              </select>
+              <div style={{ padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7 }}>
+                Las solicitudes se muestran siempre por fecha de registro, de la más antigua a la más reciente.
+              </div>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -1113,14 +1064,14 @@ export default function AdminPanel() {
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>
 
-                {isSent ? (
+                {isLockedStatus ? (
                   <div style={{ marginBottom: 18, padding: 18, borderRadius: 22, background: editLocked ? "rgba(245,158,11,.10)" : "rgba(34,197,94,.10)", border: editLocked ? "1px solid rgba(245,158,11,.18)" : "1px solid rgba(34,197,94,.18)", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: editLocked ? "#B45309" : "#15803D", fontFamily: F, marginBottom: 6 }}>
                         EXPEDIENTE {editLocked ? "PROTEGIDO" : "DESBLOQUEADO"}
                       </div>
                       <div style={{ fontFamily: F, fontSize: 14, color: "#334155", lineHeight: 1.8 }}>
-                        Esta certificación ya fue enviada al cliente. {editLocked ? "Para volver a modificarla debes ingresar nuevamente la contraseña del usuario." : "La edición temporal quedó habilitada para esta sesión."}
+                        Este expediente está en estado <strong>{getStatusMeta(detail.summary.certificationStatus).label}</strong>. {editLocked ? "Para volver a modificarlo debes ingresar nuevamente la contraseña del usuario." : "La edición temporal quedó habilitada para esta sesión."}
                       </div>
                     </div>
                     {editLocked ? (
@@ -1387,28 +1338,22 @@ export default function AdminPanel() {
                     </div>
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>ESTADO DE LA CERTIFICACION</div>
-                      <select
-                        style={inputStyle}
-                        value={draft.certificationStatus}
-                        disabled={editLocked}
-                        onChange={(event) => setDraft((current) => ({ ...current, certificationStatus: event.target.value }))}
-                      >
-                        {STATUS_OPTIONS.map((status) => (
-                          <option key={status} value={status}>
-                            {getStatusMeta(status).label}
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 14 }}>
+                        <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", letterSpacing: "1.2px", fontWeight: 800, marginBottom: 8 }}>ESTADO ACTUAL</div>
+                        <Badge meta={getStatusMeta(detail.summary.certificationStatus)}>
+                          {getStatusMeta(detail.summary.certificationStatus).label}
+                        </Badge>
+                        <div style={{ marginTop: 10, fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.8 }}>
+                          El estado ya no se cambia manualmente. Se actualiza automáticamente según el resultado del pago, la solicitud de documentos, el envío final o el rechazo del expediente.
+                        </div>
+                      </div>
 
                       <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
                         <button type="button" onClick={handleSave} disabled={editLocked} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: editLocked ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer" }}>
                           Guardar cambios
                         </button>
-                        <button type="button" onClick={() => handleQuickStatus("en_revision")} disabled={editLocked} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(13,148,136,.18)", background: editLocked ? "#E2E8F0" : "rgba(13,148,136,.08)", color: "#0F766E", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer", opacity: editLocked ? 0.7 : 1 }}>
-                          Marcar en revision
-                        </button>
-                        <button type="button" onClick={() => handleQuickStatus("lista_para_envio")} disabled={editLocked} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(124,58,237,.18)", background: editLocked ? "#E2E8F0" : "rgba(124,58,237,.08)", color: "#7C3AED", fontFamily: F, fontWeight: 800, cursor: editLocked ? "not-allowed" : "pointer", opacity: editLocked ? 0.7 : 1 }}>
-                          Marcar lista para envio
+                        <button type="button" onClick={() => handleQuickStatus("rechazada")} disabled={editLocked || detail.summary.certificationStatus === "rechazada"} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(220,38,38,.18)", background: editLocked || detail.summary.certificationStatus === "rechazada" ? "#E2E8F0" : "rgba(220,38,38,.08)", color: "#B91C1C", fontFamily: F, fontWeight: 800, cursor: editLocked || detail.summary.certificationStatus === "rechazada" ? "not-allowed" : "pointer", opacity: editLocked || detail.summary.certificationStatus === "rechazada" ? 0.7 : 1 }}>
+                          Marcar como rechazada
                         </button>
                       </div>
                     </section>
@@ -1434,9 +1379,19 @@ export default function AdminPanel() {
                         <button type="button" onClick={handleOpenPreviewPdf} disabled={preparingOutput === "preview" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: preparingOutput === "preview" || sendBusy ? "not-allowed" : "pointer", opacity: preparingOutput === "preview" || sendBusy ? 0.7 : 1 }}>
                           {preparingOutput === "preview" ? "Guardando y preparando PDF..." : "Ver borrador PDF"}
                         </button>
-                        <button type="button" onClick={openSendDialog} disabled={isSent || preparingOutput === "send" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: isSent || preparingOutput === "send" || sendBusy ? "#86EFAC" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: isSent || preparingOutput === "send" || sendBusy ? "not-allowed" : "pointer", opacity: isSent || preparingOutput === "send" || sendBusy ? 0.8 : 1 }}>
-                          {isSent ? "Certificación ya enviada" : preparingOutput === "send" ? "Guardando antes de enviar..." : "Enviar certificación al cliente"}
+                        <button type="button" onClick={openSendDialog} disabled={isLockedStatus || preparingOutput === "send" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: isLockedStatus || preparingOutput === "send" || sendBusy ? "#86EFAC" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: isLockedStatus || preparingOutput === "send" || sendBusy ? "not-allowed" : "pointer", opacity: isLockedStatus || preparingOutput === "send" || sendBusy ? 0.8 : 1 }}>
+                          {isLockedStatus ? `Expediente ${getStatusMeta(detail.summary.certificationStatus).label.toLowerCase()}` : preparingOutput === "send" ? "Guardando antes de enviar..." : "Enviar certificación al cliente"}
                         </button>
+                        {detail.summary.certificationStatus === "enviada" && buildDeliveryWhatsappLink(detail) ? (
+                          <a
+                            href={buildDeliveryWhatsappLink(detail)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 800, textDecoration: "none", textAlign: "center" }}
+                          >
+                            Notificar entrega por WhatsApp
+                          </a>
+                        ) : null}
                       </div>
                     </section>
 
