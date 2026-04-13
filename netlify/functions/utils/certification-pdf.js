@@ -1,10 +1,8 @@
 import fs from "fs/promises";
+import path from "path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getProfessionalProfile } from "./professional-documents.js";
 import { buildCertificateData } from "./certification-admin.js";
-
-const logoPath = new URL("../assets/contarae-logo-completo.png", import.meta.url);
-const signaturePath = new URL("../assets/contarae-firma.png", import.meta.url);
 
 const numberFormatter = new Intl.NumberFormat("es-CO");
 
@@ -73,6 +71,34 @@ function wrapText(text, font, fontSize, maxWidth) {
   return lines.length ? lines : [""];
 }
 
+async function readAssetBytes(fileName) {
+  const candidatePaths = [
+    path.resolve(process.cwd(), "netlify/functions/assets", fileName),
+    path.resolve(process.cwd(), "functions/assets", fileName),
+    path.resolve(process.cwd(), "assets", fileName)
+  ];
+
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.url) {
+      candidatePaths.unshift(new URL(`../assets/${fileName}`, import.meta.url));
+    }
+  } catch {
+    // Ignore URL resolution issues and continue with filesystem candidates.
+  }
+
+  let lastError = null;
+
+  for (const candidate of candidatePaths) {
+    try {
+      return await fs.readFile(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(`No fue posible cargar el recurso ${fileName}. ${lastError?.message || ""}`.trim());
+}
+
 export function buildCertificationNarrative(record = {}) {
   const formData = buildCertificateData(record);
   const profile = getProfessionalProfile();
@@ -103,8 +129,8 @@ export async function generateCertificationPdf(record = {}) {
   const titleFont = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const bodyFont = await pdf.embedFont(StandardFonts.Helvetica);
   const bodyBold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const logoBytes = await fs.readFile(logoPath);
-  const signatureBytes = await fs.readFile(signaturePath);
+  const logoBytes = await readAssetBytes("contarae-logo-completo.png");
+  const signatureBytes = await readAssetBytes("contarae-firma.png");
   const logoImage = await pdf.embedPng(logoBytes);
   const signatureImage = await pdf.embedPng(signatureBytes);
   const logoScale = Math.min(0.42, 210 / logoImage.width);
