@@ -5,6 +5,10 @@
 [functions]
   included_files = ["netlify/functions/assets/**"]
 
+[[edge_functions]]
+  path = "/*"
+  function = "share-meta"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"

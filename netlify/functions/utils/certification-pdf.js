@@ -792,7 +792,7 @@ export async function generateCertificationPdf(record = {}) {
     height: signatureDims.height
   });
 
-  const signatureLineY = leftSignatureY - 10 * scale;
+  const signatureLineY = leftSignatureY - 18 * scale;
   const signatureLineWidth = Math.min(leftColumnWidth * 0.8, 248 * scale);
   page.drawLine({
     start: { x: leftCenterX - signatureLineWidth / 2, y: signatureLineY },
@@ -801,7 +801,7 @@ export async function generateCertificationPdf(record = {}) {
     color: BORDER
   });
 
-  const accountantInfoStartY = signatureLineY - 26 * scale;
+  const accountantInfoStartY = signatureLineY - 22 * scale;
   const accountantInfoStep = 16 * scale;
   drawCenteredColumnText(
     profile.accountantName,
