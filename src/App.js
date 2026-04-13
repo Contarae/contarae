@@ -8,7 +8,7 @@ const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 const fmtI=v=>{const n=v.replace(/\D/g,"");return n?"$ "+fm(parseInt(n)):""};
 const pN=v=>parseInt(v.replace(/\D/g,""))||0;
-const gT=t=>{if(t<=2e6)return 80000;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
+const gT=t=>{if(t<=2e6)return 1500;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
 const disc=v=>Math.round(v/.75);
 const SUPPORT_MAX_FILES=5;
 const SUPPORT_MAX_BYTES=6*1024*1024;
@@ -380,7 +380,7 @@ function Nav({path}){
 }
 
 
-function Banner({path}){const[s,sS]=useState(true);if(!s)return null;return(<div style={{position:"fixed",top:88,left:"50%",transform:"translateX(-50%)",width:"min(840px,calc(100% - 32px))",zIndex:190,pointerEvents:"none"}}><div style={{background:"linear-gradient(90deg,#163457,#2563EB)",padding:"8px 16px",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",gap:10,flexWrap:"wrap",boxShadow:"0 14px 28px rgba(15,23,42,.14)",border:"1px solid rgba(255,255,255,.12)",pointerEvents:"auto"}}><span style={{fontSize:12,color:"#fff",fontFamily:F,lineHeight:1.45,textAlign:"center"}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href={getSectionHref("certificacion",path)} style={{fontSize:12,color:"#fff",fontWeight:800,background:"rgba(255,255,255,.18)",padding:"6px 13px",borderRadius:999,textDecoration:"none",fontFamily:F,letterSpacing:".2px"}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.65)",cursor:"pointer",fontSize:14,padding:0,marginLeft:2,fontFamily:F}}>✕</button></div></div>)}
+function Banner({path}){const[s,sS]=useState(true);if(!s)return null;return(<div style={{position:"fixed",top:94,left:"50%",transform:"translateX(-50%)",width:"min(620px,calc(100% - 44px))",zIndex:190,pointerEvents:"none"}}><div style={{background:"linear-gradient(90deg,#163457,#2563EB)",padding:"6px 12px",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap",boxShadow:"0 10px 22px rgba(15,23,42,.12)",border:"1px solid rgba(255,255,255,.10)",pointerEvents:"auto"}}><span style={{fontSize:11,color:"#fff",fontFamily:F,lineHeight:1.35,textAlign:"center"}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href={getSectionHref("certificacion",path)} style={{fontSize:11,color:"#fff",fontWeight:800,background:"rgba(255,255,255,.16)",padding:"5px 11px",borderRadius:999,textDecoration:"none",fontFamily:F,letterSpacing:".2px"}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.65)",cursor:"pointer",fontSize:13,padding:0,marginLeft:2,fontFamily:F}}>✕</button></div></div>)}
 
 /* HERO WITH ANIMATED BG */
 
@@ -832,7 +832,7 @@ function MiniTrustIcon({kind}){
 
 function CertificationHero(){
   const heroMetrics=[["Tiempo estimado","Menos de 1 día hábil"],["Proceso","100% online"],["Pago","Wompi seguro"]];
-  const priceRanges=[["Hasta $2.000.000","$80.000"],["$2.000.001 a $4.000.000","$100.000"],["$4.000.001 a $7.000.000","$120.000"],["$7.000.001 a $12.000.000","$150.000"],["$12.000.001 a $20.000.000","$180.000"],["Más de $20.000.000","$200.000"]];
+  const priceRanges=[["Desde $0 hasta $2.000.000","$80.000"],["Desde $2.000.001 hasta $4.000.000","$100.000"],["Desde $4.000.001 hasta $7.000.000","$120.000"],["Desde $7.000.001 hasta $12.000.000","$150.000"],["Desde $12.000.001 hasta $20.000.000","$180.000"],["Más de $20.000.000","$200.000"]];
   const recipientTags=[{label:"Bancos",kind:"bank"},{label:"Inmobiliarias",kind:"home"},{label:"Embajadas",kind:"globe"},{label:"Concesionarios",kind:"car"},{label:"Licitaciones",kind:"doc"},{label:"Arrendadores",kind:"shield"}];
   const processSteps=["Completa el formulario","Paga seguro con Wompi","Recibe el PDF listo para presentar"];
   const proofPoints=["Soportes verificables","Firma profesional","Seguimiento de referencia","Atención humana"];
@@ -893,19 +893,10 @@ function CertificationHero(){
         <path d="M-100 710 C 180 610, 470 820, 820 710 S 1270 620, 1710 760" fill="none" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" strokeLinecap="round"/>
       </svg>
       <div style={{maxWidth:1080,margin:"0 auto",position:"relative",zIndex:1}}>
-        <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:12,padding:"10px 16px",borderRadius:999,background:"linear-gradient(135deg,#DC2626,#F97316)",color:"#fff",boxShadow:"0 16px 30px rgba(220,38,38,.22)",border:"1px solid rgba(255,255,255,.22)",fontFamily:F,flexWrap:"wrap",justifyContent:"center",maxWidth:"620px"}}>
-            <span style={{fontSize:11,letterSpacing:"1.7px",fontWeight:800,opacity:.92}}>PROMOCIÓN VIGENTE</span>
-            <span style={{width:1,height:18,background:"rgba(255,255,255,.28)"}}/>
-            <span style={{fontSize:18,fontWeight:800,lineHeight:1}}>25% OFF</span>
-            <span style={{fontSize:12,fontWeight:600,opacity:.96}}>en tu certificación de ingresos</span>
-          </div>
-        </div>
         <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.02fr) minmax(320px,.88fr)",gap:20,alignItems:"start"}}>
           <div style={{padding:"30px 30px 26px",borderRadius:28,background:"linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.90))",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
             <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:12}}>
               <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"8px 16px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:700,color:"#2563EB",letterSpacing:"1.6px",fontFamily:F}}>EMISIÓN ÁGIL Y 100% ONLINE</div>
-              <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:999,background:"rgba(220,38,38,.08)",border:"1px solid rgba(220,38,38,.14)",fontSize:11,fontWeight:800,color:"#DC2626",letterSpacing:"1.2px",fontFamily:F}}>25% DE DESCUENTO ACTIVO</div>
             </div>
             <div style={{fontSize:11,letterSpacing:"1.8px",fontWeight:800,color:"#64748B",fontFamily:F,marginBottom:10}}>CERTIFICACIÓN DE INGRESOS CON RESPALDO CONTABLE</div>
             <h1 style={{fontFamily:FH,fontSize:"clamp(28px,4.2vw,44px)",fontWeight:700,lineHeight:1.04,color:"#0B1D3A",marginBottom:12,maxWidth:640}}>Recibe tu certificación de ingresos lista para presentar y con respaldo profesional</h1>
@@ -930,6 +921,9 @@ function CertificationHero(){
                   <div style={{fontSize:30,fontWeight:800,lineHeight:1,color:"#fff",fontFamily:F}}>Desde $80.000</div>
                 </div>
                 <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:11,fontWeight:800,color:"#FDBA74",fontFamily:F}}>25% OFF vigente</div>
+              </div>
+              <div style={{fontSize:12,color:"rgba(226,232,240,.78)",fontFamily:F,lineHeight:1.65,marginBottom:10}}>
+                Los siguientes valores aplican según el rango de ingresos mensuales reportados, desde y hasta cada tramo.
               </div>
               <div style={{display:"grid",gap:8}}>
                 {priceRanges.map(([range,price],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:i===priceRanges.length-1?"none":"1px solid rgba(125,211,252,.10)"}}><div style={{fontSize:12,color:"rgba(226,232,240,.76)",fontFamily:F,lineHeight:1.6}}>{range}</div><div style={{fontSize:13,fontWeight:800,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>{price}</div></div>)}
