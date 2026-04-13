@@ -1,12 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import {
-  MAX_SUPPORT_FILES,
-  MAX_SUPPORT_FILE_SIZE,
-  buildSupportBlobKey,
-  buildSupportRecord,
-  formatBytes,
-  isAllowedSupportContentType,
-  normalizeReference
+  normalizeReference,
+  uploadIncomingSupportFiles
 } from "./utils/certification-supports.js";
 
 const headers = {
@@ -53,72 +48,8 @@ export default async (req) => {
       );
     }
 
-    if (files.length > MAX_SUPPORT_FILES) {
-      return new Response(
-        JSON.stringify({
-          error: `Solo puedes adjuntar hasta ${MAX_SUPPORT_FILES} archivos por solicitud.`
-        }),
-        {
-          status: 400,
-          headers
-        }
-      );
-    }
-
     const store = getStore("certification-requests");
-    const supportFiles = [];
-
-    for (const file of files) {
-      const contentType = String(file.type || "").trim().toLowerCase();
-
-      if (!isAllowedSupportContentType(contentType, file.name)) {
-        return new Response(
-          JSON.stringify({
-            error: `El archivo "${file.name}" no tiene un formato permitido. Usa PDF, JPG, PNG, WEBP, HEIC, DOC o DOCX.`
-          }),
-          {
-            status: 400,
-            headers
-          }
-        );
-      }
-
-      if (Number(file.size || 0) > MAX_SUPPORT_FILE_SIZE) {
-        return new Response(
-          JSON.stringify({
-            error: `El archivo "${file.name}" supera el límite de ${formatBytes(MAX_SUPPORT_FILE_SIZE)}.`
-          }),
-          {
-            status: 400,
-            headers
-          }
-        );
-      }
-
-      const blobKey = buildSupportBlobKey(reference, file.name);
-      const uploadedAt = new Date().toISOString();
-
-      await store.set(blobKey, await file.arrayBuffer(), {
-        metadata: {
-          reference,
-          originalName: file.name,
-          contentType,
-          size: Number(file.size || 0),
-          uploadedAt
-        }
-      });
-
-      supportFiles.push(
-        buildSupportRecord({
-          reference,
-          blobKey,
-          originalName: file.name,
-          contentType,
-          size: file.size,
-          uploadedAt
-        })
-      );
-    }
+    const supportFiles = await uploadIncomingSupportFiles(store, reference, files);
 
     return new Response(
       JSON.stringify({

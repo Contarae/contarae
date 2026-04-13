@@ -105,3 +105,60 @@ export function getSupportDownloadPath(reference, blobKey) {
   const normalizedKey = encodeURIComponent(String(blobKey || ""));
   return `/api/admin-download-certification-support?reference=${normalizedReference}&key=${normalizedKey}`;
 }
+
+export async function uploadIncomingSupportFiles(store, reference, files = []) {
+  const normalizedReference = normalizeReference(reference);
+  const uploadedFiles = [];
+
+  if (!normalizedReference) {
+    throw new Error("Falta la referencia de la solicitud.");
+  }
+
+  if (!files.length) {
+    return uploadedFiles;
+  }
+
+  if (files.length > MAX_SUPPORT_FILES) {
+    throw new Error(`Solo puedes adjuntar hasta ${MAX_SUPPORT_FILES} archivos por solicitud.`);
+  }
+
+  for (const file of files) {
+    const contentType = String(file.type || "").trim().toLowerCase();
+
+    if (!isAllowedSupportContentType(contentType, file.name)) {
+      throw new Error(
+        `El archivo "${file.name}" no tiene un formato permitido. Usa PDF, JPG, PNG, WEBP, HEIC, DOC o DOCX.`
+      );
+    }
+
+    if (Number(file.size || 0) > MAX_SUPPORT_FILE_SIZE) {
+      throw new Error(`El archivo "${file.name}" supera el límite de ${formatBytes(MAX_SUPPORT_FILE_SIZE)}.`);
+    }
+
+    const blobKey = buildSupportBlobKey(normalizedReference, file.name);
+    const uploadedAt = new Date().toISOString();
+
+    await store.set(blobKey, await file.arrayBuffer(), {
+      metadata: {
+        reference: normalizedReference,
+        originalName: file.name,
+        contentType,
+        size: Number(file.size || 0),
+        uploadedAt
+      }
+    });
+
+    uploadedFiles.push(
+      buildSupportRecord({
+        reference: normalizedReference,
+        blobKey,
+        originalName: file.name,
+        contentType,
+        size: file.size,
+        uploadedAt
+      })
+    );
+  }
+
+  return uploadedFiles;
+}

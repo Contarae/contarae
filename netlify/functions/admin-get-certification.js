@@ -1,5 +1,6 @@
 import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-auth.js";
 import { getCertificationByReference } from "./utils/certification-admin.js";
+import { getProfessionalDocumentsStatus } from "./utils/professional-documents.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -54,10 +55,14 @@ export default async (req) => {
       });
     }
 
+    const professionalConfig = await getProfessionalDocumentsStatus();
+
     return new Response(
       JSON.stringify({
         ok: true,
-        detail: result.detail
+        detail: result.detail,
+        professionalConfig,
+        expectedSendPhrase: `ENVIAR ${reference}`
       }),
       {
         status: 200,

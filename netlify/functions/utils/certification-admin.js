@@ -52,6 +52,64 @@ export function inferCertificationStatus(record = {}, source = "pending") {
   return "pendiente_revision";
 }
 
+const CERTIFICATE_EDITABLE_FIELDS = [
+  "nombre",
+  "tipo_documento",
+  "numero_documento",
+  "lugar_expedicion",
+  "destino",
+  "entidad",
+  "periodo",
+  "ingresos_laborales",
+  "pensiones",
+  "dividendos",
+  "inversiones",
+  "arriendos",
+  "remesas",
+  "otros_ingresos",
+  "otros_descripcion",
+  "total_ingresos"
+];
+
+function parseCurrency(value) {
+  return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
+}
+
+function formatCurrencyValue(value) {
+  const amount = Number(value || 0);
+  return amount > 0
+    ? new Intl.NumberFormat("es-CO").format(amount).replace(/^/, "$ ")
+    : "";
+}
+
+export function buildCertificateData(record = {}) {
+  const formData = record.formData || {};
+  const overrides = record.certificateOverrides || {};
+  const merged = {};
+
+  CERTIFICATE_EDITABLE_FIELDS.forEach((field) => {
+    merged[field] =
+      overrides[field] !== undefined && overrides[field] !== null
+        ? String(overrides[field] || "")
+        : String(formData[field] || "");
+  });
+
+  if (!merged.total_ingresos) {
+    const computedTotal =
+      parseCurrency(merged.ingresos_laborales) +
+      parseCurrency(merged.pensiones) +
+      parseCurrency(merged.dividendos) +
+      parseCurrency(merged.inversiones) +
+      parseCurrency(merged.arriendos) +
+      parseCurrency(merged.remesas) +
+      parseCurrency(merged.otros_ingresos);
+
+    merged.total_ingresos = formatCurrencyValue(computedTotal) || String(formData.total_ingresos || "");
+  }
+
+  return merged;
+}
+
 function buildIncomeItems(formData = {}) {
   return [
     ["Ingresos laborales", formData.ingresos_laborales],
@@ -114,6 +172,7 @@ function summarizeRecord(record, source) {
 
 function buildDetail(record, source) {
   const formData = record.formData || {};
+  const certificateData = buildCertificateData(record);
   const normalizedPhone = normalizePhone(formData.telefono);
   const customerEmail =
     formData.correo ||
@@ -127,6 +186,7 @@ function buildDetail(record, source) {
     source,
     record,
     formData,
+    certificateData,
     incomes: buildIncomeItems(formData),
     supportFiles: supportFiles.map((file) => ({
       ...file,
@@ -225,6 +285,10 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
       updates.requestedDocumentsMessage !== undefined
         ? String(updates.requestedDocumentsMessage || "")
         : String(record.requestedDocumentsMessage || ""),
+    certificateOverrides:
+      updates.certificateOverrides !== undefined
+        ? { ...(updates.certificateOverrides || {}) }
+        : { ...(record.certificateOverrides || {}) },
     updatedAt: now,
     lastReviewedAt: now,
     lastReviewedBy: actor,
@@ -247,6 +311,73 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
 
   if (sharedUpdates.certificationStatus === "enviada" && !record.sentToClientAt) {
     sharedUpdates.sentToClientAt = now;
+  }
+
+  if (paidRecord) {
+    await store.setJSON(`paid:${reference}`, {
+      ...paidRecord,
+      ...sharedUpdates
+    });
+  }
+
+  if (pendingRecord) {
+    await store.setJSON(`pending:${reference}`, {
+      ...pendingRecord,
+      ...sharedUpdates
+    });
+  }
+
+  return getCertificationByReference(reference);
+}
+
+export async function appendSupportFilesToCertification(reference, supportFiles = [], actor = "admin") {
+  const store = getCertificationStore();
+  const { paidRecord, pendingRecord, record } = await getCertificationByReference(reference);
+
+  if (!record) {
+    throw new Error("Solicitud no encontrada");
+  }
+
+  const existingSupportFiles = Array.isArray(record.supportFiles) ? record.supportFiles : [];
+  const mergedSupportFiles = [...existingSupportFiles];
+
+  supportFiles.forEach((file) => {
+    if (!file?.blobKey) return;
+    if (mergedSupportFiles.some((current) => current.blobKey === file.blobKey)) return;
+    mergedSupportFiles.push(file);
+  });
+
+  const now = new Date().toISOString();
+  const sharedUpdates = {
+    supportFiles: mergedSupportFiles,
+    updatedAt: now,
+    lastReviewedAt: now,
+    lastReviewedBy: actor
+  };
+
+  if (paidRecord) {
+    await store.setJSON(`paid:${reference}`, {
+      ...paidRecord,
+      ...sharedUpdates
+    });
+  }
+
+  if (pendingRecord) {
+    await store.setJSON(`pending:${reference}`, {
+      ...pendingRecord,
+      ...sharedUpdates
+    });
+  }
+
+  return getCertificationByReference(reference);
+}
+
+export async function mergeCertificationRecordUpdates(reference, sharedUpdates = {}) {
+  const store = getCertificationStore();
+  const { paidRecord, pendingRecord, record } = await getCertificationByReference(reference);
+
+  if (!record) {
+    throw new Error("Solicitud no encontrada");
   }
 
   if (paidRecord) {
