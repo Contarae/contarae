@@ -326,6 +326,63 @@ function InfoTile({ label, value }) {
 }
 
 export default function AdminPanel() {
+  const responsiveCss = `
+    @media (max-width: 1024px) {
+      .admin-shell-grid,
+      .admin-detail-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .admin-sidebar,
+      .admin-left-column {
+        position: static !important;
+        top: auto !important;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .admin-topbar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+      }
+
+      .admin-shell-grid,
+      .admin-detail-grid,
+      .admin-info-grid,
+      .admin-original-grid,
+      .admin-pdf-primary-grid,
+      .admin-pdf-income-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .admin-login-card,
+      .admin-sidebar,
+      .admin-main {
+        padding: 16px !important;
+        border-radius: 20px !important;
+      }
+
+      .admin-sidebar-list {
+        max-height: none !important;
+        overflow: visible !important;
+        padding-right: 0 !important;
+      }
+
+      .admin-modal-overlay {
+        padding: 12px !important;
+        align-items: flex-start !important;
+        overflow-y: auto !important;
+      }
+
+      .admin-modal-card {
+        width: 100% !important;
+        padding: 18px !important;
+        border-radius: 20px !important;
+        margin-top: 12px !important;
+      }
+    }
+  `;
+
   const [session, setSession] = useState({
     loading: true,
     configured: true,
@@ -926,6 +983,7 @@ export default function AdminPanel() {
   if (session.loading) {
     return (
       <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <style>{responsiveCss}</style>
         <div style={{ fontFamily: F, color: "#1D4ED8", fontWeight: 700 }}>Cargando panel interno...</div>
       </div>
     );
@@ -934,7 +992,8 @@ export default function AdminPanel() {
   if (!session.authenticated) {
     return (
       <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ width: "min(460px, 100%)", padding: 32, borderRadius: 28, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 24px 54px rgba(15,23,42,.10)" }}>
+        <style>{responsiveCss}</style>
+        <div className="admin-login-card" style={{ width: "min(460px, 100%)", padding: 32, borderRadius: 28, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 24px 54px rgba(15,23,42,.10)" }}>
           <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#2563EB", fontWeight: 800, fontFamily: F, marginBottom: 12 }}>PANEL INTERNO CONTARAE</div>
           <h1 style={{ fontFamily: FH, fontSize: 38, lineHeight: 1.08, margin: "0 0 12px", color: "#0B1D3A" }}>Revision de certificaciones</h1>
           <p style={{ fontFamily: F, fontSize: 15, color: "#4B5D79", lineHeight: 1.8, marginBottom: 22 }}>
@@ -994,8 +1053,9 @@ export default function AdminPanel() {
 
   return (
     <div style={shell}>
+      <style>{responsiveCss}</style>
       <div style={{ maxWidth: 1380, margin: "0 auto", padding: "30px 20px 40px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
+        <div className="admin-topbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#2563EB", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>PANEL INTERNO</div>
             <h1 style={{ fontFamily: FH, fontSize: "clamp(30px,4vw,48px)", margin: 0, lineHeight: 1.05, color: "#0B1D3A" }}>Solicitudes de certificacion</h1>
@@ -1022,8 +1082,8 @@ export default function AdminPanel() {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 360px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
-          <aside style={{ padding: 18, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)", position: "sticky", top: 20 }}>
+        <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 360px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
+          <aside className="admin-sidebar" style={{ padding: 18, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)", position: "sticky", top: 20 }}>
             <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
               <input style={inputStyle} placeholder="Buscar por cliente, referencia o entidad" value={search} onChange={(event) => setSearch(event.target.value)} />
               <select style={inputStyle} value={filter} onChange={(event) => setFilter(event.target.value)}>
@@ -1047,7 +1107,7 @@ export default function AdminPanel() {
             {listLoading && <div style={{ fontFamily: F, color: "#64748B", fontSize: 14 }}>Cargando solicitudes...</div>}
             {listError && <div style={{ fontFamily: F, color: "#991B1B", fontSize: 14 }}>{listError}</div>}
 
-            <div style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 260px)", overflowY: "auto", paddingRight: 4 }}>
+            <div className="admin-sidebar-list" style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 260px)", overflowY: "auto", paddingRight: 4 }}>
               {filteredRecords.map((record) => {
                 const selected = selectedReference === record.reference;
                 const statusMeta = getStatusMeta(record.certificationStatus);
@@ -1087,7 +1147,7 @@ export default function AdminPanel() {
             </div>
           </aside>
 
-          <main style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+          <main className="admin-main" style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
             {!selectedReference && <div style={{ fontFamily: F, color: "#64748B" }}>Selecciona una solicitud para verla.</div>}
             {detailLoading && <div style={{ fontFamily: F, color: "#64748B" }}>Cargando detalle...</div>}
             {detailError && <div style={{ marginBottom: 12, fontFamily: F, color: "#991B1B" }}>{detailError}</div>}
@@ -1117,7 +1177,7 @@ export default function AdminPanel() {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 18 }}>
+                <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 18 }}>
                   <InfoTile label="Correo operativo" value={detail.contact.email} />
                   <InfoTile label="WhatsApp operativo" value={detail.contact.rawPhone} />
                   <InfoTile label="Periodo original" value={detail.summary.period} />
@@ -1148,8 +1208,8 @@ export default function AdminPanel() {
                   </div>
                 ) : null}
 
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 420px)", gap: 18, alignItems: "start" }}>
-                  <div style={{ display: "grid", gap: 18, position: "sticky", top: 20 }}>
+                <div className="admin-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 420px)", gap: 18, alignItems: "start" }}>
+                  <div className="admin-left-column" style={{ display: "grid", gap: 18, position: "sticky", top: 20 }}>
                     <div style={{ padding: "0 2px" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.6px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>EXPEDIENTE</div>
                       <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7 }}>
@@ -1158,7 +1218,7 @@ export default function AdminPanel() {
                     </div>
                     <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                       <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>FORMULARIO ORIGINAL DEL CLIENTE</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
+                      <div className="admin-original-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
                         {ORIGINAL_FORM_FIELDS.map(([field, label]) => (
                           <div
                             key={field}
@@ -1253,7 +1313,7 @@ export default function AdminPanel() {
                           La edición está bloqueada porque el PDF ya fue enviado. Usa la opción <strong>Habilitar edición con contraseña</strong> para modificar esta certificación.
                         </div>
                       ) : null}
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
+                      <div className="admin-pdf-primary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
                         {PDF_PRIMARY_FIELDS.map(([field, label]) => {
                           const fieldMeta = getModifiedFieldMeta(field);
                           return (
@@ -1296,7 +1356,7 @@ export default function AdminPanel() {
                           );
                         })}
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
+                      <div className="admin-pdf-income-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
                         {CERTIFICATE_INCOME_LABELS.map(([field, label]) => {
                           const fieldMeta = getModifiedFieldMeta(field);
                           return (
@@ -1683,8 +1743,8 @@ export default function AdminPanel() {
         </div>
       </div>
       {sendDialogOpen && createPortal(
-        <div style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !sendBusy && setSendDialogOpen(false)}>
-          <div style={{ width: "min(720px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
+        <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !sendBusy && setSendDialogOpen(false)}>
+          <div className="admin-modal-card" style={{ width: "min(720px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#1D4ED8", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>DOBLE CONFIRMACIÓN DE ENVÍO</div>
             <h3 style={{ margin: 0, fontFamily: FH, fontSize: 34, lineHeight: 1.08, color: "#0B1D3A" }}>Enviar certificación al cliente</h3>
             <p style={{ margin: "12px 0 18px", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
@@ -1746,8 +1806,8 @@ export default function AdminPanel() {
         document.body
       )}
       {sendSuccessDialog.open && createPortal(
-        <div style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15100, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setSendSuccessDialog((current) => ({ ...current, open: false }))}>
-          <div style={{ width: "min(560px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
+        <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15100, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setSendSuccessDialog((current) => ({ ...current, open: false }))}>
+          <div className="admin-modal-card" style={{ width: "min(560px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#15803D", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>ENVÍO CONFIRMADO</div>
             <h3 style={{ margin: 0, fontFamily: FH, fontSize: 32, lineHeight: 1.08, color: "#0B1D3A" }}>{sendSuccessDialog.title}</h3>
             <p style={{ margin: "14px 0 0", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
@@ -1782,8 +1842,8 @@ export default function AdminPanel() {
         document.body
       )}
       {unlockDialogOpen && createPortal(
-        <div style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !unlockBusy && setUnlockDialogOpen(false)}>
-          <div style={{ width: "min(520px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
+        <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !unlockBusy && setUnlockDialogOpen(false)}>
+          <div className="admin-modal-card" style={{ width: "min(520px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#B45309", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>EXPEDIENTE PROTEGIDO</div>
             <h3 style={{ margin: 0, fontFamily: FH, fontSize: 32, lineHeight: 1.08, color: "#0B1D3A" }}>Habilitar edición posterior al envío</h3>
             <p style={{ margin: "12px 0 18px", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>

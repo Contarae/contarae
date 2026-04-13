@@ -65,6 +65,32 @@ function statusStyles(tone = "neutral") {
 }
 
 export default function CertificateVerificationPage() {
+  const responsiveCss = `
+    @media (max-width: 900px) {
+      .verify-main-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .verify-topbar {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+      }
+
+      .verify-primary-card,
+      .verify-side-card {
+        padding: 22px 18px !important;
+        border-radius: 22px !important;
+      }
+
+      .verify-lookup-form,
+      .verify-result-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
+  `;
+
   const initialLookup = useMemo(() => getLookupFromSearch(window.location.search), []);
   const [query, setQuery] = useState(initialLookup.reference || initialLookup.code || initialLookup.q || "");
   const [state, setState] = useState({
@@ -142,8 +168,10 @@ export default function CertificateVerificationPage() {
         padding: "56px 20px 72px"
       }}
     >
+      <style>{responsiveCss}</style>
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
         <div
+          className="verify-topbar"
           style={{
             display: "flex",
             justifyContent: "space-between",
@@ -192,6 +220,7 @@ export default function CertificateVerificationPage() {
         </div>
 
         <div
+          className="verify-main-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(0, 1.08fr) minmax(300px, .92fr)",
@@ -199,6 +228,7 @@ export default function CertificateVerificationPage() {
           }}
         >
           <section
+            className="verify-primary-card"
             style={{
               padding: 34,
               borderRadius: 28,
@@ -252,6 +282,7 @@ export default function CertificateVerificationPage() {
             </p>
 
             <form
+              className="verify-lookup-form"
               onSubmit={submitLookup}
               style={{
                 marginTop: 24,
@@ -324,6 +355,7 @@ export default function CertificateVerificationPage() {
                 }}
               >
                 <div
+                  className="verify-result-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
@@ -386,6 +418,7 @@ export default function CertificateVerificationPage() {
           </section>
 
           <aside
+            className="verify-side-card"
             style={{
               padding: 28,
               borderRadius: 28,
