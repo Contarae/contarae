@@ -76,6 +76,202 @@ function formatLongDate(value = new Date()) {
   }
 }
 
+function removeAccents(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const NUMBER_WORDS = {
+  0: "CERO",
+  1: "UNO",
+  2: "DOS",
+  3: "TRES",
+  4: "CUATRO",
+  5: "CINCO",
+  6: "SEIS",
+  7: "SIETE",
+  8: "OCHO",
+  9: "NUEVE",
+  10: "DIEZ",
+  11: "ONCE",
+  12: "DOCE",
+  13: "TRECE",
+  14: "CATORCE",
+  15: "QUINCE",
+  16: "DIECISEIS",
+  17: "DIECISIETE",
+  18: "DIECIOCHO",
+  19: "DIECINUEVE",
+  20: "VEINTE",
+  21: "VEINTIUNO",
+  22: "VEINTIDOS",
+  23: "VEINTITRES",
+  24: "VEINTICUATRO",
+  25: "VEINTICINCO",
+  26: "VEINTISEIS",
+  27: "VEINTISIETE",
+  28: "VEINTIOCHO",
+  29: "VEINTINUEVE"
+};
+
+const TENS_WORDS = {
+  3: "TREINTA",
+  4: "CUARENTA",
+  5: "CINCUENTA",
+  6: "SESENTA",
+  7: "SETENTA",
+  8: "OCHENTA",
+  9: "NOVENTA"
+};
+
+const HUNDREDS_WORDS = {
+  1: "CIENTO",
+  2: "DOSCIENTOS",
+  3: "TRESCIENTOS",
+  4: "CUATROCIENTOS",
+  5: "QUINIENTOS",
+  6: "SEISCIENTOS",
+  7: "SETECIENTOS",
+  8: "OCHOCIENTOS",
+  9: "NOVECIENTOS"
+};
+
+const PERIOD_WORD_MAP = {
+  un: 1,
+  uno: 1,
+  una: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+  once: 11,
+  doce: 12
+};
+
+function apocopateSpanishNumber(value) {
+  return String(value || "")
+    .replace(/VEINTIUNO$/g, "VEINTIUN")
+    .replace(/ Y UNO$/g, " Y UN")
+    .replace(/UNO$/g, "UN");
+}
+
+function convertTripletToWords(value) {
+  const number = Number(value || 0);
+  if (!number) return "";
+  if (number <= 29) return NUMBER_WORDS[number];
+  if (number === 100) return "CIEN";
+
+  const hundreds = Math.floor(number / 100);
+  const remainder = number % 100;
+  const parts = [];
+
+  if (hundreds > 0) {
+    parts.push(HUNDREDS_WORDS[hundreds]);
+  }
+
+  if (remainder > 0) {
+    if (remainder <= 29) {
+      parts.push(NUMBER_WORDS[remainder]);
+    } else {
+      const tens = Math.floor(remainder / 10);
+      const units = remainder % 10;
+      parts.push(`${TENS_WORDS[tens]}${units ? ` Y ${NUMBER_WORDS[units]}` : ""}`);
+    }
+  }
+
+  return parts.join(" ");
+}
+
+function numberToSpanishWords(value) {
+  const number = Math.floor(Number(value || 0));
+  if (!number) return "CERO";
+  if (number < 1000) return convertTripletToWords(number);
+
+  const millions = Math.floor(number / 1000000);
+  const thousands = Math.floor((number % 1000000) / 1000);
+  const remainder = number % 1000;
+  const parts = [];
+
+  if (millions > 0) {
+    if (millions === 1) {
+      parts.push("UN MILLON");
+    } else {
+      parts.push(`${apocopateSpanishNumber(convertTripletToWords(millions))} MILLONES`);
+    }
+  }
+
+  if (thousands > 0) {
+    if (thousands === 1) {
+      parts.push("MIL");
+    } else {
+      parts.push(`${apocopateSpanishNumber(convertTripletToWords(thousands))} MIL`);
+    }
+  }
+
+  if (remainder > 0) {
+    parts.push(convertTripletToWords(remainder));
+  }
+
+  return parts.join(" ");
+}
+
+function buildAmountInLetters(value) {
+  const amount = parseCurrency(value);
+  const integerAmount = Math.max(0, Math.floor(amount));
+  const amountWords = apocopateSpanishNumber(numberToSpanishWords(integerAmount));
+  const formattedAmount = new Intl.NumberFormat("es-CO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(integerAmount);
+
+  return `${amountWords} PESOS M/CTE ($${formattedAmount})`;
+}
+
+function extractNumericToken(rawValue) {
+  const digits = String(rawValue || "").match(/\d+/)?.[0];
+  if (digits) return Number(digits);
+
+  const normalized = removeAccents(rawValue).toLowerCase();
+  const textToken = normalized
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .find((part) => PERIOD_WORD_MAP[part]);
+
+  return PERIOD_WORD_MAP[textToken] || null;
+}
+
+function buildCertifiedPeriodInMonths(rawPeriod) {
+  const normalized = removeAccents(rawPeriod).toLowerCase();
+  if (!normalized) return "el período certificado indicado por el solicitante";
+
+  let months = null;
+  const baseCount = extractNumericToken(rawPeriod) || (/ultimo|actual/.test(normalized) ? 1 : null);
+
+  if (normalized.includes("semestre")) {
+    months = (baseCount || 1) * 6;
+  } else if (normalized.includes("trimestre")) {
+    months = (baseCount || 1) * 3;
+  } else if (normalized.includes("bimestre")) {
+    months = (baseCount || 1) * 2;
+  } else if (normalized.includes("ano") || normalized.includes("año")) {
+    months = (baseCount || 1) * 12;
+  } else if (normalized.includes("mes")) {
+    months = baseCount || 1;
+  }
+
+  if (!months) {
+    return String(rawPeriod || "").trim() || "el período certificado indicado por el solicitante";
+  }
+
+  return `${numberToSpanishWords(months).toLowerCase()} (${months}) ${months === 1 ? "mes" : "meses"}`;
+}
+
 function buildIncomeRows(formData = {}) {
   const rows = [
     ["Ingresos laborales", formData.ingresos_laborales],
@@ -85,10 +281,22 @@ function buildIncomeRows(formData = {}) {
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
     ["Otros ingresos", formData.otros_ingresos]
-  ].filter(([, value]) => hasMeaningfulCurrencyValue(value));
+  ]
+    .filter(([, value]) => hasMeaningfulCurrencyValue(value))
+    .map(([label, value]) => ({
+      label,
+      value: String(value || "").trim(),
+      numericValue: parseCurrency(value),
+      kind: "amount"
+    }));
 
   if (hasMeaningfulCurrencyValue(formData.otros_ingresos) && String(formData.otros_descripcion || "").trim()) {
-    rows.push(["Detalle otros ingresos", String(formData.otros_descripcion || "").trim()]);
+    rows.push({
+      label: "Detalle otros ingresos",
+      value: String(formData.otros_descripcion || "").trim(),
+      numericValue: 0,
+      kind: "detail"
+    });
   }
 
   return rows;
@@ -130,23 +338,41 @@ export function buildCertificationNarrative(record = {}) {
   const formData = buildCertificateData(record);
   const profile = getProfessionalProfile();
   const destination = getRequestedPurpose(formData);
-  const period = String(formData.periodo || "").trim();
-  const totalIncome = String(formData.total_ingresos || "").trim();
+  const incomeRows = buildIncomeRows(formData);
+  const amountRows = incomeRows.filter((row) => row.kind === "amount");
+  const otherIncomeDetail = incomeRows.find((row) => row.kind === "detail");
+  const singleIncomeRow = amountRows.length === 1 ? amountRows[0] : null;
+  const totalNumeric = parseCurrency(formData.total_ingresos) || amountRows.reduce((sum, row) => sum + row.numericValue, 0);
+  const totalInLetters = buildAmountInLetters(totalNumeric);
+  const periodInMonths = buildCertifiedPeriodInMonths(formData.periodo);
 
-  return [
-    `Yo, ${profile.accountantName}, ${profile.title}, identificado con C.C. No. ${profile.accountantDocumentNumber || "POR CONFIGURAR"} y portador de la Tarjeta Profesional No. ${profile.professionalCardNumber || "POR CONFIGURAR"}, certifico que revisé la información y los documentos soporte aportados por ${formData.nombre || "el solicitante"}, identificado(a) con ${[formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "documento no informado"}.`,
-    `Con fundamento en los soportes exhibidos y en la información económica reportada para el ${period || "periodo indicado por el solicitante"}, se evidencian ingresos por los conceptos que se describen en esta certificación, con un total reportado de ${totalIncome || "valor no informado"} mensuales.`,
-    destination
-      ? `La presente certificación se expide a solicitud del interesado para ser presentada ante ${destination}, sin que ello implique auditoría integral, revisoría fiscal ni dictamen sobre estados financieros. Su alcance se limita a la documentación examinada y a la razonabilidad de la información suministrada.`
-      : "La presente certificación se expide a solicitud del interesado para los fines que estime convenientes, sin que ello implique auditoría integral, revisoría fiscal ni dictamen sobre estados financieros. Su alcance se limita a la documentación examinada y a la razonabilidad de la información suministrada.",
-    `Se emite en ${profile.city}, el ${formatLongDate(new Date())}, dejando constancia de que cualquier cambio posterior en la realidad económica del solicitante deberá ser validado con nueva documentación soporte.`
-  ];
+  return {
+    amountRows,
+    detailedRows: incomeRows,
+    showIncomeList: amountRows.length > 1,
+    paragraphs: [
+      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${profile.accountantDocumentNumber || "POR CONFIGURAR"}, titular de la Tarjeta Profesional No. ${profile.professionalCardNumber || "POR CONFIGURAR"}, certifico que revisé la información suministrada y los documentos soporte aportados por ${formData.nombre || "el solicitante"}, identificado(a) con ${[formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "documento no informado"}, con el fin de verificar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`,
+      singleIncomeRow
+        ? `Con fundamento en la documentación examinada, se evidencia que el(la) solicitante percibe ingresos mensuales por concepto de ${singleIncomeRow.label.toLowerCase()}${singleIncomeRow.label === "Otros ingresos" && otherIncomeDetail ? `, correspondientes a ${otherIncomeDetail.value}` : ""}.`
+        : amountRows.length > 1
+          ? "Con fundamento en la documentación examinada, se evidencia que el(la) solicitante percibe ingresos provenientes de los conceptos que se relacionan a continuación, de acuerdo con la información económica acreditada y verificada en los soportes aportados."
+          : "Con fundamento en la documentación examinada, se verificó la información económica acreditada por el(la) solicitante para el período certificado.",
+      `En consecuencia, certifico que el total de ingresos mensuales asciende a ${totalInLetters}.`,
+      destination
+        ? `La presente certificación se expide a solicitud del interesado para ser presentada ante ${destination}, y se emite exclusivamente con base en los documentos y soportes puestos a disposición para su análisis. En consecuencia, este documento no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.`
+        : "La presente certificación se expide a solicitud del interesado y se emite exclusivamente con base en los documentos y soportes puestos a disposición para su análisis. En consecuencia, este documento no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.",
+      `Se expide en ${profile.city}, el ${formatLongDate(new Date())}, dejando constancia de que cualquier modificación posterior en la situación económica del solicitante requerirá nueva validación documental para efectos de emitir una certificación actualizada.`
+    ],
+    totalInLetters,
+    totalNumeric
+  };
 }
 
 export async function generateCertificationPdf(record = {}) {
   const formData = buildCertificateData(record);
   const profile = getProfessionalProfile();
-  const incomes = buildIncomeRows(formData);
+  const certificationContent = buildCertificationNarrative(record);
+  const incomes = certificationContent.detailedRows || [];
   const pdf = await PDFDocument.create();
   const titleFont = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const sectionFont = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -155,13 +381,12 @@ export async function generateCertificationPdf(record = {}) {
   const logoImage = await pdf.embedPng(await readAssetBytes("contarae-logo-completo.png"));
   const signatureImage = await pdf.embedPng(await readAssetBytes("contarae-firma.png"));
   const baseLogoDims = logoImage.scale(Math.min(0.46, 178 / logoImage.width));
-  const baseSignatureDims = signatureImage.scale(Math.min(0.28, 128 / signatureImage.width));
-  const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN - 12;
-  const narrativeParagraphs = buildCertificationNarrative(record);
+  const baseSignatureDims = signatureImage.scale(Math.min(0.22, 114 / signatureImage.width));
+  const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   let scale = 1;
   const fitSafetyPadding = 22;
 
-  const estimateHeight = (currentScale) => {
+  const estimateBodyHeight = (currentScale) => {
     const contentWidth = PAGE_WIDTH - MARGIN_X * 2;
     const labelWidth = 126 * currentScale;
     const gap = 12;
@@ -178,8 +403,7 @@ export async function generateCertificationPdf(record = {}) {
       ["Documento", [formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "No informado"],
       ["Lugar de expedición", formData.lugar_expedicion || "No informado"],
       ["Destino", getRequestedPurpose(formData) || "No informado"],
-      ["Período certificado", formData.periodo || "No informado"],
-      ["Total ingresos reportados", formData.total_ingresos || "No informado"]
+      ["Período certificado", formData.periodo || "No informado"]
     ];
 
     height += 22 * currentScale;
@@ -190,33 +414,29 @@ export async function generateCertificationPdf(record = {}) {
 
     height += 8 * currentScale;
     height += 22 * currentScale;
-    narrativeParagraphs.forEach((paragraph) => {
+    certificationContent.paragraphs.forEach((paragraph, index) => {
       const lines = wrapText(paragraph, bodyFont, 10.1 * currentScale, contentWidth);
-      height += lines.length * 13.4 * currentScale + 5 * currentScale;
+      height += lines.length * 13.2 * currentScale + (index === 2 ? 8 : 5) * currentScale;
     });
 
-    height += 6 * currentScale;
-    height += 22 * currentScale;
-    if (incomes.length) {
-      incomes.forEach(([label, value]) => {
-        const valueLines = wrapText(String(value || ""), bodyFont, 9.7 * currentScale, 176 * currentScale);
+    if (certificationContent.showIncomeList && incomes.length) {
+      height += 6 * currentScale;
+      height += 22 * currentScale;
+      incomes.forEach(({ label, value }) => {
+        const valueLines = wrapText(String(value || ""), bodyFont, 9.6 * currentScale, 172 * currentScale);
         const labelLines = wrapText(label, bodyBold, 9.9 * currentScale, 210 * currentScale);
-        height += Math.max(valueLines.length, labelLines.length) * 11.5 * currentScale + 1;
+        height += Math.max(valueLines.length, labelLines.length) * 11.1 * currentScale + 1;
       });
-    } else {
-      const lines = wrapText("No se reportaron conceptos con valor para incluir en esta certificación.", bodyFont, 9.9 * currentScale, contentWidth);
-      height += lines.length * 13 * currentScale;
     }
-
-    height += 13 * currentScale;
-    height += 11.2 * currentScale + 16 * currentScale;
-    height += baseSignatureDims.height * currentScale + 60 * currentScale;
-    height += 46 * currentScale;
 
     return height;
   };
 
-  while (estimateHeight(scale) + fitSafetyPadding > availableHeight && scale > 0.42) {
+  const estimateSignatureBlockHeight = (currentScale) => {
+    return baseSignatureDims.height * currentScale + 86 * currentScale;
+  };
+
+  while (estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + fitSafetyPadding > availableHeight && scale > 0.42) {
     scale -= scale > 0.68 ? 0.04 : 0.02;
   }
 
@@ -234,6 +454,7 @@ export async function generateCertificationPdf(record = {}) {
   const labelWidth = 126 * scale;
   const gap = 12;
   const valueWidth = contentWidth - labelWidth - gap;
+  const signatureBlockTopY = BOTTOM_MARGIN + estimateSignatureBlockHeight(scale);
 
   page.drawRectangle({
     x: 28,
@@ -336,8 +557,7 @@ export async function generateCertificationPdf(record = {}) {
     ["Documento", [formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "No informado"],
     ["Lugar de expedición", formData.lugar_expedicion || "No informado"],
     ["Destino", getRequestedPurpose(formData) || "No informado"],
-    ["Período certificado", formData.periodo || "No informado"],
-    ["Total ingresos reportados", formData.total_ingresos || "No informado"]
+    ["Período certificado", formData.periodo || "No informado"]
   ].forEach(([label, value]) => {
     const lines = wrapText(String(value || ""), bodyFont, 9.8 * scale, valueWidth);
     page.drawText(`${label}:`, {
@@ -363,21 +583,21 @@ export async function generateCertificationPdf(record = {}) {
 
   y -= 6 * scale;
   drawSectionHeading("Certificación");
-  narrativeParagraphs.forEach((paragraph) => {
+  certificationContent.paragraphs.slice(0, 2).forEach((paragraph) => {
     drawParagraph(paragraph, {
       font: bodyFont,
       fontSize: 10.1 * scale,
-      lineHeight: 13.4 * scale,
+      lineHeight: 13.2 * scale,
       color: TEXT,
       justify: true
     });
   });
 
-  drawSectionHeading("Conceptos de ingresos reportados");
-  if (incomes.length) {
-    incomes.forEach(([label, value]) => {
+  if (certificationContent.showIncomeList && incomes.length) {
+    drawSectionHeading("Conceptos de ingresos certificados");
+    incomes.forEach(({ label, value }) => {
       const labelLines = wrapText(label, bodyBold, 9.9 * scale, 210 * scale);
-      const valueLines = wrapText(String(value || ""), bodyFont, 9.7 * scale, 176 * scale);
+      const valueLines = wrapText(String(value || ""), bodyFont, 9.6 * scale, 172 * scale);
       const rowLines = Math.max(labelLines.length, valueLines.length);
 
       page.drawText("•", {
@@ -400,37 +620,61 @@ export async function generateCertificationPdf(record = {}) {
 
       valueLines.forEach((line, index) => {
         page.drawText(line, {
-          x: PAGE_WIDTH - MARGIN_X - 176 * scale,
-          y: y - index * 11.5 * scale,
-          size: 9.7 * scale,
+          x: PAGE_WIDTH - MARGIN_X - 172 * scale,
+          y: y - index * 11.1 * scale,
+          size: 9.6 * scale,
           font: bodyFont,
           color: TEXT
         });
       });
 
-      y -= rowLines * 11.5 * scale + 1;
-    });
-  } else {
-    drawParagraph("No se reportaron conceptos con valor para incluir en esta certificación.", {
-      font: bodyFont,
-      fontSize: 9.9 * scale,
-      lineHeight: 13 * scale,
-      color: TEXT,
-      justify: false
+      y -= rowLines * 11.1 * scale + 1;
     });
   }
 
-  y -= 6 * scale;
-  page.drawText(`Total mensual certificado: ${formData.total_ingresos || "No informado"}`, {
-    x: MARGIN_X,
-    y,
-    size: 10.5 * scale,
-    font: bodyBold,
-    color: ACCENT
+  certificationContent.paragraphs.slice(2).forEach((paragraph, index) => {
+    if (index === 0) {
+      page.drawRectangle({
+        x: MARGIN_X,
+        y: y - 20 * scale,
+        width: contentWidth,
+        height: 34 * scale,
+        color: ACCENT_SOFT,
+        borderColor: BORDER,
+        borderWidth: 0.8
+      });
+      page.drawText("INGRESOS MENSUALES CERTIFICADOS", {
+        x: MARGIN_X + 10 * scale,
+        y: y + 4.5 * scale,
+        size: 8.8 * scale,
+        font: sectionFont,
+        color: ACCENT
+      });
+      const totalLines = wrapText(paragraph, bodyBold, 10 * scale, contentWidth - 20 * scale);
+      totalLines.forEach((line, lineIndex) => {
+        page.drawText(line, {
+          x: MARGIN_X + 10 * scale,
+          y: y - 8.5 * scale - lineIndex * 12 * scale,
+          size: 10 * scale,
+          font: bodyBold,
+          color: TEXT
+        });
+      });
+      y -= 38 * scale + Math.max(0, (totalLines.length - 1) * 12 * scale);
+      return;
+    }
+
+    drawParagraph(paragraph, {
+      font: bodyFont,
+      fontSize: 10 * scale,
+      lineHeight: 13.2 * scale,
+      color: TEXT,
+      justify: true
+    });
   });
 
-  y -= 24 * scale;
-  const signatureLineY = y;
+  y = Math.max(y - 8 * scale, signatureBlockTopY + 10 * scale);
+  const signatureLineY = BOTTOM_MARGIN + 58 * scale;
 
   page.drawImage(signatureImage, {
     x: MARGIN_X,
@@ -448,28 +692,28 @@ export async function generateCertificationPdf(record = {}) {
 
   page.drawText(profile.accountantName, {
     x: MARGIN_X,
-    y: signatureLineY - 16 * scale,
+    y: signatureLineY - 18 * scale,
     size: 10.4 * scale,
     font: bodyBold,
     color: ACCENT
   });
   page.drawText(profile.title, {
     x: MARGIN_X,
-    y: signatureLineY - 29 * scale,
+    y: signatureLineY - 31 * scale,
     size: 9.6 * scale,
     font: bodyFont,
     color: TEXT
   });
   page.drawText(`C.C. No. ${profile.accountantDocumentNumber || "POR CONFIGURAR"}`, {
     x: MARGIN_X,
-    y: signatureLineY - 42 * scale,
+    y: signatureLineY - 44 * scale,
     size: 9.4 * scale,
     font: bodyFont,
     color: TEXT
   });
   page.drawText(`Tarjeta Profesional No. ${profile.professionalCardNumber || "POR CONFIGURAR"}`, {
     x: MARGIN_X,
-    y: signatureLineY - 55 * scale,
+    y: signatureLineY - 57 * scale,
     size: 9.4 * scale,
     font: bodyFont,
     color: TEXT
