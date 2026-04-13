@@ -25,6 +25,16 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function parseCurrency(value) {
+  return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
+}
+
+function hasMeaningfulCurrencyValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  return parseCurrency(raw) > 0;
+}
+
 function buildIncomeRows(formData = {}) {
   const rows = [
     ["Ingresos laborales", formData.ingresos_laborales],
@@ -33,11 +43,16 @@ function buildIncomeRows(formData = {}) {
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
-    ["Otros ingresos", formData.otros_ingresos],
-    ["Descripción otros ingresos", formData.otros_descripcion]
+    ["Otros ingresos", formData.otros_ingresos]
   ];
 
-  return rows.filter(([, value]) => String(value || "").trim());
+  const filtered = rows.filter(([, value]) => hasMeaningfulCurrencyValue(value));
+
+  if (hasMeaningfulCurrencyValue(formData.otros_ingresos) && String(formData.otros_descripcion || "").trim()) {
+    filtered.push(["Descripción otros ingresos", String(formData.otros_descripcion || "").trim()]);
+  }
+
+  return filtered;
 }
 
 function buildSupportItems(paidRecord = {}) {
@@ -277,7 +292,7 @@ async function sendResendEmail({
       subject,
       html,
       text,
-      replyTo
+      reply_to: replyTo
     })
   });
 

@@ -26,7 +26,7 @@ export async function sendResendEmail({
       subject,
       html,
       text,
-      replyTo,
+      reply_to: replyTo,
       attachments: attachments.map((attachment) => ({
         filename: attachment.filename,
         content: toBase64(attachment.content),

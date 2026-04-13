@@ -8,9 +8,14 @@ const signaturePath = new URL("../assets/contarae-firma.png", import.meta.url);
 
 const numberFormatter = new Intl.NumberFormat("es-CO");
 
-function formatCurrency(value) {
-  const cleaned = Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
-  return `$ ${numberFormatter.format(cleaned)}`;
+function parseCurrency(value) {
+  return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
+}
+
+function hasMeaningfulCurrencyValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  return parseCurrency(raw) > 0;
 }
 
 function formatLongDate(value = new Date()) {
@@ -26,18 +31,21 @@ function formatLongDate(value = new Date()) {
 }
 
 function buildIncomeRows(formData = {}) {
-  return [
+  const rows = [
     ["Ingresos laborales", formData.ingresos_laborales],
     ["Pensiones", formData.pensiones],
     ["Dividendos", formData.dividendos],
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
-    ["Otros ingresos", formData.otros_ingresos],
-    formData.otros_descripcion ? ["Detalle otros ingresos", formData.otros_descripcion] : null
-  ]
-    .filter(Boolean)
-    .filter(([, value]) => String(value || "").trim());
+    ["Otros ingresos", formData.otros_ingresos]
+  ].filter(([, value]) => hasMeaningfulCurrencyValue(value));
+
+  if (hasMeaningfulCurrencyValue(formData.otros_ingresos) && String(formData.otros_descripcion || "").trim()) {
+    rows.push(["Detalle otros ingresos", String(formData.otros_descripcion || "").trim()]);
+  }
+
+  return rows;
 }
 
 function getRequestedPurpose(formData = {}) {

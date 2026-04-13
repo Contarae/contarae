@@ -128,6 +128,12 @@ function parseCurrency(value) {
   return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
 }
 
+function hasMeaningfulCurrencyValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  return parseCurrency(raw) > 0;
+}
+
 function recalculateCertificateTotal(values = {}) {
   const total = CERTIFICATE_CURRENCY_FIELDS.reduce((sum, field) => sum + parseCurrency(values[field]), 0);
   return total ? normalizeCurrencyInput(total) : "";
@@ -139,9 +145,9 @@ function buildCertificateIncomePreview(values = {}) {
       label,
       value: String(values[field] || "").trim()
     }))
-    .filter((item) => item.value);
+    .filter((item) => hasMeaningfulCurrencyValue(item.value));
 
-  if (String(values.otros_descripcion || "").trim()) {
+  if (hasMeaningfulCurrencyValue(values.otros_ingresos) && String(values.otros_descripcion || "").trim()) {
     rows.push({
       label: "Detalle otros ingresos",
       value: String(values.otros_descripcion || "").trim()
@@ -829,7 +835,7 @@ export default function AdminPanel() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "No fue posible enviar la certificación.");
+        throw new Error(data.detail || data.error || "No fue posible enviar la certificación.");
       }
 
       setDetail(data.detail);

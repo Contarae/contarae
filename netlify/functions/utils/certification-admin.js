@@ -75,6 +75,12 @@ function parseCurrency(value) {
   return Number(String(value || "").replace(/[^\d.-]/g, "")) || 0;
 }
 
+function hasMeaningfulCurrencyValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  return parseCurrency(raw) > 0;
+}
+
 function formatCurrencyValue(value) {
   const amount = Number(value || 0);
   return amount > 0
@@ -111,18 +117,26 @@ export function buildCertificateData(record = {}) {
 }
 
 function buildIncomeItems(formData = {}) {
-  return [
+  const rows = [
     ["Ingresos laborales", formData.ingresos_laborales],
     ["Pensiones", formData.pensiones],
     ["Dividendos", formData.dividendos],
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
-    ["Otros ingresos", formData.otros_ingresos],
-    ["Descripción otros ingresos", formData.otros_descripcion]
+    ["Otros ingresos", formData.otros_ingresos]
   ]
-    .filter(([, value]) => String(value || "").trim())
+    .filter(([, value]) => hasMeaningfulCurrencyValue(value))
     .map(([label, value]) => ({ label, value }));
+
+  if (hasMeaningfulCurrencyValue(formData.otros_ingresos) && String(formData.otros_descripcion || "").trim()) {
+    rows.push({
+      label: "Descripción otros ingresos",
+      value: String(formData.otros_descripcion || "").trim()
+    });
+  }
+
+  return rows;
 }
 
 function getUpdatedAt(record = {}) {
