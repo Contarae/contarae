@@ -6,7 +6,8 @@ import { buildCertificateData } from "./certification-admin.js";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
-const MARGIN_X = 54;
+const MARGIN_X = 48;
+const BODY_X = 56;
 const TOP_MARGIN = 58;
 const BOTTOM_MARGIN = 58;
 const ACCENT = rgb(0.12, 0.24, 0.45);
@@ -261,6 +262,58 @@ function buildAmountInLetters(value) {
   return `${amountWords} PESOS M/CTE ($${formattedAmount})`;
 }
 
+function formatCurrencyCOP(value, { minimumFractionDigits = 0, maximumFractionDigits = 0 } = {}) {
+  const amount = parseCurrency(value);
+  return `$${new Intl.NumberFormat("es-CO", {
+    minimumFractionDigits,
+    maximumFractionDigits
+  }).format(amount)}`;
+}
+
+function formatDigitGroups(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return String(value || "").trim();
+  return new Intl.NumberFormat("es-CO", {
+    maximumFractionDigits: 0
+  }).format(Number(digits));
+}
+
+function formatDocumentNumber(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return /\d/.test(raw) ? formatDigitGroups(raw) : raw;
+}
+
+function formatProfessionalCardNumber(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const match = raw.match(/^(\d+)([\s.-]*[A-Za-z].*)?$/);
+  if (!match) return raw;
+
+  const formattedDigits = formatDigitGroups(match[1]);
+  const suffix = String(match[2] || "")
+    .trim()
+    .replace(/^[.\s-]+/, "");
+
+  return suffix ? `${formattedDigits}-${suffix.toUpperCase()}` : formattedDigits;
+}
+
+function buildDocumentLabel(documentType, documentNumber) {
+  const type = String(documentType || "").trim();
+  const number = formatDocumentNumber(documentNumber);
+  return [type, number].filter(Boolean).join(" ");
+}
+
+function buildIncomeConceptSentence(row, otherIncomeDetail) {
+  if (!row) return "";
+  const amountText = formatCurrencyCOP(row.numericValue);
+  if (row.label === "Otros ingresos" && otherIncomeDetail?.value) {
+    return `${amountText} por concepto de otros ingresos correspondientes a ${otherIncomeDetail.value}`;
+  }
+  return `${amountText} por concepto de ${row.label.toLowerCase()}`;
+}
+
 function extractNumericToken(rawValue) {
   const digits = String(rawValue || "").match(/\d+/)?.[0];
   if (digits) return Number(digits);
@@ -370,20 +423,29 @@ export function buildCertificationNarrative(record = {}) {
   const amountRows = incomeRows.filter((row) => row.kind === "amount");
   const otherIncomeDetail = incomeRows.find((row) => row.kind === "detail");
   const singleIncomeRow = amountRows.length === 1 ? amountRows[0] : null;
+  const dualIncomeRows = amountRows.length === 2 ? amountRows : [];
   const totalNumeric = parseCurrency(formData.total_ingresos) || amountRows.reduce((sum, row) => sum + row.numericValue, 0);
   const totalInLetters = buildAmountInLetters(totalNumeric);
   const periodInMonths = buildCertifiedPeriodInMonths(formData.periodo);
+  const formattedCustomerDocument = buildDocumentLabel(formData.tipo_documento, formData.numero_documento) || "documento no informado";
+  const formattedAccountantDocument = formatDocumentNumber(profile.accountantDocumentNumber) || "POR CONFIGURAR";
+  const formattedProfessionalCard = formatProfessionalCardNumber(profile.professionalCardNumber) || "POR CONFIGURAR";
 
   return {
     amountRows,
     detailedRows: incomeRows,
     showIncomeList: amountRows.length > 1,
+    formattedAccountantDocument,
+    formattedCustomerDocument,
+    formattedProfessionalCard,
     paragraphs: [
-      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${profile.accountantDocumentNumber || "POR CONFIGURAR"}, titular de la Tarjeta Profesional No. ${profile.professionalCardNumber || "POR CONFIGURAR"}, certifico que revisé la información suministrada y los documentos soporte aportados por ${formData.nombre || "el solicitante"}, identificado(a) con ${[formData.tipo_documento, formData.numero_documento].filter(Boolean).join(" ") || "documento no informado"}, con el fin de verificar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`,
+      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument}, titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que revisé la información suministrada y los documentos soporte aportados por ${formData.nombre || "el solicitante"}, identificado(a) con ${formattedCustomerDocument}, con el fin de verificar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`,
       singleIncomeRow
-        ? `Con fundamento en la documentación examinada, se evidencia que el(la) solicitante percibe ingresos mensuales por concepto de ${singleIncomeRow.label.toLowerCase()}${singleIncomeRow.label === "Otros ingresos" && otherIncomeDetail ? `, correspondientes a ${otherIncomeDetail.value}` : ""}.`
+        ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales por valor de ${buildIncomeConceptSentence(singleIncomeRow, otherIncomeDetail)}.`
+        : dualIncomeRows.length === 2
+          ? `Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos mensuales por valor de ${buildIncomeConceptSentence(dualIncomeRows[0], otherIncomeDetail)} y ${buildIncomeConceptSentence(dualIncomeRows[1], otherIncomeDetail)}.`
         : amountRows.length > 1
-          ? "Con fundamento en la documentación examinada, se evidencia que el(la) solicitante percibe ingresos provenientes de los conceptos que se relacionan a continuación, de acuerdo con la información económica acreditada y verificada en los soportes aportados."
+          ? "Con fundamento en la documentación examinada, se verifica que el(la) solicitante percibe ingresos provenientes de los conceptos que se relacionan a continuación, de acuerdo con la información económica acreditada y verificada en los soportes aportados."
           : "Con fundamento en la documentación examinada, se verificó la información económica acreditada por el(la) solicitante para el período certificado.",
       `En consecuencia, certifico que el total de ingresos mensuales asciende a ${totalInLetters}.`,
       destination
@@ -408,14 +470,14 @@ export async function generateCertificationPdf(record = {}) {
   const bodyBold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const logoImage = await pdf.embedPng(await readAssetBytes("contarae-logo-completo.png"));
   const signatureImage = await pdf.embedPng(await readAssetBytes("contarae-firma.png"));
-  const baseLogoDims = logoImage.scale(Math.min(0.46, 178 / logoImage.width));
-  const baseSignatureDims = signatureImage.scale(Math.min(0.26, 146 / signatureImage.width));
+  const baseLogoDims = logoImage.scale(Math.min(0.42, 164 / logoImage.width));
+  const baseSignatureDims = signatureImage.scale(Math.min(0.28, 156 / signatureImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   let scale = 1;
   const fitSafetyPadding = 22;
 
   const estimateBodyHeight = (currentScale) => {
-    const contentWidth = PAGE_WIDTH - MARGIN_X * 2;
+    const contentWidth = PAGE_WIDTH - BODY_X * 2;
     let height = 0;
 
     height += baseLogoDims.height * currentScale + 18 * currentScale;
@@ -425,7 +487,7 @@ export async function generateCertificationPdf(record = {}) {
     certificationContent.paragraphs.forEach((paragraph, index) => {
       const isTotalParagraph = index === 2;
       const lines = wrapText(paragraph, isTotalParagraph ? bodyBold : bodyFont, isTotalParagraph ? 10.8 * currentScale : 10.7 * currentScale, contentWidth);
-      height += lines.length * (isTotalParagraph ? 14.4 : 14.2) * currentScale + (isTotalParagraph ? 8 : 6) * currentScale;
+      height += lines.length * (isTotalParagraph ? 14.8 : 14.4) * currentScale + (isTotalParagraph ? 10 : 7) * currentScale;
     });
 
     if (certificationContent.showIncomeList && incomes.length) {
@@ -450,7 +512,7 @@ export async function generateCertificationPdf(record = {}) {
 
   const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = PAGE_HEIGHT - TOP_MARGIN;
-  const contentWidth = PAGE_WIDTH - MARGIN_X * 2;
+  const contentWidth = PAGE_WIDTH - BODY_X * 2;
   const logoDims = {
     width: baseLogoDims.width * scale,
     height: baseLogoDims.height * scale
@@ -460,6 +522,7 @@ export async function generateCertificationPdf(record = {}) {
     height: baseSignatureDims.height * scale
   };
   const signatureBlockTopY = BOTTOM_MARGIN + estimateSignatureBlockHeight(scale);
+  const compactIncomeMode = !certificationContent.showIncomeList && certificationContent.amountRows.length <= 2;
 
   page.drawRectangle({
     x: 28,
@@ -486,7 +549,7 @@ export async function generateCertificationPdf(record = {}) {
 
   const drawSectionHeading = (label) => {
     page.drawText(label.toUpperCase(), {
-      x: MARGIN_X,
+      x: BODY_X,
       y,
       size: 10.4 * scale,
       font: sectionFont,
@@ -494,9 +557,9 @@ export async function generateCertificationPdf(record = {}) {
     });
     const lineWidth = Math.min(contentWidth, Math.max(180 * scale, sectionFont.widthOfTextAtSize(label.toUpperCase(), 10.4 * scale) + 12 * scale));
     page.drawLine({
-      start: { x: MARGIN_X, y: y - 3 * scale },
-      end: { x: MARGIN_X + lineWidth, y: y - 3 * scale },
-      thickness: 0.8,
+      start: { x: BODY_X, y: y - 3 * scale },
+      end: { x: BODY_X + lineWidth, y: y - 3 * scale },
+      thickness: 0.65,
       color: BORDER
     });
     y -= 18 * scale;
@@ -513,15 +576,15 @@ export async function generateCertificationPdf(record = {}) {
     });
   };
 
-  const drawParagraph = (text, { font, fontSize, lineHeight, color = TEXT, justify = true }) => {
+  const drawParagraph = (text, { font, fontSize, lineHeight, color = TEXT, justify = true, marginAfter = 6 * scale }) => {
     const lines = wrapText(text, font, fontSize, contentWidth);
     lines.forEach((line, index) => {
       const isLastLine = index === lines.length - 1;
       if (justify && !isLastLine && line.includes(" ")) {
-        drawJustifiedLine(page, line, MARGIN_X, y, contentWidth, font, fontSize, color);
+        drawJustifiedLine(page, line, BODY_X, y, contentWidth, font, fontSize, color);
       } else {
         page.drawText(line, {
-          x: MARGIN_X,
+          x: BODY_X,
           y,
           size: fontSize,
           font,
@@ -530,7 +593,7 @@ export async function generateCertificationPdf(record = {}) {
       }
       y -= lineHeight;
     });
-    y -= 4 * scale;
+    y -= marginAfter;
   };
 
   page.drawImage(logoImage, {
@@ -539,39 +602,43 @@ export async function generateCertificationPdf(record = {}) {
     width: logoDims.width,
     height: logoDims.height
   });
-  y -= logoDims.height + 18 * scale;
+  y -= logoDims.height + 14 * scale;
 
-  drawCentered("CERTIFICACIÓN DE INGRESOS", titleFont, 22 * scale, ACCENT);
-  y -= 18 * scale;
-  drawCentered(`${profile.city}, ${formatLongDate(new Date())}`, bodyFont, 10.3 * scale, TEXT_SOFT);
+  drawCentered("CERTIFICACIÓN DE INGRESOS", titleFont, 21.5 * scale, ACCENT);
   y -= 16 * scale;
+  drawCentered(`${profile.city}, ${formatLongDate(new Date())}`, bodyFont, 10 * scale, TEXT_SOFT);
+  y -= 14 * scale;
 
   page.drawLine({
-    start: { x: MARGIN_X + 8, y },
-    end: { x: PAGE_WIDTH - MARGIN_X - 8, y },
-    thickness: 0.8,
+    start: { x: BODY_X, y },
+    end: { x: PAGE_WIDTH - BODY_X, y },
+    thickness: 0.65,
     color: BORDER
   });
-  y -= 14 * scale;
+  y -= 16 * scale;
   certificationContent.paragraphs.slice(0, 2).forEach((paragraph) => {
     drawParagraph(paragraph, {
       font: bodyFont,
-      fontSize: 10.7 * scale,
-      lineHeight: 14.2 * scale,
+      fontSize: (compactIncomeMode ? 11 : 10.7) * scale,
+      lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
       color: TEXT,
-      justify: true
+      justify: true,
+      marginAfter: (compactIncomeMode ? 9 : 6) * scale
     });
   });
 
   if (certificationContent.showIncomeList && incomes.length) {
     drawSectionHeading("Conceptos de ingresos certificados");
     incomes.forEach(({ label, value }) => {
-      const labelLines = wrapText(label, bodyBold, 10.4 * scale, 232 * scale);
-      const valueLines = wrapText(String(value || ""), bodyFont, 10.2 * scale, 162 * scale);
+      const valueColumnWidth = 170 * scale;
+      const labelColumnWidth = contentWidth - valueColumnWidth - 22 * scale;
+      const labelLines = wrapText(label, bodyBold, 10.4 * scale, labelColumnWidth);
+      const valueLines = wrapText(String(value || ""), bodyFont, 10.2 * scale, valueColumnWidth);
       const rowLines = Math.max(labelLines.length, valueLines.length);
+      const valueColumnRight = PAGE_WIDTH - MARGIN_X;
 
       page.drawText("•", {
-        x: MARGIN_X,
+        x: BODY_X,
         y,
         size: 11.2 * scale,
         font: bodyBold,
@@ -580,7 +647,7 @@ export async function generateCertificationPdf(record = {}) {
 
       labelLines.forEach((line, index) => {
         page.drawText(line, {
-          x: MARGIN_X + 12 * scale,
+          x: BODY_X + 12 * scale,
           y: y - index * 11.8 * scale,
           size: 10.4 * scale,
           font: bodyBold,
@@ -589,8 +656,9 @@ export async function generateCertificationPdf(record = {}) {
       });
 
       valueLines.forEach((line, index) => {
+        const lineWidth = bodyFont.widthOfTextAtSize(line, 10.2 * scale);
         page.drawText(line, {
-          x: PAGE_WIDTH - MARGIN_X - 162 * scale,
+          x: (PAGE_WIDTH - BODY_X) - lineWidth,
           y: y - index * 11.8 * scale,
           size: 10.2 * scale,
           font: bodyFont,
@@ -605,28 +673,29 @@ export async function generateCertificationPdf(record = {}) {
 
   certificationContent.paragraphs.slice(2).forEach((paragraph, index) => {
     if (index === 0) {
-      drawSectionHeading("Ingresos mensuales certificados");
       drawParagraph(paragraph, {
         font: bodyBold,
-        fontSize: 10.8 * scale,
-        lineHeight: 14.4 * scale,
+        fontSize: (compactIncomeMode ? 11.1 : 10.8) * scale,
+        lineHeight: (compactIncomeMode ? 15.2 : 14.8) * scale,
         color: TEXT,
-        justify: false
+        justify: false,
+        marginAfter: (compactIncomeMode ? 11 : 8) * scale
       });
       return;
     }
 
     drawParagraph(paragraph, {
       font: bodyFont,
-      fontSize: 10.7 * scale,
-      lineHeight: 14.2 * scale,
+      fontSize: (compactIncomeMode ? 11 : 10.7) * scale,
+      lineHeight: (compactIncomeMode ? 15 : 14.2) * scale,
       color: TEXT,
-      justify: true
+      justify: true,
+      marginAfter: (compactIncomeMode ? 9 : 6) * scale
     });
   });
 
-  y = Math.max(y - 10 * scale, signatureBlockTopY + 14 * scale);
-  const signatureLineY = BOTTOM_MARGIN + 64 * scale;
+  y = Math.max(y - (compactIncomeMode ? 4 : 10) * scale, signatureBlockTopY + (compactIncomeMode ? 20 : 14) * scale);
+  const signatureLineY = BOTTOM_MARGIN + (compactIncomeMode ? 76 : 68) * scale;
 
   page.drawImage(signatureImage, {
     x: MARGIN_X,
@@ -637,36 +706,36 @@ export async function generateCertificationPdf(record = {}) {
 
   page.drawLine({
     start: { x: MARGIN_X, y: signatureLineY },
-    end: { x: MARGIN_X + 230 * scale, y: signatureLineY },
-    thickness: 1,
+    end: { x: MARGIN_X + (compactIncomeMode ? 264 : 248) * scale, y: signatureLineY },
+    thickness: 0.7,
     color: BORDER
   });
 
   page.drawText(profile.accountantName, {
     x: MARGIN_X,
-    y: signatureLineY - 20 * scale,
-    size: 11 * scale,
+    y: signatureLineY - 22 * scale,
+    size: (compactIncomeMode ? 11.2 : 11) * scale,
     font: bodyBold,
     color: ACCENT
   });
   page.drawText(profile.title, {
     x: MARGIN_X,
-    y: signatureLineY - 35 * scale,
-    size: 10 * scale,
+    y: signatureLineY - 38 * scale,
+    size: (compactIncomeMode ? 10.2 : 10) * scale,
     font: bodyFont,
     color: TEXT
   });
-  page.drawText(`C.C. No. ${profile.accountantDocumentNumber || "POR CONFIGURAR"}`, {
+  page.drawText(`C.C. No. ${certificationContent.formattedAccountantDocument}`, {
     x: MARGIN_X,
-    y: signatureLineY - 50 * scale,
-    size: 9.8 * scale,
+    y: signatureLineY - 54 * scale,
+    size: (compactIncomeMode ? 10 : 9.8) * scale,
     font: bodyFont,
     color: TEXT
   });
-  page.drawText(`Tarjeta Profesional No. ${profile.professionalCardNumber || "POR CONFIGURAR"}`, {
+  page.drawText(`Tarjeta Profesional No. ${certificationContent.formattedProfessionalCard}`, {
     x: MARGIN_X,
-    y: signatureLineY - 65 * scale,
-    size: 9.8 * scale,
+    y: signatureLineY - 70 * scale,
+    size: (compactIncomeMode ? 10 : 9.8) * scale,
     font: bodyFont,
     color: TEXT
   });
