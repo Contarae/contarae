@@ -802,10 +802,12 @@ export async function generateCertificationPdf(record = {}) {
     color: BORDER
   });
 
+  const accountantInfoStartY = signatureLineY - 40 * scale;
+  const accountantInfoStep = 16 * scale;
   drawCenteredColumnText(
     profile.accountantName,
     leftCenterX,
-    signatureLineY - 22 * scale,
+    accountantInfoStartY,
     (compactIncomeMode ? 11.2 : 11) * scale,
     bodyBold,
     ACCENT
@@ -813,7 +815,7 @@ export async function generateCertificationPdf(record = {}) {
   drawCenteredColumnText(
     profile.title,
     leftCenterX,
-    signatureLineY - 38 * scale,
+    accountantInfoStartY - accountantInfoStep,
     (compactIncomeMode ? 10.2 : 10) * scale,
     bodyFont,
     TEXT
@@ -821,7 +823,7 @@ export async function generateCertificationPdf(record = {}) {
   drawCenteredColumnText(
     `C.C. No. ${certificationContent.formattedAccountantDocument}`,
     leftCenterX,
-    signatureLineY - 54 * scale,
+    accountantInfoStartY - accountantInfoStep * 2,
     (compactIncomeMode ? 10 : 9.8) * scale,
     bodyFont,
     TEXT
@@ -829,7 +831,7 @@ export async function generateCertificationPdf(record = {}) {
   drawCenteredColumnText(
     `Tarjeta Profesional No. ${certificationContent.formattedProfessionalCard}`,
     leftCenterX,
-    signatureLineY - 70 * scale,
+    accountantInfoStartY - accountantInfoStep * 3,
     (compactIncomeMode ? 10 : 9.8) * scale,
     bodyFont,
     TEXT
