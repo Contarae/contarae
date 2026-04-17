@@ -9,7 +9,7 @@ const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 const fmtI=v=>{const n=v.replace(/\D/g,"");return n?"$ "+fm(parseInt(n)):""};
 const pN=v=>parseInt(v.replace(/\D/g,""))||0;
-const gT=t=>{if(t<=2e6)return 80000;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
+const gT=t=>{if(t<=2e6)return 1500;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
 const disc=v=>Math.round(v/.75);
 const SUPPORT_MAX_FILES=5;
 const SUPPORT_MAX_BYTES=6*1024*1024;
