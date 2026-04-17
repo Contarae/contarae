@@ -1,0 +1,23 @@
+{
+  "titulo": "5 errores al presentar la declaracion de renta",
+  "copy_facebook": "Presentar la declaracion de renta sin revisar la informacion puede salir caro. Estos son 5 errores comunes que conviene evitar antes de enviarla.\n\nContenido informativo. No reemplaza asesoria profesional personalizada.",
+  "copy_instagram": "Antes de presentar tu declaracion de renta, revisa estos 5 errores comunes.\n\nGuardar soportes, validar ingresos y revisar deducciones puede evitar correcciones innecesarias.\n\nContenido informativo. No reemplaza asesoria profesional personalizada.",
+  "copy_tiktok": "5 errores comunes en la declaracion de renta que puedes evitar antes de presentarla.",
+  "guion_video": "Gancho: Antes de declarar renta, revisa esto.\nPunto 1: No validar ingresos reportados por terceros.\nPunto 2: Incluir deducciones sin soporte.\nPunto 3: Dejar la declaracion para ultima hora.\nPunto 4: No revisar informacion exogena.\nPunto 5: No pedir ayuda cuando hay dudas.\nCierre: En CONTARAE te ayudamos a revisar tu caso.",
+  "texto_carrusel": [
+    {
+      "slide": 1,
+      "titulo": "5 errores en la declaracion de renta",
+      "texto": "Evitalos antes de presentar tu declaracion."
+    },
+    {
+      "slide": 2,
+      "titulo": "1. No revisar ingresos",
+      "texto": "Compara tus ingresos con la informacion disponible y tus soportes."
+    }
+  ],
+  "hashtags": "#CONTARAE #DeclaracionDeRenta #DIAN #Impuestos #Contabilidad #Finanzas",
+  "fuente_legal": "no aplica",
+  "requiere_revision_tributaria": "si",
+  "notas_revision": "Validar si se mencionaran fechas, topes o requisitos especificos."
+}
