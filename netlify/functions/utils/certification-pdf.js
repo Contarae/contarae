@@ -606,6 +606,34 @@ export function buildCertificationNarrative(record = {}) {
     segments: normalizeRichSegments(segments),
     ...extra
   });
+  const buildInlineEventualSummarySegments = (rows = []) => {
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const segments = [];
+
+    normalizedRows.forEach((row, index) => {
+      if (index === 0) {
+        segments.push(
+          `De manera adicional, durante el período objeto de certificación se identificaron ingresos eventuales correspondientes a ${row.concept} por valor de `,
+          highlightedAmount(row.numericValue)
+        );
+        return;
+      }
+
+      if (index === normalizedRows.length - 1) {
+        segments.push(
+          normalizedRows.length === 2 ? " y a " : ", y a ",
+          row.concept,
+          " por valor de ",
+          highlightedAmount(row.numericValue)
+        );
+        return;
+      }
+
+      segments.push(", a ", row.concept, " por valor de ", highlightedAmount(row.numericValue));
+    });
+
+    return segments;
+  };
   const blocks = [
     paragraph(
       `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument} y titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que, con fundamento en la información suministrada y en los documentos soporte puestos a mi disposición por ${customerReference}, identificado(a) con ${formattedCustomerDocument}, se realizó la validación documental de los ingresos reportados para el período correspondiente a ${periodInMonths}.`
@@ -692,35 +720,13 @@ export function buildCertificationNarrative(record = {}) {
           "."
         ])
       );
-    } else if (eventualRows.length === 2) {
+    } else if (eventualRows.length <= 3) {
       blocks.push(
         paragraph([
-          `De manera adicional, durante el período objeto de certificación se identificó un ingreso eventual por concepto de ${eventualRows[0].concept}, por valor de `,
-          highlightedAmount(eventualRows[0].numericValue),
-          "."
-        ])
-      );
-      blocks.push(
-        paragraph([
-          `Así mismo, se identificó un ingreso eventual por concepto de ${eventualRows[1].concept}, por valor de `,
-          highlightedAmount(eventualRows[1].numericValue),
-          "."
-        ])
-      );
-      blocks.push(
-        paragraph(
-          "Ambos ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
-        )
-      );
-      blocks.push(
-        paragraph([
-          "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
-          highlightedAmount(totalRecurringPeriod),
-          ", junto con los ingresos eventuales identificados durante dicho lapso, cuya sumatoria asciende a ",
+          ...buildInlineEventualSummarySegments(eventualRows),
+          ". En conjunto, la sumatoria de dichos ingresos asciende a ",
           highlightedAmount(totalEventualPeriod),
-          ", el total global de ingresos observado para el período objeto de certificación asciende a ",
-          highlightedAmount(totalGlobalPeriod),
-          "."
+          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
         ])
       );
     } else {
@@ -738,23 +744,26 @@ export function buildCertificationNarrative(record = {}) {
       });
       blocks.push(
         paragraph([
-          "Los ingresos eventuales antes relacionados corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente. La sumatoria de dichos ingresos asciende a ",
+          "La sumatoria de los ingresos eventuales antes relacionados asciende a ",
           highlightedAmount(totalEventualPeriod),
-          "."
-        ])
-      );
-      blocks.push(
-        paragraph([
-          "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
-          highlightedAmount(totalRecurringPeriod),
-          ", junto con los ingresos eventuales identificados durante dicho lapso, cuya sumatoria asciende a ",
-          highlightedAmount(totalEventualPeriod),
-          ", el total global de ingresos observado para el período objeto de certificación asciende a ",
-          highlightedAmount(totalGlobalPeriod),
-          "."
+          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
         ])
       );
     }
+
+    blocks.push(
+      paragraph([
+        "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
+        highlightedAmount(totalRecurringPeriod),
+        ", junto con ",
+        eventualRows.length === 1 ? "el ingreso eventual identificado durante dicho lapso" : "los ingresos eventuales identificados durante dicho lapso",
+        eventualRows.length === 1 ? ", por valor de " : ", cuya sumatoria asciende a ",
+        highlightedAmount(totalEventualPeriod),
+        ", el total global de ingresos observado para el período objeto de certificación asciende a ",
+        highlightedAmount(totalGlobalPeriod),
+        "."
+      ])
+    );
   }
 
   blocks.push(
