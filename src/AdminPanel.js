@@ -220,6 +220,10 @@ function createEmptyEventualIncome() {
   return { concept: "", value: "" };
 }
 
+function isCompleteEventualIncomeRow(row = {}) {
+  return hasMeaningfulCurrencyValue(row.value) && String(row.concept || "").trim();
+}
+
 function parseEventualIncomeRows(rawValue) {
   try {
     const parsed = JSON.parse(String(rawValue || "[]"));
@@ -228,8 +232,7 @@ function parseEventualIncomeRows(rawValue) {
       .map((row) => ({
         concept: String(row?.concept || "").trim(),
         value: normalizeCurrencyInput(row?.value || row?.amount || "")
-      }))
-      .filter((row) => hasMeaningfulCurrencyValue(row.value) || row.concept);
+      }));
   } catch {
     return [];
   }
@@ -242,16 +245,13 @@ function serializeEventualIncomeRows(rows = []) {
         concept: String(row?.concept || "").trim(),
         value: normalizeCurrencyInput(row?.value || row?.amount || "")
       }))
-      .filter((row) => hasMeaningfulCurrencyValue(row.value) || row.concept)
   );
 }
 
 function recalculateCertificateDerivedFields(values = {}) {
   const monthlyTotal = CERTIFICATE_CURRENCY_FIELDS.reduce((sum, field) => sum + parseCurrency(values[field]), 0);
   const months = Number(String(values.periodo_meses || "").replace(/\D/g, "")) || 0;
-  const eventualRows = parseEventualIncomeRows(values.ingresos_eventuales_json).filter(
-    (row) => hasMeaningfulCurrencyValue(row.value) && row.concept
-  );
+  const eventualRows = parseEventualIncomeRows(values.ingresos_eventuales_json).filter(isCompleteEventualIncomeRow);
   const eventualTotal = eventualRows.reduce((sum, row) => sum + parseCurrency(row.value), 0);
   const recurringPeriodTotal = monthlyTotal * months;
   const globalPeriodTotal = recurringPeriodTotal + eventualTotal;
@@ -506,9 +506,13 @@ export default function AdminPanel() {
     () => buildCertificateIncomePreview(certificateDraft),
     [certificateDraft]
   );
-  const certificateEventualPreview = useMemo(
+  const certificateEventualEditorRows = useMemo(
     () => parseEventualIncomeRows(certificateDraft.ingresos_eventuales_json),
     [certificateDraft.ingresos_eventuales_json]
+  );
+  const certificateEventualPreview = useMemo(
+    () => certificateEventualEditorRows.filter(isCompleteEventualIncomeRow),
+    [certificateEventualEditorRows]
   );
   const lockedStatuses = new Set(["enviada", "pago_no_confirmado", "rechazada"]);
   const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
@@ -1526,7 +1530,7 @@ export default function AdminPanel() {
                                   recalculateCertificateDerivedFields({
                                     ...current,
                                     ingresos_eventuales_json: serializeEventualIncomeRows([
-                                      ...parseEventualIncomeRows(current.ingresos_eventuales_json),
+                                      ...certificateEventualEditorRows,
                                       createEmptyEventualIncome()
                                     ])
                                   })
@@ -1547,7 +1551,7 @@ export default function AdminPanel() {
                             </button>
                           </div>
                           <div style={{ display: "grid", gap: 10 }}>
-                            {(certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((row, index) => (
+                            {(certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).map((row, index) => (
                               <div key={index} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 14, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
                                   <input
@@ -1556,7 +1560,7 @@ export default function AdminPanel() {
                                     placeholder={`Valor eventual #${index + 1}`}
                                     value={row.value}
                                     onChange={(event) => {
-                                      const nextRows = (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((currentRow, rowIndex) =>
+                                      const nextRows = (certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).map((currentRow, rowIndex) =>
                                         rowIndex === index
                                           ? { ...currentRow, value: normalizeCurrencyInput(event.target.value) }
                                           : currentRow
@@ -1575,7 +1579,7 @@ export default function AdminPanel() {
                                     placeholder={`Concepto eventual #${index + 1}`}
                                     value={row.concept}
                                     onChange={(event) => {
-                                      const nextRows = (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((currentRow, rowIndex) =>
+                                      const nextRows = (certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).map((currentRow, rowIndex) =>
                                         rowIndex === index
                                           ? { ...currentRow, concept: event.target.value }
                                           : currentRow
@@ -1595,9 +1599,9 @@ export default function AdminPanel() {
                                   </div>
                                   <button
                                     type="button"
-                                    disabled={!pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1}
+                                    disabled={!pdfEditMode || editLocked || (certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).length === 1}
                                     onClick={() => {
-                                      const currentRows = certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()];
+                                      const currentRows = certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()];
                                       const nextRows = currentRows.filter((_, rowIndex) => rowIndex !== index);
                                       setCertificateDraft((current) =>
                                         recalculateCertificateDerivedFields({
@@ -1610,11 +1614,11 @@ export default function AdminPanel() {
                                       padding: "9px 12px",
                                       borderRadius: 12,
                                       border: "1px solid rgba(220,38,38,.14)",
-                                      background: !pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1 ? "#E2E8F0" : "rgba(220,38,38,.06)",
-                                      color: !pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1 ? "#94A3B8" : "#DC2626",
+                                      background: !pdfEditMode || editLocked || (certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).length === 1 ? "#E2E8F0" : "rgba(220,38,38,.06)",
+                                      color: !pdfEditMode || editLocked || (certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).length === 1 ? "#94A3B8" : "#DC2626",
                                       fontFamily: F,
                                       fontWeight: 800,
-                                      cursor: !pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1 ? "not-allowed" : "pointer"
+                                      cursor: !pdfEditMode || editLocked || (certificateEventualEditorRows.length ? certificateEventualEditorRows : [createEmptyEventualIncome()]).length === 1 ? "not-allowed" : "pointer"
                                     }}
                                   >
                                     Quitar
@@ -1680,18 +1684,22 @@ export default function AdminPanel() {
                                 {certificateDraft.total_ingresos_periodo || "Sin total definido"}
                               </div>
                             </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
-                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total eventuales del período</div>
-                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
-                                {certificateDraft.total_ingresos_eventuales || "$ 0"}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
-                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total global del período</div>
-                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
-                                {certificateDraft.total_ingresos_global_periodo || "Sin total definido"}
-                              </div>
-                            </div>
+                            {certificateEventualPreview.length ? (
+                              <>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
+                                  <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total eventuales del período</div>
+                                  <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
+                                    {certificateDraft.total_ingresos_eventuales || "$ 0"}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
+                                  <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total global del período</div>
+                                  <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
+                                    {certificateDraft.total_ingresos_global_periodo || "Sin total definido"}
+                                  </div>
+                                </div>
+                              </>
+                            ) : null}
                           </div>
                         ) : (
                           <div style={{ fontFamily: F, color: "#64748B", fontSize: 14, lineHeight: 1.8 }}>

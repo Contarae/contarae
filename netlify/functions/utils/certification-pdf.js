@@ -95,6 +95,102 @@ function wrapText(text, font, fontSize, maxWidth) {
   return lines.length ? lines : [""];
 }
 
+function normalizeRichSegments(segments = []) {
+  const normalized = [];
+  const queue = Array.isArray(segments) ? segments : [segments];
+
+  queue.flat(Infinity).forEach((segment) => {
+    if (segment == null) return;
+    const payload =
+      typeof segment === "string"
+        ? { text: segment, bold: false }
+        : {
+            text: String(segment.text || ""),
+            bold: Boolean(segment.bold)
+          };
+
+    if (!payload.text) return;
+
+    const previous = normalized[normalized.length - 1];
+    if (previous && previous.bold === payload.bold) {
+      previous.text += payload.text;
+      return;
+    }
+
+    normalized.push(payload);
+  });
+
+  return normalized;
+}
+
+function tokenizeRichSegments(segments = []) {
+  const tokens = [];
+
+  normalizeRichSegments(segments).forEach((segment) => {
+    const parts = String(segment.text || "").match(/\S+|\s+/g) || [];
+    parts.forEach((part) => {
+      const isSpace = /\s+/.test(part);
+      if (isSpace) {
+        if (!tokens.length || tokens[tokens.length - 1].isSpace) return;
+        tokens.push({ text: " ", bold: segment.bold, isSpace: true });
+        return;
+      }
+
+      tokens.push({ text: part, bold: segment.bold, isSpace: false });
+    });
+  });
+
+  while (tokens[0]?.isSpace) tokens.shift();
+  while (tokens[tokens.length - 1]?.isSpace) tokens.pop();
+
+  return tokens;
+}
+
+function wrapRichTextSegments(segments, regularFont, boldFont, fontSize, maxWidth) {
+  const tokens = tokenizeRichSegments(segments);
+  if (!tokens.length) return [[{ text: "", bold: false, isSpace: false, width: 0, font: regularFont }]];
+
+  const lines = [];
+  let currentLine = [];
+  let currentWidth = 0;
+
+  const pushCurrentLine = () => {
+    while (currentLine[currentLine.length - 1]?.isSpace) {
+      currentWidth -= currentLine[currentLine.length - 1].width;
+      currentLine.pop();
+    }
+    if (currentLine.length) {
+      lines.push(currentLine);
+    }
+    currentLine = [];
+    currentWidth = 0;
+  };
+
+  tokens.forEach((token) => {
+    const font = token.bold ? boldFont : regularFont;
+    const width = font.widthOfTextAtSize(token.text, fontSize);
+    const enrichedToken = { ...token, width, font };
+
+    if (token.isSpace) {
+      if (!currentLine.length || currentLine[currentLine.length - 1]?.isSpace) return;
+      currentLine.push(enrichedToken);
+      currentWidth += width;
+      return;
+    }
+
+    if (currentLine.length && currentWidth + width > maxWidth) {
+      pushCurrentLine();
+    }
+
+    currentLine.push(enrichedToken);
+    currentWidth += width;
+  });
+
+  pushCurrentLine();
+
+  return lines.length ? lines : [[{ text: "", bold: false, isSpace: false, width: 0, font: regularFont }]];
+}
+
 function drawJustifiedLine(page, line, x, y, width, font, fontSize, color) {
   const words = String(line || "").split(/\s+/).filter(Boolean);
   if (words.length <= 1) {
@@ -281,6 +377,16 @@ function buildAmountInLetters(value) {
   }).format(integerAmount);
 
   return `${amountWords} PESOS M/CTE ($${formattedAmount})`;
+}
+
+function buildAmountWordsOnly(value) {
+  const amount = parseCurrency(value);
+  const integerAmount = Math.max(0, Math.floor(amount));
+  return `${apocopateSpanishNumber(numberToSpanishWords(integerAmount))} PESOS M/CTE`;
+}
+
+function buildAmountDisplay(value) {
+  return `${formatCurrencyCOP(value)} (${buildAmountWordsOnly(value)})`;
 }
 
 function formatCurrencyCOP(value, { minimumFractionDigits = 0, maximumFractionDigits = 0 } = {}) {
@@ -493,32 +599,51 @@ export function buildCertificationNarrative(record = {}) {
   const formattedAccountantDocument = formatDocumentNumber(profile.accountantDocumentNumber) || "POR CONFIGURAR";
   const formattedProfessionalCard = formatProfessionalCardNumber(profile.professionalCardNumber) || "POR CONFIGURAR";
   const customerReference = String(formData.nombre || "").trim() || "la parte interesada";
+  const highlightedAmount = (value) => ({ text: buildAmountDisplay(value), bold: true });
+  const paragraph = (segments, extra = {}) => ({
+    type: "paragraph",
+    emphasis: "normal",
+    segments: normalizeRichSegments(segments),
+    ...extra
+  });
   const blocks = [
-    {
-      type: "paragraph",
-      emphasis: "normal",
-      text: `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument}, titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que revisé la información suministrada y los documentos soporte aportados por ${customerReference}, identificado(a) con ${formattedCustomerDocument}, con el propósito de evaluar la razonabilidad de los ingresos reportados durante el período certificado de ${periodInMonths}.`
-    }
+    paragraph(
+      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument} y titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que, con fundamento en la información suministrada y en los documentos soporte puestos a mi disposición por ${customerReference}, identificado(a) con ${formattedCustomerDocument}, se realizó la validación documental de los ingresos reportados para el período correspondiente a ${periodInMonths}.`
+    )
   ];
 
   if (recurringRows.length === 1) {
-    blocks.push({
-      type: "paragraph",
-      emphasis: "normal",
-      text: `Con fundamento en la documentación examinada, se establece que ${customerReference} acredita ingresos mensuales recurrentes por concepto de ${recurringRows[0].displayLabel}.`
-    });
+    blocks.push(
+      paragraph([
+        `Como resultado de dicha validación, se estableció que ${customerReference} acredita ingresos mensuales recurrentes por concepto de ${recurringRows[0].displayLabel}, por valor de `,
+        highlightedAmount(recurringRows[0].numericValue),
+        `; en consecuencia, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes acreditados asciende a `,
+        highlightedAmount(totalRecurringPeriod),
+        "."
+      ])
+    );
   } else if (recurringRows.length === 2) {
-    blocks.push({
-      type: "paragraph",
-      emphasis: "normal",
-      text: `Con fundamento en la documentación examinada, se establece que ${customerReference} acredita ingresos mensuales recurrentes derivados de ${recurringRows[0].displayLabel} por valor de ${formatCurrencyCOP(recurringRows[0].numericValue)} y de ${recurringRows[1].displayLabel} por valor de ${formatCurrencyCOP(recurringRows[1].numericValue)}.`
-    });
+    blocks.push(
+      paragraph([
+        `Como resultado de dicha validación, se estableció que ${customerReference} acredita ingresos mensuales recurrentes derivados de ${recurringRows[0].displayLabel} por valor de `,
+        highlightedAmount(recurringRows[0].numericValue),
+        " y de ",
+        recurringRows[1].displayLabel,
+        " por valor de ",
+        highlightedAmount(recurringRows[1].numericValue),
+        "; en consecuencia, el total mensual recurrente acreditado asciende a ",
+        highlightedAmount(totalMonthlyRecurring),
+        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes acreditados asciende a `,
+        highlightedAmount(totalRecurringPeriod),
+        "."
+      ])
+    );
   } else if (recurringRows.length > 2) {
-    blocks.push({
-      type: "paragraph",
-      emphasis: "normal",
-      text: `Con fundamento en la documentación examinada, se establece que ${customerReference} acredita ingresos mensuales recurrentes derivados de los conceptos que se relacionan a continuación:`
-    });
+    blocks.push(
+      paragraph(
+        `Como resultado de dicha validación, se estableció que ${customerReference} acredita ingresos mensuales recurrentes derivados de los siguientes conceptos:`
+      )
+    );
     blocks.push({
       type: "list",
       variant: "recurring",
@@ -528,43 +653,58 @@ export function buildCertificationNarrative(record = {}) {
         value: formatCurrencyCOP(row.numericValue)
       }))
     });
+    blocks.push(
+      paragraph([
+        "En consecuencia, el total mensual recurrente acreditado asciende a ",
+        highlightedAmount(totalMonthlyRecurring),
+        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes acreditados asciende a `,
+        highlightedAmount(totalRecurringPeriod),
+        "."
+      ])
+    );
+  } else {
+    blocks.push(
+      paragraph([
+        `Como resultado de dicha validación, no se acreditaron ingresos mensuales recurrentes para ${customerReference}; en consecuencia, el total de los ingresos recurrentes acreditados para el período objeto de certificación corresponde a `,
+        highlightedAmount(totalRecurringPeriod),
+        "."
+      ])
+    );
   }
 
-  blocks.push({
-    type: "paragraph",
-    emphasis: "highlight",
-    text: `En consecuencia, el valor mensual recurrente certificado asciende a la suma de ${buildAmountInLetters(totalMonthlyRecurring)}.`
-  });
-  blocks.push({
-    type: "paragraph",
-    emphasis: "highlight",
-    text: `En ese sentido, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes certificados asciende a la suma de ${buildAmountInLetters(totalRecurringPeriod)}.`
-  });
-
   if (eventualRows.length) {
-    blocks.push({
-      type: "heading",
-      text: "Ingresos eventuales del período certificado"
-    });
-
     if (eventualRows.length === 1) {
-      blocks.push({
-        type: "paragraph",
-        emphasis: "normal",
-        text: `Adicionalmente, durante el período objeto de certificación se identificó un ingreso eventual por valor de ${formatCurrencyCOP(eventualRows[0].numericValue)}, por concepto de ${eventualRows[0].concept}.`
-      });
+      blocks.push(
+        paragraph([
+          `De manera adicional, durante el período objeto de certificación se identificó un ingreso eventual por concepto de ${eventualRows[0].concept}, por valor de `,
+          highlightedAmount(eventualRows[0].numericValue),
+          ". Dicho ingreso corresponde a un hecho económico de carácter no ordinario, no fijo y no periódico; en consecuencia, no integra el ingreso mensual recurrente acreditado, aunque sí se considera dentro del análisis del período por encontrarse soportado documentalmente. Por lo anterior, el total de ingresos eventuales acreditados durante el período asciende a ",
+          highlightedAmount(totalEventualPeriod),
+          " y el total global de ingresos acreditados durante el período objeto de certificación asciende a ",
+          highlightedAmount(totalGlobalPeriod),
+          "."
+        ])
+      );
     } else if (eventualRows.length === 2) {
-      blocks.push({
-        type: "paragraph",
-        emphasis: "normal",
-        text: `Adicionalmente, durante el período objeto de certificación se identificaron ingresos eventuales correspondientes a ${eventualRows[0].concept} por valor de ${formatCurrencyCOP(eventualRows[0].numericValue)} y a ${eventualRows[1].concept} por valor de ${formatCurrencyCOP(eventualRows[1].numericValue)}.`
-      });
+      blocks.push(
+        paragraph([
+          `De manera adicional, durante el período objeto de certificación se identificaron ingresos eventuales correspondientes a ${eventualRows[0].concept} por valor de `,
+          highlightedAmount(eventualRows[0].numericValue),
+          " y a ",
+          eventualRows[1].concept,
+          " por valor de ",
+          highlightedAmount(eventualRows[1].numericValue),
+          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente acreditado, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente. Por lo anterior, el total de ingresos eventuales acreditados durante el período asciende a ",
+          highlightedAmount(totalEventualPeriod),
+          " y el total global de ingresos acreditados durante el período objeto de certificación asciende a ",
+          highlightedAmount(totalGlobalPeriod),
+          "."
+        ])
+      );
     } else {
-      blocks.push({
-        type: "paragraph",
-        emphasis: "normal",
-        text: "Adicionalmente, durante el período objeto de certificación se identificaron los siguientes ingresos eventuales:"
-      });
+      blocks.push(
+        paragraph("De manera adicional, durante el período objeto de certificación se identificaron los siguientes ingresos eventuales:")
+      );
       blocks.push({
         type: "list",
         variant: "eventual",
@@ -574,41 +714,35 @@ export function buildCertificationNarrative(record = {}) {
           value: formatCurrencyCOP(row.numericValue)
         }))
       });
+      blocks.push(
+        paragraph([
+          "Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente acreditado, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente. Por lo anterior, el total de ingresos eventuales acreditados durante el período asciende a ",
+          highlightedAmount(totalEventualPeriod),
+          " y el total global de ingresos acreditados durante el período objeto de certificación asciende a ",
+          highlightedAmount(totalGlobalPeriod),
+          "."
+        ])
+      );
     }
-
-    blocks.push({
-      type: "paragraph",
-      emphasis: "normal",
-      text:
-        eventualRows.length === 1
-          ? "Se deja expresa constancia de que este valor corresponde a un hecho económico no ordinario, no fijo y no periódico, razón por la cual no hace parte del ingreso mensual recurrente certificado. No obstante, se incluye dentro del análisis del período por encontrarse soportado documentalmente y haber sido percibido dentro del lapso objeto de certificación."
-          : `Se deja expresa constancia de que ${eventualRows.length === 2 ? "dichos valores" : "los anteriores valores"} corresponden a hechos económicos no ordinarios, no fijos y no periódicos, razón por la cual no hacen parte del ingreso mensual recurrente certificado. No obstante, dichos ingresos se incluyen dentro del análisis del período por encontrarse soportados documentalmente y haber sido percibidos dentro del lapso objeto de certificación.`
-    });
-    blocks.push({
-      type: "paragraph",
-      emphasis: "highlight",
-      text: `Por lo anterior, el total de los ingresos eventuales acreditados durante el período certificado asciende a la suma de ${buildAmountInLetters(totalEventualPeriod)}.`
-    });
-    blocks.push({
-      type: "paragraph",
-      emphasis: "highlight",
-      text: `En consecuencia, el total global de ingresos acreditados durante el período certificado, sumando ingresos recurrentes e ingresos eventuales, asciende a la suma de ${buildAmountInLetters(totalGlobalPeriod)}.`
-    });
   }
 
-  blocks.push({
-    type: "paragraph",
-    emphasis: "normal",
-    text: destination
-      ? `La presente certificación se expide a solicitud de la parte interesada para ser presentada ante ${destination}, con base exclusiva en los documentos y soportes puestos a disposición para su análisis. En tal sentido, no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada.`
-      : "La presente certificación se expide a solicitud de la parte interesada, con base exclusiva en los documentos y soportes puestos a disposición para su análisis. En tal sentido, no constituye auditoría integral, revisoría fiscal ni dictamen sobre estados financieros, sino una constancia profesional emitida dentro del alcance propio de la revisión efectuada."
-  });
-  blocks.push({
-    type: "paragraph",
-    emphasis: "normal",
-    text: `Se expide en ${profile.city}, el ${formatLongDate(new Date())}.`,
-    justify: false
-  });
+  blocks.push(
+    paragraph(
+      destination
+        ? `La presente certificación se expide a solicitud de la parte interesada para ser presentada ante ${destination}, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada.`
+        : "La presente certificación se expide a solicitud de la parte interesada, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada."
+    )
+  );
+  blocks.push(
+    paragraph(
+      "Esta certificación se emite en ejercicio de las facultades que la Ley 43 de 1990 reconoce al Contador Público para dar fe pública en los actos propios de su profesión, con observancia de los principios de veracidad, claridad, precisión y buena fe que rigen la expedición de certificaciones profesionales."
+    )
+  );
+  blocks.push(
+    paragraph(`Se expide en ${profile.city}, el ${formatLongDate(new Date())}.`, {
+      marginAfter: 8
+    })
+  );
 
   return {
     blocks,
@@ -647,6 +781,7 @@ export async function generateCertificationPdf(record = {}) {
   const baseQrDims = qrImage.scale(Math.min(0.22, 66 / qrImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   const footerBottomY = 38;
+  const minimumFooterGap = (currentScale) => 28 * currentScale;
   let scale = 1;
   const fitSafetyPadding = 16;
 
@@ -678,8 +813,8 @@ export async function generateCertificationPdf(record = {}) {
     let height = 0;
 
     items.forEach(({ label, value }) => {
-      const labelLines = wrapText(String(label || ""), bodyBold, 10.35 * currentScale, labelColumnWidth);
-      const valueLines = wrapText(String(value || ""), bodyFont, 10.1 * currentScale, valueColumnWidth);
+      const labelLines = wrapText(String(label || ""), bodyFont, 10.25 * currentScale, labelColumnWidth);
+      const valueLines = wrapText(String(value || ""), bodyBold, 10.15 * currentScale, valueColumnWidth);
       const rowLines = Math.max(labelLines.length, valueLines.length);
       height += rowLines * 11.7 * currentScale + 2.5 * currentScale;
     });
@@ -715,14 +850,23 @@ export async function generateCertificationPdf(record = {}) {
       }
 
       const style = paragraphStyleFor(currentScale, block.emphasis, compactMode);
-      const lines = wrapText(block.text, style.font, style.fontSize, blockWidth);
-      height += lines.length * style.lineHeight + style.marginAfter;
+      const lines = wrapRichTextSegments(
+        block.segments || block.text || "",
+        style.font,
+        bodyBold,
+        style.fontSize,
+        blockWidth
+      );
+      height += lines.length * style.lineHeight + ((block.marginAfter ?? style.marginAfter));
     });
 
     return height;
   };
 
-  while (estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + fitSafetyPadding > availableHeight && scale > 0.42) {
+  while (
+    estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + minimumFooterGap(scale) + fitSafetyPadding > availableHeight &&
+    scale > 0.42
+  ) {
     scale -= scale > 0.68 ? 0.04 : 0.02;
   }
 
@@ -796,20 +940,62 @@ export async function generateCertificationPdf(record = {}) {
     });
   };
 
-  const drawParagraph = (text, { font, fontSize, lineHeight, color = TEXT, justify = true, marginAfter = 6 * scale }) => {
-    const lines = wrapText(text, font, fontSize, contentWidth);
-    lines.forEach((line, index) => {
+  const drawRichLine = (tokens, x, yPos, fontSize, color) => {
+    let cursor = x;
+    tokens.forEach((token) => {
+      if (token.isSpace) {
+        cursor += token.width;
+        return;
+      }
+
+      page.drawText(token.text, {
+        x: cursor,
+        y: yPos,
+        size: fontSize,
+        font: token.font,
+        color
+      });
+      cursor += token.width;
+    });
+  };
+
+  const drawJustifiedRichLine = (tokens, x, yPos, width, fontSize, color) => {
+    const wordsWidth = tokens.reduce((sum, token) => sum + (token.isSpace ? 0 : token.width), 0);
+    const gapCount = tokens.filter((token) => token.isSpace).length;
+
+    if (!gapCount) {
+      drawRichLine(tokens, x, yPos, fontSize, color);
+      return;
+    }
+
+    const distributedSpace = (width - wordsWidth) / gapCount;
+    let cursor = x;
+
+    tokens.forEach((token) => {
+      if (token.isSpace) {
+        cursor += distributedSpace;
+        return;
+      }
+
+      page.drawText(token.text, {
+        x: cursor,
+        y: yPos,
+        size: fontSize,
+        font: token.font,
+        color
+      });
+      cursor += token.width;
+    });
+  };
+
+  const drawParagraph = (segments, { font, fontSize, lineHeight, color = TEXT, justify = true, marginAfter = 6 * scale }) => {
+    const lines = wrapRichTextSegments(segments, font, bodyBold, fontSize, contentWidth);
+    lines.forEach((lineTokens, index) => {
       const isLastLine = index === lines.length - 1;
-      if (justify && !isLastLine && line.includes(" ")) {
-        drawJustifiedLine(page, line, BODY_X, y, contentWidth, font, fontSize, color);
+      if (justify && !isLastLine && lineTokens.some((token) => token.isSpace)) {
+        drawJustifiedRichLine(lineTokens, BODY_X, y, contentWidth, fontSize, color);
       } else {
-        page.drawText(line, {
-          x: BODY_X,
-          y,
-          size: fontSize,
-          font,
-          color
-        });
+        drawRichLine(lineTokens, BODY_X, y, fontSize, color);
       }
       y -= lineHeight;
     });
@@ -821,8 +1007,8 @@ export async function generateCertificationPdf(record = {}) {
     const labelColumnWidth = contentWidth - valueColumnWidth - 22 * scale;
 
     items.forEach(({ label, value }) => {
-      const labelLines = wrapText(String(label || ""), bodyBold, 10.35 * scale, labelColumnWidth);
-      const valueLines = wrapText(String(value || ""), bodyFont, 10.1 * scale, valueColumnWidth);
+      const labelLines = wrapText(String(label || ""), bodyFont, 10.25 * scale, labelColumnWidth);
+      const valueLines = wrapText(String(value || ""), bodyBold, 10.15 * scale, valueColumnWidth);
       const rowLines = Math.max(labelLines.length, valueLines.length);
 
       page.drawText("•", {
@@ -837,19 +1023,19 @@ export async function generateCertificationPdf(record = {}) {
         page.drawText(line, {
           x: BODY_X + 12 * scale,
           y: y - index * 11.7 * scale,
-          size: 10.4 * scale,
-          font: bodyBold,
-          color: ACCENT
+          size: 10.25 * scale,
+          font: bodyFont,
+          color: TEXT
         });
       });
 
       valueLines.forEach((line, index) => {
-        const lineWidth = bodyFont.widthOfTextAtSize(line, 10.1 * scale);
+        const lineWidth = bodyBold.widthOfTextAtSize(line, 10.15 * scale);
         page.drawText(line, {
           x: PAGE_WIDTH - BODY_X - lineWidth,
           y: y - index * 11.7 * scale,
-          size: 10.1 * scale,
-          font: bodyFont,
+          size: 10.15 * scale,
+          font: bodyBold,
           color: TEXT
         });
       });
@@ -894,17 +1080,17 @@ export async function generateCertificationPdf(record = {}) {
     }
 
     const style = paragraphStyleFor(scale, block.emphasis, compactIncomeMode);
-    drawParagraph(block.text, {
+    drawParagraph(block.segments || block.text || "", {
       font: style.font,
       fontSize: style.fontSize,
       lineHeight: style.lineHeight,
       color: TEXT,
       justify: block.justify !== false,
-      marginAfter: style.marginAfter
+      marginAfter: block.marginAfter ?? style.marginAfter
     });
   });
 
-  y = Math.max(y - 6 * scale, signatureBlockTopY + 8 * scale);
+  y = Math.max(y - 4 * scale, signatureBlockTopY + minimumFooterGap(scale));
   const footerTopY = footerBottomY + estimateSignatureBlockHeight(scale) - 12 * scale;
   const footerGap = 28 * scale;
   const leftColumnWidth = (contentWidth - footerGap) * 0.56;
