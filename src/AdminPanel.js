@@ -1548,7 +1548,7 @@ export default function AdminPanel() {
                           </div>
                           <div style={{ display: "grid", gap: 10 }}>
                             {(certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((row, index) => (
-                              <div key={`${index}-${row.concept}`} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 14, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                              <div key={index} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 14, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
                                   <input
                                     disabled={!pdfEditMode || editLocked}
