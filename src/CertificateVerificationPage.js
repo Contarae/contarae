@@ -371,8 +371,12 @@ export default function CertificateVerificationPage() {
                     ["Período", result.certificate.period || "No especificado"],
                     ["Ingreso mensual recurrente", result.certificate.totalMonthlyIncome || ""],
                     ["Total recurrente del período", result.certificate.totalRecurringPeriodIncome || ""],
-                    ["Total eventuales del período", result.certificate.totalEventualPeriodIncome || ""],
-                    ["Total global del período", result.certificate.totalGlobalPeriodIncome || ""],
+                    ...(result.certificate.totalEventualPeriodIncome
+                      ? [["Total eventuales del período", result.certificate.totalEventualPeriodIncome || ""]]
+                      : []),
+                    ...(result.certificate.totalGlobalPeriodIncome
+                      ? [["Total global del período", result.certificate.totalGlobalPeriodIncome || ""]]
+                      : []),
                     ["Emitido el", result.certificate.issuedAt || "Aún no emitido"]
                   ].map(([label, value]) => (
                     <div

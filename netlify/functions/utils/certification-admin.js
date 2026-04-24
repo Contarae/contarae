@@ -207,14 +207,19 @@ export function buildCertificateData(record = {}) {
       formatCurrencyValue(totals.recurringPeriodTotal) || String(formData.total_ingresos_periodo || "");
   }
 
-  if (!merged.total_ingresos_eventuales) {
-    merged.total_ingresos_eventuales =
-      formatCurrencyValue(totals.eventualTotal) || String(formData.total_ingresos_eventuales || "");
-  }
+  if (totals.eventualTotal > 0) {
+    if (!merged.total_ingresos_eventuales) {
+      merged.total_ingresos_eventuales =
+        formatCurrencyValue(totals.eventualTotal) || String(formData.total_ingresos_eventuales || "");
+    }
 
-  if (!merged.total_ingresos_global_periodo) {
-    merged.total_ingresos_global_periodo =
-      formatCurrencyValue(totals.globalPeriodTotal) || String(formData.total_ingresos_global_periodo || "");
+    if (!merged.total_ingresos_global_periodo) {
+      merged.total_ingresos_global_periodo =
+        formatCurrencyValue(totals.globalPeriodTotal) || String(formData.total_ingresos_global_periodo || "");
+    }
+  } else {
+    merged.total_ingresos_eventuales = "";
+    merged.total_ingresos_global_periodo = "";
   }
 
   if (!merged.periodo_meses && totals.certifiedMonths) {
@@ -270,6 +275,7 @@ function getUpdatedAt(record = {}) {
 function summarizeRecord(record, source) {
   const formData = record.formData || {};
   const supportFiles = Array.isArray(record.supportFiles) ? record.supportFiles : [];
+  const hasEventuals = Boolean(String(formData.total_ingresos_eventuales || "").trim());
 
   return {
     reference: record.reference,
@@ -287,8 +293,8 @@ function summarizeRecord(record, source) {
     period: formData.periodo || "",
     totalIncome: formData.total_ingresos || "",
     recurringPeriodTotal: formData.total_ingresos_periodo || "",
-    eventualIncomeTotal: formData.total_ingresos_eventuales || "",
-    globalPeriodIncomeTotal: formData.total_ingresos_global_periodo || "",
+    eventualIncomeTotal: hasEventuals ? formData.total_ingresos_eventuales || "" : "",
+    globalPeriodIncomeTotal: hasEventuals ? formData.total_ingresos_global_periodo || "" : "",
     fee: formData.tarifa_pagada || "",
     consecutive: record.consecutive || "",
     certificateVersion: Number(record.certificateVersion || 0) || null,

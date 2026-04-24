@@ -91,6 +91,9 @@ function buildPublicPayload(detail) {
   const certificateData = buildCertificateData(detail.record || {});
   const verificationCode = buildCertificateVerificationCode(detail.record || {});
   const status = formatCertificateStatus(summary.certificationStatus);
+  const hasEventuals = Boolean(
+    String(certificateData.total_ingresos_eventuales || summary.eventualIncomeTotal || "").trim()
+  );
 
   return {
     found: true,
@@ -113,8 +116,8 @@ function buildPublicPayload(detail) {
       period: certificateData.periodo || summary.period || "",
       totalMonthlyIncome: certificateData.total_ingresos || summary.totalIncome || "",
       totalRecurringPeriodIncome: certificateData.total_ingresos_periodo || summary.recurringPeriodTotal || "",
-      totalEventualPeriodIncome: certificateData.total_ingresos_eventuales || summary.eventualIncomeTotal || "",
-      totalGlobalPeriodIncome: certificateData.total_ingresos_global_periodo || summary.globalPeriodIncomeTotal || "",
+      totalEventualPeriodIncome: hasEventuals ? certificateData.total_ingresos_eventuales || summary.eventualIncomeTotal || "" : "",
+      totalGlobalPeriodIncome: hasEventuals ? certificateData.total_ingresos_global_periodo || summary.globalPeriodIncomeTotal || "" : "",
       hashSha256: detail.record?.certificateHash || "",
       hashDisplay: formatCertificateHash(detail.record?.certificateHash || "")
     }

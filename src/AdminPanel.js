@@ -261,7 +261,7 @@ function recalculateCertificateDerivedFields(values = {}) {
     total_ingresos: monthlyTotal ? normalizeCurrencyInput(monthlyTotal) : "",
     total_ingresos_periodo: recurringPeriodTotal ? normalizeCurrencyInput(recurringPeriodTotal) : "",
     total_ingresos_eventuales: eventualTotal ? normalizeCurrencyInput(eventualTotal) : "",
-    total_ingresos_global_periodo: globalPeriodTotal ? normalizeCurrencyInput(globalPeriodTotal) : ""
+    total_ingresos_global_periodo: eventualTotal ? normalizeCurrencyInput(globalPeriodTotal) : ""
   };
 }
 
@@ -1257,8 +1257,8 @@ export default function AdminPanel() {
                   <InfoTile label="Meses certificados" value={detail.totals?.periodMonths} />
                   <InfoTile label="Total mensual recurrente" value={detail.totals?.monthlyRecurring || detail.summary.totalIncome} />
                   <InfoTile label="Total recurrente del período" value={detail.totals?.recurringPeriod} />
-                  <InfoTile label="Total eventuales del período" value={detail.totals?.eventualPeriod} />
-                  <InfoTile label="Total global del período" value={detail.totals?.globalPeriod} />
+                  {detail.totals?.eventualPeriod ? <InfoTile label="Total eventuales del período" value={detail.totals?.eventualPeriod} /> : null}
+                  {detail.totals?.globalPeriod ? <InfoTile label="Total global del período" value={detail.totals?.globalPeriod} /> : null}
                   <InfoTile label="Tarifa pagada" value={detail.summary.fee} />
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>

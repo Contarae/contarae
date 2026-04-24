@@ -709,17 +709,6 @@ export function buildCertificationNarrative(record = {}) {
           ". Dicho ingreso corresponde a un hecho económico de carácter no ordinario, no fijo y no periódico; en consecuencia, no integra el ingreso mensual recurrente descrito, aunque sí se considera dentro del análisis del período por encontrarse soportado documentalmente."
         ])
       );
-      blocks.push(
-        paragraph([
-          "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
-          highlightedAmount(totalRecurringPeriod),
-          ", junto con el ingreso eventual identificado durante dicho lapso, por valor de ",
-          highlightedAmount(totalEventualPeriod),
-          ", el total global de ingresos observado para el período objeto de certificación asciende a ",
-          highlightedAmount(totalGlobalPeriod),
-          "."
-        ])
-      );
     } else if (eventualRows.length === 2) {
       blocks.push(
         paragraph([
