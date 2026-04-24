@@ -77,8 +77,66 @@ const CERTIFICATE_EDITABLE_FIELDS = [
   "remesas",
   "otros_ingresos",
   "otros_descripcion",
-  "total_ingresos"
+  "ingresos_eventuales_json",
+  "periodo_meses",
+  "total_ingresos",
+  "total_ingresos_periodo",
+  "total_ingresos_eventuales",
+  "total_ingresos_global_periodo"
 ];
+
+function parseEventualIncomeRows(value) {
+  try {
+    const parsed = JSON.parse(String(value || "[]"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => ({
+        concept: String(row?.concept || "").trim(),
+        value: String(row?.value || row?.amount || "").trim()
+      }))
+      .filter((row) => hasMeaningfulCurrencyValue(row.value) && row.concept);
+  } catch {
+    return [];
+  }
+}
+
+function resolveCertifiedMonths(formData = {}) {
+  const explicitMonths = Number(String(formData.periodo_meses || "").replace(/\D/g, "")) || 0;
+  if (explicitMonths > 0) return explicitMonths;
+
+  const normalized = String(formData.periodo || "").toLowerCase();
+  if (normalized.includes("6")) return 6;
+  if (normalized.includes("3")) return 3;
+  if (normalized.includes("año") || normalized.includes("ano")) return 12;
+  if (normalized.includes("mes")) return 1;
+  return 0;
+}
+
+function computeCertificationTotals(formData = {}) {
+  const monthlyTotal =
+    parseCurrency(formData.ingresos_laborales) +
+    parseCurrency(formData.pensiones) +
+    parseCurrency(formData.dividendos) +
+    parseCurrency(formData.inversiones) +
+    parseCurrency(formData.arriendos) +
+    parseCurrency(formData.remesas) +
+    parseCurrency(formData.otros_ingresos);
+  const certifiedMonths = resolveCertifiedMonths(formData);
+  const recurringPeriodTotal = monthlyTotal * certifiedMonths;
+  const eventualTotal = parseEventualIncomeRows(formData.ingresos_eventuales_json).reduce(
+    (sum, row) => sum + parseCurrency(row.value),
+    0
+  );
+  const globalPeriodTotal = recurringPeriodTotal + eventualTotal;
+
+  return {
+    monthlyTotal,
+    certifiedMonths,
+    recurringPeriodTotal,
+    eventualTotal,
+    globalPeriodTotal
+  };
+}
 
 function parseCurrency(value) {
   const raw = String(value || "").trim();
@@ -138,16 +196,29 @@ export function buildCertificateData(record = {}) {
   });
 
   if (!merged.total_ingresos) {
-    const computedTotal =
-      parseCurrency(merged.ingresos_laborales) +
-      parseCurrency(merged.pensiones) +
-      parseCurrency(merged.dividendos) +
-      parseCurrency(merged.inversiones) +
-      parseCurrency(merged.arriendos) +
-      parseCurrency(merged.remesas) +
-      parseCurrency(merged.otros_ingresos);
+    const totals = computeCertificationTotals(merged);
+    merged.total_ingresos = formatCurrencyValue(totals.monthlyTotal) || String(formData.total_ingresos || "");
+  }
 
-    merged.total_ingresos = formatCurrencyValue(computedTotal) || String(formData.total_ingresos || "");
+  const totals = computeCertificationTotals(merged);
+
+  if (!merged.total_ingresos_periodo) {
+    merged.total_ingresos_periodo =
+      formatCurrencyValue(totals.recurringPeriodTotal) || String(formData.total_ingresos_periodo || "");
+  }
+
+  if (!merged.total_ingresos_eventuales) {
+    merged.total_ingresos_eventuales =
+      formatCurrencyValue(totals.eventualTotal) || String(formData.total_ingresos_eventuales || "");
+  }
+
+  if (!merged.total_ingresos_global_periodo) {
+    merged.total_ingresos_global_periodo =
+      formatCurrencyValue(totals.globalPeriodTotal) || String(formData.total_ingresos_global_periodo || "");
+  }
+
+  if (!merged.periodo_meses && totals.certifiedMonths) {
+    merged.periodo_meses = String(totals.certifiedMonths);
   }
 
   return merged;
@@ -161,17 +232,24 @@ function buildIncomeItems(formData = {}) {
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
-    ["Otros ingresos", formData.otros_ingresos]
+    ["Otros ingresos mensuales recurrentes", formData.otros_ingresos]
   ]
     .filter(([, value]) => hasMeaningfulCurrencyValue(value))
     .map(([label, value]) => ({ label, value }));
 
   if (hasMeaningfulCurrencyValue(formData.otros_ingresos) && String(formData.otros_descripcion || "").trim()) {
     rows.push({
-      label: "Descripción otros ingresos",
+      label: "Detalle otros ingresos mensuales recurrentes",
       value: String(formData.otros_descripcion || "").trim()
     });
   }
+
+  parseEventualIncomeRows(formData.ingresos_eventuales_json).forEach((row, index) => {
+    rows.push({
+      label: `Ingreso eventual ${index + 1}`,
+      value: `${row.value} — ${row.concept}`
+    });
+  });
 
   return rows;
 }
@@ -208,6 +286,9 @@ function summarizeRecord(record, source) {
     destination: joinValues([formData.destino, formData.entidad]),
     period: formData.periodo || "",
     totalIncome: formData.total_ingresos || "",
+    recurringPeriodTotal: formData.total_ingresos_periodo || "",
+    eventualIncomeTotal: formData.total_ingresos_eventuales || "",
+    globalPeriodIncomeTotal: formData.total_ingresos_global_periodo || "",
     fee: formData.tarifa_pagada || "",
     consecutive: record.consecutive || "",
     certificateVersion: Number(record.certificateVersion || 0) || null,
@@ -251,6 +332,13 @@ function buildDetail(record, source) {
       email: customerEmail,
       rawPhone: certificateData.telefono || formData.telefono || "",
       whatsappPhone: normalizedPhone
+    },
+    totals: {
+      monthlyRecurring: certificateData.total_ingresos || "",
+      recurringPeriod: certificateData.total_ingresos_periodo || "",
+      eventualPeriod: certificateData.total_ingresos_eventuales || "",
+      globalPeriod: certificateData.total_ingresos_global_periodo || "",
+      periodMonths: certificateData.periodo_meses || ""
     },
     certificateSecurity: {
       version: Number(record.certificateVersion || 0) || null,

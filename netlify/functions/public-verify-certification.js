@@ -112,6 +112,9 @@ function buildPublicPayload(detail) {
       destination: [certificateData.destino, certificateData.entidad].filter(Boolean).join(" - "),
       period: certificateData.periodo || summary.period || "",
       totalMonthlyIncome: certificateData.total_ingresos || summary.totalIncome || "",
+      totalRecurringPeriodIncome: certificateData.total_ingresos_periodo || summary.recurringPeriodTotal || "",
+      totalEventualPeriodIncome: certificateData.total_ingresos_eventuales || summary.eventualIncomeTotal || "",
+      totalGlobalPeriodIncome: certificateData.total_ingresos_global_periodo || summary.globalPeriodIncomeTotal || "",
       hashSha256: detail.record?.certificateHash || "",
       hashDisplay: formatCertificateHash(detail.record?.certificateHash || "")
     }

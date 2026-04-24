@@ -71,13 +71,29 @@ function buildIncomeRows(formData = {}) {
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
-    ["Otros ingresos", formData.otros_ingresos]
+    ["Otros ingresos mensuales recurrentes", formData.otros_ingresos]
   ];
 
   const filtered = rows.filter(([, value]) => hasMeaningfulCurrencyValue(value));
 
   if (hasMeaningfulCurrencyValue(formData.otros_ingresos) && String(formData.otros_descripcion || "").trim()) {
-    filtered.push(["Descripción otros ingresos", String(formData.otros_descripcion || "").trim()]);
+    filtered.push(["Detalle otros ingresos mensuales recurrentes", String(formData.otros_descripcion || "").trim()]);
+  }
+
+  try {
+    const eventualRows = JSON.parse(String(formData.ingresos_eventuales_json || "[]"));
+    if (Array.isArray(eventualRows)) {
+      eventualRows
+        .filter((row) => hasMeaningfulCurrencyValue(row?.value || row?.amount) && String(row?.concept || "").trim())
+        .forEach((row, index) => {
+          filtered.push([
+            `Ingreso eventual ${index + 1}`,
+            `${String(row.value || row.amount || "").trim()} — ${String(row.concept || "").trim()}`
+          ]);
+        });
+    }
+  } catch {
+    // Ignore malformed eventual income rows in email summaries.
   }
 
   return filtered;
@@ -111,7 +127,10 @@ function buildBusinessSummaryRows(paidRecord, reference) {
     ["Lugar de expedición", formData.lugar_expedicion],
     ["Destino / entidad", joinValues([formData.destino, formData.entidad])],
     ["Período", formData.periodo],
-    ["Total ingresos", formData.total_ingresos],
+    ["Total mensual recurrente", formData.total_ingresos],
+    ["Total recurrente del período", formData.total_ingresos_periodo],
+    ["Total eventuales del período", formData.total_ingresos_eventuales],
+    ["Total global del período", formData.total_ingresos_global_periodo],
     ["Tarifa pagada", formData.tarifa_pagada],
     ["Soportes adjuntos", supportFiles.length ? `${supportFiles.length} archivo(s)` : "Sin adjuntos"],
     ["Comentarios", formData.comentarios],
@@ -215,7 +234,10 @@ function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLin
     ["Estado del pago", "APROBADO"],
     ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "En validación"],
     ["Referencia Wompi", reference],
-    ["Total ingresos reportados", formData.total_ingresos],
+    ["Ingreso mensual recurrente", formData.total_ingresos],
+    ["Total recurrente del período", formData.total_ingresos_periodo],
+    ["Total eventuales del período", formData.total_ingresos_eventuales],
+    ["Total global del período", formData.total_ingresos_global_periodo],
     ["Valor pagado", formData.tarifa_pagada],
     ["Destino", joinValues([formData.destino, formData.entidad])],
     ["Período", formData.periodo]
@@ -271,7 +293,10 @@ function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLin
     ["Estado del pago", "APROBADO"],
     ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "En validación"],
     ["Referencia Wompi", reference],
-    ["Total ingresos reportados", formData.total_ingresos],
+    ["Ingreso mensual recurrente", formData.total_ingresos],
+    ["Total recurrente del período", formData.total_ingresos_periodo],
+    ["Total eventuales del período", formData.total_ingresos_eventuales],
+    ["Total global del período", formData.total_ingresos_global_periodo],
     ["Valor pagado", formData.tarifa_pagada],
     ["Destino", joinValues([formData.destino, formData.entidad])],
     ["Período", formData.periodo]

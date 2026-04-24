@@ -30,6 +30,13 @@ const CERTIFICATE_CURRENCY_FIELDS = [
   "otros_ingresos"
 ];
 
+const CERTIFICATE_TOTAL_FIELDS = [
+  "total_ingresos",
+  "total_ingresos_periodo",
+  "total_ingresos_eventuales",
+  "total_ingresos_global_periodo"
+];
+
 const CERTIFICATE_INCOME_LABELS = [
   ["ingresos_laborales", "Ingresos laborales"],
   ["pensiones", "Pensiones"],
@@ -37,7 +44,7 @@ const CERTIFICATE_INCOME_LABELS = [
   ["inversiones", "Inversiones"],
   ["arriendos", "Arriendos"],
   ["remesas", "Remesas"],
-  ["otros_ingresos", "Otros ingresos"]
+  ["otros_ingresos", "Otros ingresos mensuales recurrentes"]
 ];
 
 const ORIGINAL_FORM_FIELDS = [
@@ -50,7 +57,11 @@ const ORIGINAL_FORM_FIELDS = [
   ["destino", "Destino del documento"],
   ["entidad", "Entidad receptora"],
   ["periodo", "Período a certificar"],
-  ["total_ingresos", "Total reportado"]
+  ["periodo_meses", "Meses certificados"],
+  ["total_ingresos", "Total mensual recurrente"],
+  ["total_ingresos_periodo", "Total recurrente del período"],
+  ["total_ingresos_eventuales", "Total eventuales del período"],
+  ["total_ingresos_global_periodo", "Total global del período"]
 ];
 
 const PDF_PRIMARY_FIELDS = [
@@ -63,11 +74,15 @@ const PDF_PRIMARY_FIELDS = [
   ["destino", "Destino"],
   ["entidad", "Entidad"],
   ["periodo", "Período"],
-  ["total_ingresos", "Total mensual certificado"]
+  ["periodo_meses", "Meses certificados"],
+  ["total_ingresos", "Total mensual recurrente"],
+  ["total_ingresos_periodo", "Total recurrente del período"],
+  ["total_ingresos_eventuales", "Total eventuales del período"],
+  ["total_ingresos_global_periodo", "Total global del período"]
 ];
 
 const PDF_NOTE_FIELDS = [
-  ["otros_descripcion", "Detalle otros ingresos"]
+  ["otros_descripcion", "Detalle otros ingresos mensuales recurrentes"]
 ];
 
 const shell = {
@@ -155,8 +170,11 @@ function hasMeaningfulCurrencyValue(value) {
 }
 
 function normalizeComparableValue(field, value) {
-  if (CERTIFICATE_CURRENCY_FIELDS.includes(field) || field === "total_ingresos") {
+  if (CERTIFICATE_CURRENCY_FIELDS.includes(field) || CERTIFICATE_TOTAL_FIELDS.includes(field)) {
     return String(parseCurrency(value));
+  }
+  if (field === "ingresos_eventuales_json") {
+    return JSON.stringify(parseEventualIncomeRows(value));
   }
   return String(value || "").trim();
 }
@@ -171,7 +189,7 @@ function buildReviewDraft(detail = null) {
 }
 
 function buildCertificateDraftState(source = {}) {
-  return {
+  return recalculateCertificateDerivedFields({
     nombre: source?.nombre || "",
     tipo_documento: source?.tipo_documento || "",
     numero_documento: source?.numero_documento || "",
@@ -189,7 +207,61 @@ function buildCertificateDraftState(source = {}) {
     remesas: source?.remesas || "",
     otros_ingresos: source?.otros_ingresos || "",
     otros_descripcion: source?.otros_descripcion || "",
-    total_ingresos: source?.total_ingresos || ""
+    ingresos_eventuales_json: source?.ingresos_eventuales_json || "[]",
+    periodo_meses: source?.periodo_meses || "",
+    total_ingresos: source?.total_ingresos || "",
+    total_ingresos_periodo: source?.total_ingresos_periodo || "",
+    total_ingresos_eventuales: source?.total_ingresos_eventuales || "",
+    total_ingresos_global_periodo: source?.total_ingresos_global_periodo || ""
+  });
+}
+
+function createEmptyEventualIncome() {
+  return { concept: "", value: "" };
+}
+
+function parseEventualIncomeRows(rawValue) {
+  try {
+    const parsed = JSON.parse(String(rawValue || "[]"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => ({
+        concept: String(row?.concept || "").trim(),
+        value: normalizeCurrencyInput(row?.value || row?.amount || "")
+      }))
+      .filter((row) => hasMeaningfulCurrencyValue(row.value) || row.concept);
+  } catch {
+    return [];
+  }
+}
+
+function serializeEventualIncomeRows(rows = []) {
+  return JSON.stringify(
+    rows
+      .map((row) => ({
+        concept: String(row?.concept || "").trim(),
+        value: normalizeCurrencyInput(row?.value || row?.amount || "")
+      }))
+      .filter((row) => hasMeaningfulCurrencyValue(row.value) || row.concept)
+  );
+}
+
+function recalculateCertificateDerivedFields(values = {}) {
+  const monthlyTotal = CERTIFICATE_CURRENCY_FIELDS.reduce((sum, field) => sum + parseCurrency(values[field]), 0);
+  const months = Number(String(values.periodo_meses || "").replace(/\D/g, "")) || 0;
+  const eventualRows = parseEventualIncomeRows(values.ingresos_eventuales_json).filter(
+    (row) => hasMeaningfulCurrencyValue(row.value) && row.concept
+  );
+  const eventualTotal = eventualRows.reduce((sum, row) => sum + parseCurrency(row.value), 0);
+  const recurringPeriodTotal = monthlyTotal * months;
+  const globalPeriodTotal = recurringPeriodTotal + eventualTotal;
+
+  return {
+    ...values,
+    total_ingresos: monthlyTotal ? normalizeCurrencyInput(monthlyTotal) : "",
+    total_ingresos_periodo: recurringPeriodTotal ? normalizeCurrencyInput(recurringPeriodTotal) : "",
+    total_ingresos_eventuales: eventualTotal ? normalizeCurrencyInput(eventualTotal) : "",
+    total_ingresos_global_periodo: globalPeriodTotal ? normalizeCurrencyInput(globalPeriodTotal) : ""
   };
 }
 
@@ -198,8 +270,7 @@ function isFieldModified(originalValues = {}, draftValues = {}, field) {
 }
 
 function recalculateCertificateTotal(values = {}) {
-  const total = CERTIFICATE_CURRENCY_FIELDS.reduce((sum, field) => sum + parseCurrency(values[field]), 0);
-  return total ? normalizeCurrencyInput(total) : "";
+  return recalculateCertificateDerivedFields(values).total_ingresos;
 }
 
 function buildCertificateIncomePreview(values = {}) {
@@ -212,7 +283,7 @@ function buildCertificateIncomePreview(values = {}) {
 
   if (hasMeaningfulCurrencyValue(values.otros_ingresos) && String(values.otros_descripcion || "").trim()) {
     rows.push({
-      label: "Detalle otros ingresos",
+      label: "Detalle otros ingresos mensuales recurrentes",
       value: String(values.otros_descripcion || "").trim()
     });
   }
@@ -434,6 +505,10 @@ export default function AdminPanel() {
   const certificateIncomePreview = useMemo(
     () => buildCertificateIncomePreview(certificateDraft),
     [certificateDraft]
+  );
+  const certificateEventualPreview = useMemo(
+    () => parseEventualIncomeRows(certificateDraft.ingresos_eventuales_json),
+    [certificateDraft.ingresos_eventuales_json]
   );
   const lockedStatuses = new Set(["enviada", "pago_no_confirmado", "rechazada"]);
   const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
@@ -803,16 +878,10 @@ export default function AdminPanel() {
       const nextValue = CERTIFICATE_CURRENCY_FIELDS.includes(field)
         ? normalizeCurrencyInput(value)
         : value;
-      const next = {
+      return recalculateCertificateDerivedFields({
         ...current,
         [field]: nextValue
-      };
-
-      if (CERTIFICATE_CURRENCY_FIELDS.includes(field)) {
-        next.total_ingresos = recalculateCertificateTotal(next);
-      }
-
-      return next;
+      });
     });
   };
 
@@ -1181,7 +1250,11 @@ export default function AdminPanel() {
                   <InfoTile label="Correo operativo" value={detail.contact.email} />
                   <InfoTile label="WhatsApp operativo" value={detail.contact.rawPhone} />
                   <InfoTile label="Periodo original" value={detail.summary.period} />
-                  <InfoTile label="Total reportado" value={detail.summary.totalIncome} />
+                  <InfoTile label="Meses certificados" value={detail.totals?.periodMonths} />
+                  <InfoTile label="Total mensual recurrente" value={detail.totals?.monthlyRecurring || detail.summary.totalIncome} />
+                  <InfoTile label="Total recurrente del período" value={detail.totals?.recurringPeriod} />
+                  <InfoTile label="Total eventuales del período" value={detail.totals?.eventualPeriod} />
+                  <InfoTile label="Total global del período" value={detail.totals?.globalPeriod} />
                   <InfoTile label="Tarifa pagada" value={detail.summary.fee} />
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>
@@ -1316,6 +1389,7 @@ export default function AdminPanel() {
                       <div className="admin-pdf-primary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 10, marginBottom: 12 }}>
                         {PDF_PRIMARY_FIELDS.map(([field, label]) => {
                           const fieldMeta = getModifiedFieldMeta(field);
+                          const isDerivedField = CERTIFICATE_TOTAL_FIELDS.includes(field);
                           return (
                             <div
                               key={field}
@@ -1335,13 +1409,13 @@ export default function AdminPanel() {
                                 ) : null}
                               </div>
                               <input
-                                disabled={!pdfEditMode || editLocked}
-                                style={{ ...inputStyle, background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
+                                disabled={!pdfEditMode || editLocked || isDerivedField}
+                                style={{ ...inputStyle, background: !pdfEditMode || editLocked || isDerivedField ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
                                 placeholder={label}
                                 value={certificateDraft[field]}
                                 onChange={(event) => {
-                                  if (field === "total_ingresos") {
-                                    setCertificateDraft((current) => ({ ...current, total_ingresos: normalizeCurrencyInput(event.target.value) }));
+                                  if (field === "periodo_meses") {
+                                    handleCertificateFieldChange(field, String(event.target.value || "").replace(/\D/g, "").slice(0, 2));
                                     return;
                                   }
                                   handleCertificateFieldChange(field, event.target.value);
@@ -1428,6 +1502,128 @@ export default function AdminPanel() {
                             </div>
                           );
                         })}
+                        <div
+                          style={{
+                            padding: 12,
+                            borderRadius: 16,
+                            border: "1px solid rgba(37,99,235,.10)",
+                            background: "#F8FBFF",
+                            gridColumn: "1 / -1"
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+                            <div>
+                              <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.1px", fontWeight: 800, color: "#64748B" }}>Ingresos eventuales del período</div>
+                              <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, marginTop: 4 }}>
+                                Registra hechos económicos no ordinarios, no fijos y no periódicos. El PDF los mostrará separados del ingreso mensual recurrente.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!pdfEditMode || editLocked}
+                              onClick={() => {
+                                setCertificateDraft((current) =>
+                                  recalculateCertificateDerivedFields({
+                                    ...current,
+                                    ingresos_eventuales_json: serializeEventualIncomeRows([
+                                      ...parseEventualIncomeRows(current.ingresos_eventuales_json),
+                                      createEmptyEventualIncome()
+                                    ])
+                                  })
+                                );
+                              }}
+                              style={{
+                                padding: "9px 12px",
+                                borderRadius: 12,
+                                border: "1px solid rgba(37,99,235,.14)",
+                                background: !pdfEditMode || editLocked ? "#E2E8F0" : "#fff",
+                                color: !pdfEditMode || editLocked ? "#94A3B8" : "#2563EB",
+                                fontFamily: F,
+                                fontWeight: 800,
+                                cursor: !pdfEditMode || editLocked ? "not-allowed" : "pointer"
+                              }}
+                            >
+                              + Agregar eventual
+                            </button>
+                          </div>
+                          <div style={{ display: "grid", gap: 10 }}>
+                            {(certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((row, index) => (
+                              <div key={`${index}-${row.concept}`} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 14, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+                                  <input
+                                    disabled={!pdfEditMode || editLocked}
+                                    style={{ ...inputStyle, background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff" }}
+                                    placeholder={`Valor eventual #${index + 1}`}
+                                    value={row.value}
+                                    onChange={(event) => {
+                                      const nextRows = (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((currentRow, rowIndex) =>
+                                        rowIndex === index
+                                          ? { ...currentRow, value: normalizeCurrencyInput(event.target.value) }
+                                          : currentRow
+                                      );
+                                      setCertificateDraft((current) =>
+                                        recalculateCertificateDerivedFields({
+                                          ...current,
+                                          ingresos_eventuales_json: serializeEventualIncomeRows(nextRows)
+                                        })
+                                      );
+                                    }}
+                                  />
+                                  <input
+                                    disabled={!pdfEditMode || editLocked}
+                                    style={{ ...inputStyle, background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff" }}
+                                    placeholder={`Concepto eventual #${index + 1}`}
+                                    value={row.concept}
+                                    onChange={(event) => {
+                                      const nextRows = (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).map((currentRow, rowIndex) =>
+                                        rowIndex === index
+                                          ? { ...currentRow, concept: event.target.value }
+                                          : currentRow
+                                      );
+                                      setCertificateDraft((current) =>
+                                        recalculateCertificateDerivedFields({
+                                          ...current,
+                                          ingresos_eventuales_json: serializeEventualIncomeRows(nextRows)
+                                        })
+                                      );
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6 }}>
+                                    Este ingreso se sumará al total del período, pero no al total mensual recurrente.
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={!pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1}
+                                    onClick={() => {
+                                      const currentRows = certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()];
+                                      const nextRows = currentRows.filter((_, rowIndex) => rowIndex !== index);
+                                      setCertificateDraft((current) =>
+                                        recalculateCertificateDerivedFields({
+                                          ...current,
+                                          ingresos_eventuales_json: serializeEventualIncomeRows(nextRows)
+                                        })
+                                      );
+                                    }}
+                                    style={{
+                                      padding: "9px 12px",
+                                      borderRadius: 12,
+                                      border: "1px solid rgba(220,38,38,.14)",
+                                      background: !pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1 ? "#E2E8F0" : "rgba(220,38,38,.06)",
+                                      color: !pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1 ? "#94A3B8" : "#DC2626",
+                                      fontFamily: F,
+                                      fontWeight: 800,
+                                      cursor: !pdfEditMode || editLocked || (certificateEventualPreview.length ? certificateEventualPreview : [createEmptyEventualIncome()]).length === 1 ? "not-allowed" : "pointer"
+                                    }}
+                                  >
+                                    Quitar
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                       <div style={{ marginBottom: 12, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
                         <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>ANOTACIÓN DEL AJUSTE</div>
@@ -1447,18 +1643,53 @@ export default function AdminPanel() {
                           <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#1D4ED8", fontFamily: F }}>ASÍ SALDRÁ EN LA CERTIFICACIÓN</div>
                           <div style={{ fontFamily: F, fontSize: 12, color: "#52647F" }}>Vista de los conceptos que realmente se emitirán.</div>
                         </div>
-                        {certificateIncomePreview.length ? (
+                        {certificateIncomePreview.length || certificateEventualPreview.length ? (
                           <div style={{ display: "grid", gap: 10 }}>
-                            {certificateIncomePreview.map((item) => (
-                              <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 10, borderBottom: "1px solid rgba(37,99,235,.08)" }}>
-                                <div style={{ fontFamily: F, color: "#334155", fontSize: 14 }}>{item.label}</div>
-                                <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 700, textAlign: "right" }}>{item.value}</div>
-                              </div>
-                            ))}
+                            {certificateIncomePreview.length ? (
+                              <>
+                                {certificateIncomePreview.map((item) => (
+                                  <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 10, borderBottom: "1px solid rgba(37,99,235,.08)" }}>
+                                    <div style={{ fontFamily: F, color: "#334155", fontSize: 14 }}>{item.label}</div>
+                                    <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 700, textAlign: "right" }}>{item.value}</div>
+                                  </div>
+                                ))}
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
+                                  <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total mensual recurrente</div>
+                                  <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
+                                    {certificateDraft.total_ingresos || "Sin total definido"}
+                                  </div>
+                                </div>
+                              </>
+                            ) : null}
+                            {certificateEventualPreview.length ? (
+                              <>
+                                <div style={{ fontFamily: F, color: "#1D4ED8", fontSize: 12, fontWeight: 800, letterSpacing: "1.2px", marginTop: certificateIncomePreview.length ? 8 : 0 }}>
+                                  INGRESOS EVENTUALES
+                                </div>
+                                {certificateEventualPreview.map((item, index) => (
+                                  <div key={`${item.concept}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 10, borderBottom: "1px solid rgba(37,99,235,.08)" }}>
+                                    <div style={{ fontFamily: F, color: "#334155", fontSize: 14 }}>{item.concept}</div>
+                                    <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 700, textAlign: "right" }}>{item.value}</div>
+                                  </div>
+                                ))}
+                              </>
+                            ) : null}
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
-                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total mensual certificado</div>
+                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total recurrente del período</div>
                               <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
-                                {certificateDraft.total_ingresos || "Sin total definido"}
+                                {certificateDraft.total_ingresos_periodo || "Sin total definido"}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
+                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total eventuales del período</div>
+                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
+                                {certificateDraft.total_ingresos_eventuales || "$ 0"}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 2 }}>
+                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800 }}>Total global del período</div>
+                              <div style={{ fontFamily: F, color: "#0B1D3A", fontSize: 14, fontWeight: 800, textAlign: "right" }}>
+                                {certificateDraft.total_ingresos_global_periodo || "Sin total definido"}
                               </div>
                             </div>
                           </div>

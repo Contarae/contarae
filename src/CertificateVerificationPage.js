@@ -369,7 +369,10 @@ export default function CertificateVerificationPage() {
                     ["Documento", result.certificate.holderDocument || ""],
                     ["Destino", result.certificate.destination || "No especificado"],
                     ["Período", result.certificate.period || "No especificado"],
-                    ["Ingreso mensual", result.certificate.totalMonthlyIncome || ""],
+                    ["Ingreso mensual recurrente", result.certificate.totalMonthlyIncome || ""],
+                    ["Total recurrente del período", result.certificate.totalRecurringPeriodIncome || ""],
+                    ["Total eventuales del período", result.certificate.totalEventualPeriodIncome || ""],
+                    ["Total global del período", result.certificate.totalGlobalPeriodIncome || ""],
                     ["Emitido el", result.certificate.issuedAt || "Aún no emitido"]
                   ].map(([label, value]) => (
                     <div
