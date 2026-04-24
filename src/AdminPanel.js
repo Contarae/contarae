@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const F = "'Outfit',sans-serif";
@@ -500,6 +500,8 @@ export default function AdminPanel() {
     includeJccBackground: false,
     confirmedReview: false
   });
+  const draftRef = useRef(draft);
+  const certificateDraftRef = useRef(certificateDraft);
 
   const deferredSearch = useDeferredValue(search);
   const certificateIncomePreview = useMemo(
@@ -518,6 +520,14 @@ export default function AdminPanel() {
   const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
   const editLocked = Boolean(isLockedStatus && !editOverridePassword);
   const originalFormData = detail?.formData || {};
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    certificateDraftRef.current = certificateDraft;
+  }, [certificateDraft]);
 
   const handleTogglePdfEditMode = () => {
     if (editLocked) {
@@ -724,17 +734,19 @@ export default function AdminPanel() {
 
   const persistDraft = async (action = "save", extra = {}) => {
     if (!detail?.summary?.reference) return null;
+    const reviewDraftSnapshot = extra.reviewDraft || draftRef.current;
+    const certificateDraftSnapshot = extra.certificateDraft || recalculateCertificateDerivedFields({ ...certificateDraftRef.current });
 
     const response = await fetch("/api/admin-update-certification", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         reference: detail.summary.reference,
-        certificationStatus: draft.certificationStatus,
-        adminNotes: draft.adminNotes,
-        certificateAdjustmentNote: draft.certificateAdjustmentNote,
-        requestedDocumentsMessage: draft.requestedDocumentsMessage,
-        certificateOverrides: certificateDraft,
+        certificationStatus: reviewDraftSnapshot.certificationStatus,
+        adminNotes: reviewDraftSnapshot.adminNotes,
+        certificateAdjustmentNote: reviewDraftSnapshot.certificateAdjustmentNote,
+        requestedDocumentsMessage: reviewDraftSnapshot.requestedDocumentsMessage,
+        certificateOverrides: certificateDraftSnapshot,
         overridePassword: editOverridePassword,
         action,
         ...extra
@@ -766,16 +778,21 @@ export default function AdminPanel() {
   const handleQuickStatus = async (nextStatus) => {
     try {
       setDraft((current) => ({ ...current, certificationStatus: nextStatus }));
+      const reviewDraftSnapshot = {
+        ...draftRef.current,
+        certificationStatus: nextStatus
+      };
+      const certificateDraftSnapshot = recalculateCertificateDerivedFields({ ...certificateDraftRef.current });
       await fetch("/api/admin-update-certification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         reference: detail.summary.reference,
         certificationStatus: nextStatus,
-        adminNotes: draft.adminNotes,
-        certificateAdjustmentNote: draft.certificateAdjustmentNote,
-        requestedDocumentsMessage: draft.requestedDocumentsMessage,
-        certificateOverrides: certificateDraft,
+        adminNotes: reviewDraftSnapshot.adminNotes,
+        certificateAdjustmentNote: reviewDraftSnapshot.certificateAdjustmentNote,
+        requestedDocumentsMessage: reviewDraftSnapshot.requestedDocumentsMessage,
+        certificateOverrides: certificateDraftSnapshot,
         overridePassword: editOverridePassword,
         action: "save"
       })
@@ -906,8 +923,8 @@ export default function AdminPanel() {
         previewWindow.document.write("<p style=\"font-family:Arial,sans-serif;padding:24px;color:#1D4ED8;\">Preparando borrador actualizado...</p>");
         previewWindow.document.close();
       }
-      const previewDraft = recalculateCertificateDerivedFields({ ...certificateDraft });
-      await persistDraft("save");
+      const previewDraft = recalculateCertificateDerivedFields({ ...certificateDraftRef.current });
+      await persistDraft("save", { certificateDraft: previewDraft });
       const response = await fetch("/api/admin-preview-certification-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1045,12 +1062,13 @@ export default function AdminPanel() {
 
     try {
       const reference = detail.summary.reference;
+      const previewDraft = recalculateCertificateDerivedFields({ ...certificateDraftRef.current });
       const response = await fetch("/api/admin-send-certification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reference,
-          certificateOverrides: recalculateCertificateDerivedFields({ ...certificateDraft }),
+          certificateOverrides: previewDraft,
           includeProfessionalCard: sendDraft.includeProfessionalCard,
           includeJccBackground: sendDraft.includeJccBackground,
           confirmedReview: sendDraft.confirmedReview

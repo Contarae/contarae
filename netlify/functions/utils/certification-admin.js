@@ -355,6 +355,23 @@ function buildDetail(record, source) {
   };
 }
 
+function buildMutationResult({
+  store,
+  source,
+  paidRecord,
+  pendingRecord,
+  record
+}) {
+  return {
+    store,
+    source,
+    record,
+    paidRecord,
+    pendingRecord,
+    detail: record ? buildDetail(record, source) : null
+  };
+}
+
 export async function getCertificationByReference(reference) {
   const store = getCertificationStore();
   const paidRecord = await store.get(`paid:${reference}`, { type: "json" });
@@ -495,21 +512,24 @@ export async function updateCertificationRecord(reference, updates = {}, actor =
     sharedUpdates.sentToClientAt = now;
   }
 
-  if (paidRecord) {
-    await store.setJSON(`paid:${reference}`, {
-      ...paidRecord,
-      ...sharedUpdates
-    });
+  const updatedPaidRecord = paidRecord ? { ...paidRecord, ...sharedUpdates } : null;
+  const updatedPendingRecord = pendingRecord ? { ...pendingRecord, ...sharedUpdates } : null;
+
+  if (updatedPaidRecord) {
+    await store.setJSON(`paid:${reference}`, updatedPaidRecord);
   }
 
-  if (pendingRecord) {
-    await store.setJSON(`pending:${reference}`, {
-      ...pendingRecord,
-      ...sharedUpdates
-    });
+  if (updatedPendingRecord) {
+    await store.setJSON(`pending:${reference}`, updatedPendingRecord);
   }
 
-  return getCertificationByReference(reference);
+  return buildMutationResult({
+    store,
+    source: updatedPaidRecord ? "paid" : "pending",
+    paidRecord: updatedPaidRecord,
+    pendingRecord: updatedPendingRecord,
+    record: updatedPaidRecord || updatedPendingRecord
+  });
 }
 
 export async function appendSupportFilesToCertification(reference, supportFiles = [], actor = "admin", options = {}) {
@@ -554,21 +574,24 @@ export async function appendSupportFilesToCertification(reference, supportFiles 
     lastReviewedBy: actor
   };
 
-  if (paidRecord) {
-    await store.setJSON(`paid:${reference}`, {
-      ...paidRecord,
-      ...sharedUpdates
-    });
+  const updatedPaidRecord = paidRecord ? { ...paidRecord, ...sharedUpdates } : null;
+  const updatedPendingRecord = pendingRecord ? { ...pendingRecord, ...sharedUpdates } : null;
+
+  if (updatedPaidRecord) {
+    await store.setJSON(`paid:${reference}`, updatedPaidRecord);
   }
 
-  if (pendingRecord) {
-    await store.setJSON(`pending:${reference}`, {
-      ...pendingRecord,
-      ...sharedUpdates
-    });
+  if (updatedPendingRecord) {
+    await store.setJSON(`pending:${reference}`, updatedPendingRecord);
   }
 
-  return getCertificationByReference(reference);
+  return buildMutationResult({
+    store,
+    source: updatedPaidRecord ? "paid" : "pending",
+    paidRecord: updatedPaidRecord,
+    pendingRecord: updatedPendingRecord,
+    record: updatedPaidRecord || updatedPendingRecord
+  });
 }
 
 export async function mergeCertificationRecordUpdates(reference, sharedUpdates = {}) {
@@ -579,19 +602,22 @@ export async function mergeCertificationRecordUpdates(reference, sharedUpdates =
     throw new Error("Solicitud no encontrada");
   }
 
-  if (paidRecord) {
-    await store.setJSON(`paid:${reference}`, {
-      ...paidRecord,
-      ...sharedUpdates
-    });
+  const updatedPaidRecord = paidRecord ? { ...paidRecord, ...sharedUpdates } : null;
+  const updatedPendingRecord = pendingRecord ? { ...pendingRecord, ...sharedUpdates } : null;
+
+  if (updatedPaidRecord) {
+    await store.setJSON(`paid:${reference}`, updatedPaidRecord);
   }
 
-  if (pendingRecord) {
-    await store.setJSON(`pending:${reference}`, {
-      ...pendingRecord,
-      ...sharedUpdates
-    });
+  if (updatedPendingRecord) {
+    await store.setJSON(`pending:${reference}`, updatedPendingRecord);
   }
 
-  return getCertificationByReference(reference);
+  return buildMutationResult({
+    store,
+    source: updatedPaidRecord ? "paid" : "pending",
+    paidRecord: updatedPaidRecord,
+    pendingRecord: updatedPendingRecord,
+    record: updatedPaidRecord || updatedPendingRecord
+  });
 }
