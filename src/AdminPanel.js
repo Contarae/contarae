@@ -230,7 +230,7 @@ function parseEventualIncomeRows(rawValue) {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .map((row) => ({
-        concept: String(row?.concept || "").trim(),
+        concept: String(row?.concept || ""),
         value: normalizeCurrencyInput(row?.value || row?.amount || "")
       }));
   } catch {
@@ -242,7 +242,7 @@ function serializeEventualIncomeRows(rows = []) {
   return JSON.stringify(
     rows
       .map((row) => ({
-        concept: String(row?.concept || "").trim(),
+        concept: String(row?.concept || ""),
         value: normalizeCurrencyInput(row?.value || row?.amount || "")
       }))
   );

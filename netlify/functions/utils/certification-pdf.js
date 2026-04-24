@@ -720,7 +720,7 @@ export function buildCertificationNarrative(record = {}) {
           "."
         ])
       );
-    } else if (eventualRows.length <= 3) {
+    } else if (eventualRows.length === 2) {
       blocks.push(
         paragraph([
           ...buildInlineEventualSummarySegments(eventualRows),
