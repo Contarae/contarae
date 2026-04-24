@@ -20,6 +20,61 @@ const PAYMENT_META = {
   voided: { label: "Anulado", tone: "#B45309", bg: "rgba(245,158,11,.12)" }
 };
 
+const ADMIN_MODULES = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    title: "Centro operativo",
+    description: "Resumen de solicitudes generales, vencimientos, alertas, cartera y tareas pendientes."
+  },
+  {
+    id: "solicitudes",
+    label: "Solicitudes",
+    title: "Solicitudes de servicios",
+    description: "Gestiona servicios personalizados sin mezclar el flujo automatizado de certificaciones."
+  },
+  {
+    id: "clientes",
+    label: "Clientes",
+    title: "Clientes",
+    description: "Consulta clientes asociados a solicitudes generales, saldos y servicios activos."
+  },
+  {
+    id: "certificaciones",
+    label: "Certificaciones",
+    title: "Certificaciones de ingresos",
+    description: "Revisa pagos aprobados, registra notas internas y emite certificaciones automatizadas."
+  }
+];
+
+const SERVICE_TYPES = [
+  ["declaracion_renta", "Declaración de renta"],
+  ["tramite_tributario", "Trámite tributario"],
+  ["asesoria_contable", "Asesoría contable"],
+  ["respuesta_requerimiento", "Respuesta a requerimiento"],
+  ["constitucion_rut", "RUT / Cámara de Comercio"],
+  ["planeacion_financiera", "Planeación financiera"],
+  ["otros", "Otros servicios"]
+];
+
+const SERVICE_STATUS_META = {
+  nuevo: { label: "Nuevo", tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" },
+  cotizado: { label: "Cotizado", tone: "#7C3AED", bg: "rgba(124,58,237,.10)" },
+  pendiente_documentos: { label: "Pendiente documentos", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
+  en_proceso: { label: "En proceso", tone: "#0F766E", bg: "rgba(13,148,136,.10)" },
+  pendiente_pago: { label: "Pendiente pago", tone: "#C2410C", bg: "rgba(249,115,22,.12)" },
+  finalizado: { label: "Finalizado", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
+  cancelado: { label: "Cancelado", tone: "#991B1B", bg: "rgba(220,38,38,.10)" }
+};
+
+const SERVICE_PAYMENT_META = {
+  pendiente: { label: "Pago pendiente", tone: "#C2410C", bg: "rgba(249,115,22,.12)" },
+  parcial: { label: "Pago parcial", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
+  pagado: { label: "Pagado por Wompi", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
+  pagado_manual: { label: "Pagado manual", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
+  no_requiere: { label: "No requiere pago", tone: "#475569", bg: "rgba(100,116,139,.10)" }
+};
+
 const CERTIFICATE_CURRENCY_FIELDS = [
   "ingresos_laborales",
   "pensiones",
@@ -167,6 +222,204 @@ function hasMeaningfulCurrencyValue(value) {
   const raw = String(value || "").trim();
   if (!raw) return false;
   return parseCurrency(raw) > 0;
+}
+
+function getServiceTypeLabel(type) {
+  return SERVICE_TYPES.find(([value]) => value === type)?.[1] || "Otros servicios";
+}
+
+function getServiceStatusMeta(status) {
+  return SERVICE_STATUS_META[status] || SERVICE_STATUS_META.nuevo;
+}
+
+function getServicePaymentMeta(status) {
+  return SERVICE_PAYMENT_META[status] || SERVICE_PAYMENT_META.pendiente;
+}
+
+function formatMoney(value) {
+  const amount = parseCurrency(value);
+  return amount > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(amount)}` : "$ 0";
+}
+
+function formatDateOnly(value) {
+  if (!value) return "Sin vencimiento";
+
+  try {
+    return new Intl.DateTimeFormat("es-CO", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    }).format(new Date(`${String(value).slice(0, 10)}T00:00:00-05:00`));
+  } catch {
+    return value;
+  }
+}
+
+function getTodayDateString() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const byType = parts.reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function daysUntilDue(dueDate) {
+  if (!dueDate) return null;
+  const today = new Date(`${getTodayDateString()}T00:00:00-05:00`);
+  const due = new Date(`${String(dueDate).slice(0, 10)}T00:00:00-05:00`);
+  if (Number.isNaN(due.getTime())) return null;
+  return Math.ceil((due.getTime() - today.getTime()) / 86400000);
+}
+
+function getDueMeta(request = {}) {
+  if (!request.dueDate) {
+    return { label: "Sin vencimiento", tone: "#64748B", bg: "rgba(100,116,139,.10)", urgent: false };
+  }
+
+  const days = daysUntilDue(request.dueDate);
+  if (days === null) {
+    return { label: "Fecha inválida", tone: "#991B1B", bg: "rgba(220,38,38,.10)", urgent: true };
+  }
+
+  if (["finalizado", "cancelado"].includes(request.status)) {
+    return { label: `Venció: ${formatDateOnly(request.dueDate)}`, tone: "#475569", bg: "rgba(100,116,139,.10)", urgent: false };
+  }
+
+  if (days < 0) {
+    return { label: `Vencida hace ${Math.abs(days)} día(s)`, tone: "#DC2626", bg: "rgba(220,38,38,.10)", urgent: true };
+  }
+
+  if (days === 0) {
+    return { label: "Vence hoy", tone: "#DC2626", bg: "rgba(220,38,38,.10)", urgent: true };
+  }
+
+  if (days <= 3) {
+    return { label: `Vence en ${days} día(s)`, tone: "#B45309", bg: "rgba(245,158,11,.14)", urgent: true };
+  }
+
+  return { label: `Vence: ${formatDateOnly(request.dueDate)}`, tone: "#15803D", bg: "rgba(34,197,94,.12)", urgent: false };
+}
+
+function buildEmptyServiceDraft() {
+  return {
+    reference: "",
+    title: "",
+    serviceType: "declaracion_renta",
+    status: "nuevo",
+    paymentStatus: "pendiente",
+    agreedPrice: "",
+    amountPaid: "",
+    dueDate: "",
+    comments: "",
+    client: {
+      name: "",
+      documentType: "CC",
+      documentNumber: "",
+      phone: "",
+      email: ""
+    }
+  };
+}
+
+function buildServiceDraftFromDetail(detail = null) {
+  if (!detail) return buildEmptyServiceDraft();
+
+  return {
+    reference: detail.reference || "",
+    title: detail.title || "",
+    serviceType: detail.serviceType || "otros",
+    status: detail.status || "nuevo",
+    paymentStatus: detail.paymentStatus || "pendiente",
+    agreedPrice: detail.agreedPrice || "",
+    amountPaid: detail.amountPaid || "",
+    dueDate: detail.dueDate || "",
+    comments: detail.comments || "",
+    client: {
+      name: detail.client?.name || "",
+      documentType: detail.client?.documentType || "CC",
+      documentNumber: detail.client?.documentNumber || "",
+      phone: detail.client?.phone || "",
+      email: detail.client?.email || ""
+    }
+  };
+}
+
+function buildServiceDashboard(records = []) {
+  const activeRecords = records.filter((record) => !["finalizado", "cancelado"].includes(record.status));
+  const overdue = activeRecords.filter((record) => {
+    const days = daysUntilDue(record.dueDate);
+    return days !== null && days < 0;
+  });
+  const dueSoon = activeRecords.filter((record) => {
+    const days = daysUntilDue(record.dueDate);
+    return days !== null && days >= 0 && days <= 3;
+  });
+  const pendingPayment = records.filter((record) => ["pendiente", "parcial"].includes(record.paymentStatus));
+  const totalSales = records.reduce((sum, record) => sum + parseCurrency(record.agreedPrice), 0);
+  const totalPaid = records.reduce((sum, record) => sum + parseCurrency(record.amountPaid), 0);
+  const receivables = Math.max(totalSales - totalPaid, 0);
+  const calendar = [...activeRecords]
+    .filter((record) => record.dueDate)
+    .sort((left, right) => new Date(left.dueDate) - new Date(right.dueDate))
+    .slice(0, 12);
+  const byType = SERVICE_TYPES.map(([type, label]) => ({
+    type,
+    label,
+    count: activeRecords.filter((record) => record.serviceType === type).length
+  })).filter((item) => item.count > 0);
+
+  return {
+    activeCount: activeRecords.length,
+    overdueCount: overdue.length,
+    dueSoonCount: dueSoon.length,
+    pendingPaymentCount: pendingPayment.length,
+    totalSales: `$ ${new Intl.NumberFormat("es-CO").format(totalSales)}`,
+    totalPaid: `$ ${new Intl.NumberFormat("es-CO").format(totalPaid)}`,
+    receivables: `$ ${new Intl.NumberFormat("es-CO").format(receivables)}`,
+    calendar,
+    byType
+  };
+}
+
+function buildClientRows(records = []) {
+  const clients = new Map();
+
+  records.forEach((record) => {
+    const documentNumber = String(record.clientDocumentNumber || "").trim();
+    const key = documentNumber || String(record.clientEmail || record.clientPhone || record.clientName || "sin-cliente").toLowerCase();
+    const current = clients.get(key) || {
+      key,
+      name: record.clientName || "Cliente sin nombre",
+      documentNumber,
+      email: record.clientEmail || "",
+      phone: record.clientPhone || "",
+      requests: 0,
+      active: 0,
+      receivable: 0,
+      lastUpdatedAt: ""
+    };
+
+    current.requests += 1;
+    if (!["finalizado", "cancelado"].includes(record.status)) current.active += 1;
+    current.receivable += Math.max(parseCurrency(record.agreedPrice) - parseCurrency(record.amountPaid), 0);
+    current.lastUpdatedAt =
+      !current.lastUpdatedAt || new Date(record.updatedAt || 0) > new Date(current.lastUpdatedAt || 0)
+        ? record.updatedAt
+        : current.lastUpdatedAt;
+    clients.set(key, current);
+  });
+
+  return Array.from(clients.values()).sort((left, right) => {
+    return new Date(right.lastUpdatedAt || 0) - new Date(left.lastUpdatedAt || 0);
+  });
 }
 
 function normalizeComparableValue(field, value) {
@@ -396,11 +649,425 @@ function InfoTile({ label, value }) {
   );
 }
 
+function ModuleNav({ activeModule, counts, onChange }) {
+  return (
+    <div className="admin-module-nav" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
+      {ADMIN_MODULES.map((module) => {
+        const active = activeModule === module.id;
+        const count = counts?.[module.id];
+        return (
+          <button
+            key={module.id}
+            type="button"
+            onClick={() => onChange(module.id)}
+            style={{
+              padding: "13px 14px",
+              borderRadius: 18,
+              border: active ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)",
+              background: active ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "rgba(255,255,255,.92)",
+              color: active ? "#fff" : "#0B1D3A",
+              boxShadow: active ? "0 14px 30px rgba(37,99,235,.18)" : "none",
+              fontFamily: F,
+              textAlign: "left",
+              cursor: "pointer"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+              <span style={{ fontWeight: 900, fontSize: 14 }}>{module.label}</span>
+              {typeof count === "number" ? (
+                <span style={{ fontSize: 12, fontWeight: 900, opacity: active ? 0.9 : 0.65 }}>{count}</span>
+              ) : null}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatCard({ label, value, note, tone = "#1D4ED8" }) {
+  return (
+    <section style={{ padding: 18, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 34px rgba(15,23,42,.05)" }}>
+      <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B", marginBottom: 8 }}>{label}</div>
+      <div style={{ fontFamily: FH, color: tone, fontSize: 30, lineHeight: 1.1, fontWeight: 700 }}>{value}</div>
+      {note ? <div style={{ marginTop: 8, fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.6 }}>{note}</div> : null}
+    </section>
+  );
+}
+
+function OperationsDashboard({ summary, serviceRecords, loading, error, onOpenRequest, onOpenModule }) {
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      {error ? (
+        <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700 }}>
+          {error}
+        </div>
+      ) : null}
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+        <StatCard label="SOLICITUDES ACTIVAS" value={loading ? "..." : summary.activeCount} note="Servicios generales, no certificaciones." />
+        <StatCard label="VENCIDAS" value={loading ? "..." : summary.overdueCount} tone="#DC2626" note="Requieren atención prioritaria." />
+        <StatCard label="PRÓXIMAS A VENCER" value={loading ? "..." : summary.dueSoonCount} tone="#B45309" note="Vencen hoy o en máximo 3 días." />
+        <StatCard label="CUENTAS POR COBRAR" value={loading ? "..." : summary.receivables} tone="#0F766E" note={`${summary.pendingPaymentCount} solicitud(es) con pago pendiente o parcial.`} />
+      </div>
+
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "1.35fr .65fr", gap: 18, alignItems: "start" }}>
+        <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CALENDARIO Y ALERTAS</div>
+              <h2 style={{ margin: 0, fontFamily: FH, fontSize: 28, color: "#0B1D3A" }}>Vencimientos de solicitudes</h2>
+            </div>
+            <button type="button" onClick={() => onOpenModule("solicitudes")} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Ver solicitudes
+            </button>
+          </div>
+
+          {summary.calendar.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {summary.calendar.map((request) => {
+                const dueMeta = getDueMeta(request);
+                return (
+                  <button
+                    key={request.reference}
+                    type="button"
+                    onClick={() => onOpenRequest(request.reference)}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "110px minmax(0,1fr) auto",
+                      gap: 14,
+                      alignItems: "center",
+                      textAlign: "left",
+                      padding: 14,
+                      borderRadius: 18,
+                      border: dueMeta.urgent ? "1px solid rgba(220,38,38,.18)" : "1px solid rgba(37,99,235,.10)",
+                      background: dueMeta.urgent ? "rgba(254,242,242,.80)" : "#F8FBFF",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 900 }}>{formatDateOnly(request.dueDate)}</div>
+                    <div>
+                      <div style={{ fontFamily: F, fontSize: 14, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{request.title || getServiceTypeLabel(request.serviceType)}</div>
+                      <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.7 }}>{request.clientName || "Cliente sin nombre"} · {getServiceTypeLabel(request.serviceType)}</div>
+                    </div>
+                    <Badge meta={dueMeta}>{dueMeta.label}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+              Aún no hay vencimientos registrados en solicitudes generales.
+            </div>
+          )}
+        </section>
+
+        <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+          <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>RESUMEN FINANCIERO</div>
+          <div style={{ display: "grid", gap: 12 }}>
+            <InfoTile label="Ventas pactadas" value={summary.totalSales} />
+            <InfoTile label="Ingresos recibidos" value={summary.totalPaid} />
+            <InfoTile label="Servicios registrados" value={serviceRecords.length} />
+          </div>
+          <div style={{ marginTop: 18, fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>POR TIPO DE SERVICIO</div>
+          {summary.byType.length ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {summary.byType.map((item) => (
+                <div key={item.type} style={{ display: "flex", justifyContent: "space-between", gap: 10, paddingBottom: 8, borderBottom: "1px solid rgba(37,99,235,.08)", fontFamily: F, fontSize: 13, color: "#334155" }}>
+                  <span>{item.label}</span>
+                  <strong>{item.count}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontFamily: F, color: "#64748B", fontSize: 13, lineHeight: 1.7 }}>Sin servicios activos clasificados.</div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ServiceRequestsModule({
+  records,
+  filteredRecords,
+  selectedReference,
+  detail,
+  draft,
+  search,
+  statusFilter,
+  paymentFilter,
+  loading,
+  error,
+  saving,
+  docFiles,
+  uploadingDocs,
+  onSearchChange,
+  onStatusFilterChange,
+  onPaymentFilterChange,
+  onSelect,
+  onNew,
+  onSave,
+  onDraftChange,
+  onClientChange,
+  onCurrencyChange,
+  onDocSelection,
+  onRemoveDoc,
+  onUploadDocs
+}) {
+  const balance = Math.max(parseCurrency(draft.agreedPrice) - parseCurrency(draft.amountPaid), 0);
+
+  return (
+    <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 380px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
+      <aside className="admin-sidebar" style={{ padding: 18, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)", position: "sticky", top: 20 }}>
+        <button type="button" onClick={onNew} style={{ width: "100%", padding: "13px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer", marginBottom: 14 }}>
+          Nueva solicitud
+        </button>
+        <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+          <input style={inputStyle} placeholder="Buscar por cliente, documento o referencia" value={search} onChange={(event) => onSearchChange(event.target.value)} />
+          <select style={inputStyle} value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+            <option value="all">Todos los estados</option>
+            {Object.keys(SERVICE_STATUS_META).map((status) => (
+              <option key={status} value={status}>{getServiceStatusMeta(status).label}</option>
+            ))}
+          </select>
+          <select style={inputStyle} value={paymentFilter} onChange={(event) => onPaymentFilterChange(event.target.value)}>
+            <option value="all">Todos los pagos</option>
+            {Object.keys(SERVICE_PAYMENT_META).map((status) => (
+              <option key={status} value={status}>{getServicePaymentMeta(status).label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#1D4ED8", letterSpacing: "1.2px", fontFamily: F }}>SOLICITUDES GENERALES</div>
+          <div style={{ fontSize: 12, color: "#64748B", fontFamily: F }}>{filteredRecords.length}</div>
+        </div>
+        {loading && <div style={{ fontFamily: F, color: "#64748B", fontSize: 14 }}>Cargando solicitudes...</div>}
+        {error && <div style={{ fontFamily: F, color: "#991B1B", fontSize: 14, lineHeight: 1.6 }}>{error}</div>}
+
+        <div className="admin-sidebar-list" style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 330px)", overflowY: "auto", paddingRight: 4 }}>
+          {filteredRecords.map((record) => {
+            const selected = selectedReference === record.reference;
+            const dueMeta = getDueMeta(record);
+            return (
+              <button
+                key={record.reference}
+                type="button"
+                onClick={() => onSelect(record.reference)}
+                style={{
+                  textAlign: "left",
+                  padding: 16,
+                  borderRadius: 18,
+                  border: selected ? "1px solid rgba(37,99,235,.24)" : "1px solid rgba(37,99,235,.10)",
+                  background: selected ? "rgba(37,99,235,.08)" : "#fff",
+                  cursor: "pointer"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
+                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{record.clientName || "Cliente sin nombre"}</div>
+                  <Badge meta={getServiceStatusMeta(record.status)}>{getServiceStatusMeta(record.status).label}</Badge>
+                </div>
+                <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", marginBottom: 6 }}>{record.reference}</div>
+                <div style={{ fontFamily: F, fontSize: 13, color: "#41556F", lineHeight: 1.55 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Badge meta={dueMeta}>{dueMeta.label}</Badge>
+                  <Badge meta={getServicePaymentMeta(record.paymentStatus)}>{getServicePaymentMeta(record.paymentStatus).label}</Badge>
+                </div>
+                <div style={{ marginTop: 8, fontFamily: F, fontSize: 12, color: "#52647F", fontWeight: 800 }}>
+                  Saldo: {record.balance || "$ 0"} · Docs: {record.documentsCount || 0}
+                </div>
+              </button>
+            );
+          })}
+          {!filteredRecords.length && !loading ? (
+            <div style={{ padding: 14, borderRadius: 16, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.7 }}>
+              No hay solicitudes generales con estos filtros.
+            </div>
+          ) : null}
+        </div>
+      </aside>
+
+      <main className="admin-main" style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
+          <div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <Badge meta={getServiceStatusMeta(draft.status)}>{getServiceStatusMeta(draft.status).label}</Badge>
+              <Badge meta={getServicePaymentMeta(draft.paymentStatus)}>{getServicePaymentMeta(draft.paymentStatus).label}</Badge>
+              {draft.dueDate ? <Badge meta={getDueMeta(draft)}>{getDueMeta(draft).label}</Badge> : null}
+            </div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(26px,3vw,38px)", lineHeight: 1.08, color: "#0B1D3A" }}>
+              {draft.reference ? "Editar solicitud" : "Nueva solicitud"}
+            </h2>
+            <p style={{ margin: "10px 0 0", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
+              {draft.reference || "Se generará una referencia única al guardar por primera vez."}
+            </p>
+          </div>
+          <div style={{ minWidth: 210, padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B", marginBottom: 6 }}>SALDO</div>
+            <div style={{ fontFamily: FH, fontSize: 28, color: balance > 0 ? "#C2410C" : "#15803D" }}>{formatMoney(balance)}</div>
+          </div>
+        </div>
+
+        <div className="admin-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,420px)", gap: 18, alignItems: "start" }}>
+          <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 14 }}>DATOS DEL CLIENTE</div>
+            <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
+              <input style={inputStyle} placeholder="Nombre del cliente" value={draft.client.name} onChange={(event) => onClientChange("name", event.target.value)} />
+              <input style={inputStyle} placeholder="Número de documento" value={draft.client.documentNumber} onChange={(event) => onClientChange("documentNumber", event.target.value)} />
+              <select style={inputStyle} value={draft.client.documentType} onChange={(event) => onClientChange("documentType", event.target.value)}>
+                <option value="CC">Cédula de ciudadanía</option>
+                <option value="CE">Cédula de extranjería</option>
+                <option value="NIT">NIT</option>
+                <option value="PAS">Pasaporte</option>
+              </select>
+              <input style={inputStyle} placeholder="WhatsApp / teléfono" value={draft.client.phone} onChange={(event) => onClientChange("phone", event.target.value)} />
+              <input style={inputStyle} placeholder="Correo electrónico" value={draft.client.email} onChange={(event) => onClientChange("email", event.target.value)} />
+            </div>
+
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 14 }}>DATOS DEL SERVICIO</div>
+            <div style={{ display: "grid", gap: 10 }}>
+              <input style={inputStyle} placeholder="Título o asunto de la solicitud" value={draft.title} onChange={(event) => onDraftChange("title", event.target.value)} />
+              <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                <select style={inputStyle} value={draft.serviceType} onChange={(event) => onDraftChange("serviceType", event.target.value)}>
+                  {SERVICE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <input style={inputStyle} type="date" value={draft.dueDate} onChange={(event) => onDraftChange("dueDate", event.target.value)} />
+                <select style={inputStyle} value={draft.status} onChange={(event) => onDraftChange("status", event.target.value)}>
+                  {Object.keys(SERVICE_STATUS_META).map((status) => <option key={status} value={status}>{getServiceStatusMeta(status).label}</option>)}
+                </select>
+                <select style={inputStyle} value={draft.paymentStatus} onChange={(event) => onDraftChange("paymentStatus", event.target.value)}>
+                  {Object.keys(SERVICE_PAYMENT_META).map((status) => <option key={status} value={status}>{getServicePaymentMeta(status).label}</option>)}
+                </select>
+                <input style={inputStyle} placeholder="Costo pactado" value={draft.agreedPrice} onChange={(event) => onCurrencyChange("agreedPrice", event.target.value)} />
+                <input style={inputStyle} placeholder="Valor pagado" value={draft.amountPaid} onChange={(event) => onCurrencyChange("amountPaid", event.target.value)} />
+              </div>
+              <textarea style={{ ...inputStyle, minHeight: 132, resize: "vertical" }} placeholder="Comentarios, acuerdos, pendientes o detalles de negociación" value={draft.comments} onChange={(event) => onDraftChange("comments", event.target.value)} />
+              <button type="button" onClick={onSave} disabled={saving} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: saving ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+                {saving ? "Guardando..." : "Guardar solicitud"}
+              </button>
+            </div>
+          </section>
+
+          <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>DOCUMENTOS</div>
+                <div style={{ fontFamily: F, fontSize: 13, color: "#64748B" }}>Adjuntos propios de esta solicitud general.</div>
+              </div>
+              <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{detail?.documents?.length || 0} archivo(s)</Badge>
+            </div>
+            {!draft.reference ? (
+              <div style={{ padding: 14, borderRadius: 18, background: "#fff", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.7, marginBottom: 14 }}>
+                Guarda la solicitud para crear la referencia única y habilitar la carga de documentos.
+              </div>
+            ) : (
+              <>
+                <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx" onChange={onDocSelection} style={{ ...inputStyle, padding: "10px 12px", cursor: "pointer", marginBottom: docFiles.length ? 10 : 12 }} />
+                {docFiles.length ? (
+                  <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                    {docFiles.map((file, index) => (
+                      <div key={`${file.name}-${file.lastModified}-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 14, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                        <div>
+                          <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 800 }}>{file.name}</div>
+                          <div style={{ fontFamily: F, fontSize: 12, color: "#64748B" }}>{formatBytes(file.size)}</div>
+                        </div>
+                        <button type="button" onClick={() => onRemoveDoc(index)} style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(220,38,38,.14)", background: "rgba(220,38,38,.06)", color: "#DC2626", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                          Quitar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <button type="button" onClick={onUploadDocs} disabled={!docFiles.length || uploadingDocs} style={{ width: "100%", padding: "12px 14px", borderRadius: 14, border: "none", background: !docFiles.length || uploadingDocs ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: !docFiles.length || uploadingDocs ? "not-allowed" : "pointer", marginBottom: 14 }}>
+                  {uploadingDocs ? "Cargando documentos..." : "Cargar documentos"}
+                </button>
+              </>
+            )}
+
+            {detail?.documents?.length ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {detail.documents.map((file) => (
+                  <div key={file.id || file.blobKey} style={{ padding: 14, borderRadius: 18, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                    <div style={{ fontFamily: F, fontSize: 14, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{file.originalName || "Documento adjunto"}</div>
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7, marginBottom: 10 }}>{file.sizeLabel || formatBytes(file.size)} · {formatDate(file.uploadedAt)}</div>
+                    <a href={file.downloadPath} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", padding: "9px 12px", borderRadius: 12, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none", fontSize: 13 }}>
+                      Ver documento
+                    </a>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontFamily: F, color: "#64748B", fontSize: 13, lineHeight: 1.7 }}>
+                No hay documentos cargados para esta solicitud.
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function ClientsModule({ clients, records, onOpenClient }) {
+  return (
+    <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES DE SOLICITUDES GENERALES</div>
+          <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{clients.length} cliente(s)</h2>
+        </div>
+        <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{records.length} solicitud(es)</Badge>
+      </div>
+
+      {clients.length ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          {clients.map((client) => (
+            <button
+              key={client.key}
+              type="button"
+              onClick={() => onOpenClient(client)}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) 120px 140px auto",
+                gap: 14,
+                alignItems: "center",
+                textAlign: "left",
+                padding: 16,
+                borderRadius: 18,
+                border: "1px solid rgba(37,99,235,.10)",
+                background: "#fff",
+                cursor: "pointer"
+              }}
+            >
+              <div>
+                <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{client.name}</div>
+                <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
+                  {client.documentNumber || "Sin documento"} · {client.email || "Sin correo"} · {client.phone || "Sin teléfono"}
+                </div>
+              </div>
+              <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.requests} solicitud(es)</div>
+              <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.active} activa(s)</div>
+              <Badge meta={client.receivable > 0 ? getServicePaymentMeta("pendiente") : getServicePaymentMeta("pagado_manual")}>
+                {client.receivable > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(client.receivable)}` : "Sin saldo"}
+              </Badge>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+          Aún no hay clientes registrados en el módulo de solicitudes generales.
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function AdminPanel() {
   const responsiveCss = `
     @media (max-width: 1024px) {
       .admin-shell-grid,
-      .admin-detail-grid {
+      .admin-detail-grid,
+      .admin-dashboard-grid {
         grid-template-columns: 1fr !important;
       }
 
@@ -422,7 +1089,9 @@ export default function AdminPanel() {
       .admin-info-grid,
       .admin-original-grid,
       .admin-pdf-primary-grid,
-      .admin-pdf-income-grid {
+      .admin-pdf-income-grid,
+      .admin-module-nav,
+      .admin-dashboard-grid {
         grid-template-columns: 1fr !important;
       }
 
@@ -500,10 +1169,24 @@ export default function AdminPanel() {
     includeJccBackground: false,
     confirmedReview: false
   });
+  const [activeModule, setActiveModule] = useState("dashboard");
+  const [serviceRecords, setServiceRecords] = useState([]);
+  const [serviceLoading, setServiceLoading] = useState(false);
+  const [serviceError, setServiceError] = useState("");
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [serviceStatusFilter, setServiceStatusFilter] = useState("all");
+  const [servicePaymentFilter, setServicePaymentFilter] = useState("all");
+  const [selectedServiceReference, setSelectedServiceReference] = useState("");
+  const [serviceDetail, setServiceDetail] = useState(null);
+  const [serviceDraft, setServiceDraft] = useState(buildEmptyServiceDraft());
+  const [serviceSaving, setServiceSaving] = useState(false);
+  const [serviceDocFiles, setServiceDocFiles] = useState([]);
+  const [serviceUploadingDocs, setServiceUploadingDocs] = useState(false);
   const draftRef = useRef(draft);
   const certificateDraftRef = useRef(certificateDraft);
 
   const deferredSearch = useDeferredValue(search);
+  const deferredServiceSearch = useDeferredValue(serviceSearch);
   const certificateIncomePreview = useMemo(
     () => buildCertificateIncomePreview(certificateDraft),
     [certificateDraft]
@@ -520,6 +1203,7 @@ export default function AdminPanel() {
   const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
   const editLocked = Boolean(isLockedStatus && !editOverridePassword);
   const originalFormData = detail?.formData || {};
+  const activeModuleMeta = ADMIN_MODULES.find((module) => module.id === activeModule) || ADMIN_MODULES[0];
 
   useEffect(() => {
     draftRef.current = draft;
@@ -591,6 +1275,60 @@ export default function AdminPanel() {
     }
   };
 
+  const loadServiceRecords = async (preferredReference = "") => {
+    setServiceLoading(true);
+    setServiceError("");
+
+    try {
+      const response = await fetch("/api/admin-list-service-requests");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar las solicitudes generales.");
+      }
+
+      const nextRecords = data.records || [];
+      setServiceRecords(nextRecords);
+
+      const nextReference =
+        preferredReference ||
+        (selectedServiceReference && nextRecords.some((record) => record.reference === selectedServiceReference)
+          ? selectedServiceReference
+          : nextRecords[0]?.reference || "");
+
+      if (nextReference && nextReference !== selectedServiceReference) {
+        setSelectedServiceReference(nextReference);
+      }
+    } catch (error) {
+      setServiceError(error.message);
+    } finally {
+      setServiceLoading(false);
+    }
+  };
+
+  const loadServiceDetail = async (reference) => {
+    if (!reference) return null;
+
+    setServiceError("");
+
+    try {
+      const response = await fetch(`/api/admin-get-service-request?reference=${encodeURIComponent(reference)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar la solicitud general.");
+      }
+
+      setServiceDetail(data.detail);
+      setServiceDraft(buildServiceDraftFromDetail(data.detail));
+      setServiceDocFiles([]);
+      return data.detail;
+    } catch (error) {
+      setServiceError(error.message);
+      return null;
+    }
+  };
+
   const loadDetail = async (reference) => {
     if (!reference) return;
 
@@ -631,6 +1369,7 @@ export default function AdminPanel() {
   useEffect(() => {
     if (session.authenticated) {
       loadRecords();
+      loadServiceRecords();
     }
   }, [session.authenticated]);
 
@@ -639,6 +1378,12 @@ export default function AdminPanel() {
       loadDetail(selectedReference);
     }
   }, [session.authenticated, selectedReference]);
+
+  useEffect(() => {
+    if (session.authenticated && selectedServiceReference) {
+      loadServiceDetail(selectedServiceReference);
+    }
+  }, [session.authenticated, selectedServiceReference]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -691,6 +1436,40 @@ export default function AdminPanel() {
     return sorted;
   }, [records, filter, deferredSearch]);
 
+  const filteredServiceRecords = useMemo(() => {
+    const term = deferredServiceSearch.trim().toLowerCase();
+    const filtered = serviceRecords.filter((record) => {
+      if (serviceStatusFilter !== "all" && record.status !== serviceStatusFilter) return false;
+      if (servicePaymentFilter !== "all" && record.paymentStatus !== servicePaymentFilter) return false;
+      if (!term) return true;
+
+      return [
+        record.reference,
+        record.title,
+        record.clientName,
+        record.clientDocumentNumber,
+        record.clientEmail,
+        record.clientPhone,
+        getServiceTypeLabel(record.serviceType)
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    });
+
+    return [...filtered].sort((left, right) => {
+      const leftDays = daysUntilDue(left.dueDate);
+      const rightDays = daysUntilDue(right.dueDate);
+      if (leftDays === null && rightDays !== null) return 1;
+      if (leftDays !== null && rightDays === null) return -1;
+      if (leftDays !== null && rightDays !== null) return leftDays - rightDays;
+      return new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0);
+    });
+  }, [serviceRecords, serviceStatusFilter, servicePaymentFilter, deferredServiceSearch]);
+
+  const serviceDashboard = useMemo(() => buildServiceDashboard(serviceRecords), [serviceRecords]);
+  const clientRows = useMemo(() => buildClientRows(serviceRecords), [serviceRecords]);
+
   const handleLogin = async (event) => {
     event.preventDefault();
     setLoginBusy(true);
@@ -724,6 +1503,11 @@ export default function AdminPanel() {
     setDetail(null);
     setDraft(buildReviewDraft());
     setCertificateDraft(buildCertificateDraftState());
+    setServiceRecords([]);
+    setSelectedServiceReference("");
+    setServiceDetail(null);
+    setServiceDraft(buildEmptyServiceDraft());
+    setServiceDocFiles([]);
     setEditOverridePassword("");
     setUnlockPassword("");
     setUnlockError("");
@@ -891,6 +1675,148 @@ export default function AdminPanel() {
       setDetailError(error.message);
     } finally {
       setUploadingSupports(false);
+    }
+  };
+
+  const handleSelectServiceRequest = (reference) => {
+    setSelectedServiceReference(reference);
+    setServiceDetail(null);
+    setServiceDraft(buildEmptyServiceDraft());
+    setServiceDocFiles([]);
+    setServiceError("");
+    setActiveModule("solicitudes");
+  };
+
+  const handleStartNewServiceRequest = () => {
+    setSelectedServiceReference("");
+    setServiceDetail(null);
+    setServiceDraft(buildEmptyServiceDraft());
+    setServiceDocFiles([]);
+    setServiceError("");
+    setActiveModule("solicitudes");
+  };
+
+  const handleServiceDraftChange = (field, value) => {
+    setServiceDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const handleServiceClientChange = (field, value) => {
+    setServiceDraft((current) => ({
+      ...current,
+      client: {
+        ...current.client,
+        [field]: value
+      }
+    }));
+  };
+
+  const handleServiceCurrencyChange = (field, value) => {
+    setServiceDraft((current) => ({
+      ...current,
+      [field]: normalizeCurrencyInput(value)
+    }));
+  };
+
+  const saveServiceRequest = async () => {
+    setServiceSaving(true);
+    setServiceError("");
+
+    try {
+      if (!String(serviceDraft.client?.name || "").trim()) {
+        throw new Error("Ingresa el nombre del cliente antes de guardar.");
+      }
+
+      if (!String(serviceDraft.title || "").trim()) {
+        throw new Error("Ingresa un título o asunto para la solicitud.");
+      }
+
+      const response = await fetch("/api/admin-upsert-service-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(serviceDraft)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible guardar la solicitud general.");
+      }
+
+      setServiceDetail(data.detail);
+      setServiceDraft(buildServiceDraftFromDetail(data.detail));
+      setSelectedServiceReference(data.detail.reference);
+      await loadServiceRecords(data.detail.reference);
+      setNotice("Solicitud general guardada.");
+      return data.detail;
+    } catch (error) {
+      setServiceError(error.message);
+      return null;
+    } finally {
+      setServiceSaving(false);
+    }
+  };
+
+  const handleServiceDocSelection = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setServiceDocFiles((current) => [...current, ...files]);
+    event.target.value = "";
+  };
+
+  const handleRemoveServiceDoc = (index) => {
+    setServiceDocFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  };
+
+  const handleUploadServiceDocuments = async () => {
+    if (!serviceDraft.reference || !serviceDocFiles.length) return;
+
+    setServiceUploadingDocs(true);
+    setServiceError("");
+
+    try {
+      const body = new FormData();
+      body.append("reference", serviceDraft.reference);
+      serviceDocFiles.forEach((file) => body.append("files", file));
+
+      const response = await fetch("/api/admin-upload-service-request-documents", {
+        method: "POST",
+        body
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar los documentos.");
+      }
+
+      setServiceDetail(data.detail);
+      setServiceDraft(buildServiceDraftFromDetail(data.detail));
+      setServiceDocFiles([]);
+      await loadServiceRecords(data.detail.reference);
+      setNotice(data.uploadedCount === 1 ? "Documento cargado en la solicitud." : `Se cargaron ${data.uploadedCount} documentos.`);
+    } catch (error) {
+      setServiceError(error.message);
+    } finally {
+      setServiceUploadingDocs(false);
+    }
+  };
+
+  const handleOpenClientRequests = (client) => {
+    setServiceSearch(client.documentNumber || client.name || "");
+    setServiceStatusFilter("all");
+    setServicePaymentFilter("all");
+    setActiveModule("solicitudes");
+  };
+
+  const handleRefreshPanel = () => {
+    loadRecords();
+    loadServiceRecords();
+    if (selectedServiceReference) {
+      loadServiceDetail(selectedServiceReference);
+    }
+    if (selectedReference) {
+      loadDetail(selectedReference);
     }
   };
 
@@ -1182,16 +2108,16 @@ export default function AdminPanel() {
         <div className="admin-topbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#2563EB", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>PANEL INTERNO</div>
-            <h1 style={{ fontFamily: FH, fontSize: "clamp(30px,4vw,48px)", margin: 0, lineHeight: 1.05, color: "#0B1D3A" }}>Solicitudes de certificacion</h1>
+            <h1 style={{ fontFamily: FH, fontSize: "clamp(30px,4vw,48px)", margin: 0, lineHeight: 1.05, color: "#0B1D3A" }}>{activeModuleMeta.title}</h1>
             <p style={{ margin: "10px 0 0", fontFamily: F, fontSize: 15, color: "#52647F", lineHeight: 1.8 }}>
-              Revisa pagos aprobados, registra notas internas y solicita documentacion adicional antes del envio final.
+              {activeModuleMeta.description}
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 700 }}>
               Sesion: {session.username}
             </div>
-            <button onClick={loadRecords} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={handleRefreshPanel} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
               Actualizar
             </button>
             <button onClick={handleLogout} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(220,38,38,.16)", background: "#fff", color: "#DC2626", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
@@ -1200,12 +2126,68 @@ export default function AdminPanel() {
           </div>
         </div>
 
+        <ModuleNav
+          activeModule={activeModule}
+          onChange={setActiveModule}
+          counts={{
+            solicitudes: serviceRecords.length,
+            clientes: clientRows.length,
+            certificaciones: records.length
+          }}
+        />
+
         {notice && (
           <div style={{ marginBottom: 16, padding: 14, borderRadius: 16, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 700 }}>
             {notice}
           </div>
         )}
 
+        {activeModule === "dashboard" ? (
+          <OperationsDashboard
+            summary={serviceDashboard}
+            serviceRecords={serviceRecords}
+            loading={serviceLoading}
+            error={serviceError}
+            onOpenRequest={handleSelectServiceRequest}
+            onOpenModule={setActiveModule}
+          />
+        ) : null}
+
+        {activeModule === "solicitudes" ? (
+          <ServiceRequestsModule
+            records={serviceRecords}
+            filteredRecords={filteredServiceRecords}
+            selectedReference={selectedServiceReference}
+            detail={serviceDetail}
+            draft={serviceDraft}
+            search={serviceSearch}
+            statusFilter={serviceStatusFilter}
+            paymentFilter={servicePaymentFilter}
+            loading={serviceLoading}
+            error={serviceError}
+            saving={serviceSaving}
+            docFiles={serviceDocFiles}
+            uploadingDocs={serviceUploadingDocs}
+            onSearchChange={setServiceSearch}
+            onStatusFilterChange={setServiceStatusFilter}
+            onPaymentFilterChange={setServicePaymentFilter}
+            onSelect={handleSelectServiceRequest}
+            onNew={handleStartNewServiceRequest}
+            onSave={saveServiceRequest}
+            onDraftChange={handleServiceDraftChange}
+            onClientChange={handleServiceClientChange}
+            onCurrencyChange={handleServiceCurrencyChange}
+            onDocSelection={handleServiceDocSelection}
+            onRemoveDoc={handleRemoveServiceDoc}
+            onUploadDocs={handleUploadServiceDocuments}
+          />
+        ) : null}
+
+        {activeModule === "clientes" ? (
+          <ClientsModule clients={clientRows} records={serviceRecords} onOpenClient={handleOpenClientRequests} />
+        ) : null}
+
+        {activeModule === "certificaciones" ? (
         <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 360px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
           <aside className="admin-sidebar" style={{ padding: 18, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)", position: "sticky", top: 20 }}>
             <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
@@ -2031,6 +3013,7 @@ export default function AdminPanel() {
             )}
           </main>
         </div>
+        ) : null}
       </div>
       {sendDialogOpen && createPortal(
         <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !sendBusy && setSendDialogOpen(false)}>
