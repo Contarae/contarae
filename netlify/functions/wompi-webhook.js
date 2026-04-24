@@ -622,7 +622,7 @@ export default async (req, context) => {
     const replyToBusinessEmail = process.env.RESEND_REPLY_TO || "info@contarae.com";
     const businessNotificationEmail =
       process.env.BUSINESS_NOTIFICATION_EMAIL || replyToBusinessEmail;
-    const whatsappLink = `https://wa.me/573013101050?text=${encodeURIComponent(
+    const whatsappLink = `https://wa.me/573001432008?text=${encodeURIComponent(
       `Hola CONTARAE, envío los soportes de mi solicitud ${updatedPaidRecord.consecutive ? `N° ${updatedPaidRecord.consecutive}` : ""} con referencia ${reference}.`
     )}`;
     const notificationErrors = {};
