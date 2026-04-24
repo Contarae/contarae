@@ -615,9 +615,9 @@ export function buildCertificationNarrative(record = {}) {
   if (recurringRows.length === 1) {
     blocks.push(
       paragraph([
-        `Como resultado de dicha validación, se estableció que ${customerReference} acredita ingresos mensuales recurrentes por concepto de ${recurringRows[0].displayLabel}, por valor de `,
+        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales recurrentes por concepto de ${recurringRows[0].displayLabel}, por valor de `,
         highlightedAmount(recurringRows[0].numericValue),
-        `; en consecuencia, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes acreditados asciende a `,
+        `; en consecuencia, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de ingresos correspondiente a dicho lapso asciende a `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -625,15 +625,15 @@ export function buildCertificationNarrative(record = {}) {
   } else if (recurringRows.length === 2) {
     blocks.push(
       paragraph([
-        `Como resultado de dicha validación, se estableció que ${customerReference} acredita ingresos mensuales recurrentes derivados de ${recurringRows[0].displayLabel} por valor de `,
+        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales recurrentes provenientes de ${recurringRows[0].displayLabel} por valor de `,
         highlightedAmount(recurringRows[0].numericValue),
         " y de ",
         recurringRows[1].displayLabel,
         " por valor de ",
         highlightedAmount(recurringRows[1].numericValue),
-        "; en consecuencia, el total mensual recurrente acreditado asciende a ",
+        "; en conjunto, dichos ingresos representan un total mensual de ",
         highlightedAmount(totalMonthlyRecurring),
-        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes acreditados asciende a `,
+        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, un total de `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -641,7 +641,7 @@ export function buildCertificationNarrative(record = {}) {
   } else if (recurringRows.length > 2) {
     blocks.push(
       paragraph(
-        `Como resultado de dicha validación, se estableció que ${customerReference} acredita ingresos mensuales recurrentes derivados de los siguientes conceptos:`
+        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales recurrentes derivados de los siguientes conceptos:`
       )
     );
     blocks.push({
@@ -655,9 +655,9 @@ export function buildCertificationNarrative(record = {}) {
     });
     blocks.push(
       paragraph([
-        "En consecuencia, el total mensual recurrente acreditado asciende a ",
+        "En conjunto, los ingresos mensuales recurrentes antes relacionados representan un total mensual de ",
         highlightedAmount(totalMonthlyRecurring),
-        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de los ingresos recurrentes acreditados asciende a `,
+        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, un total de `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -665,7 +665,7 @@ export function buildCertificationNarrative(record = {}) {
   } else {
     blocks.push(
       paragraph([
-        `Como resultado de dicha validación, no se acreditaron ingresos mensuales recurrentes para ${customerReference}; en consecuencia, el total de los ingresos recurrentes acreditados para el período objeto de certificación corresponde a `,
+        `Como resultado de dicha validación, no se identificaron ingresos mensuales recurrentes para ${customerReference}; en consecuencia, el total correspondiente al período objeto de certificación asciende a `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -678,9 +678,16 @@ export function buildCertificationNarrative(record = {}) {
         paragraph([
           `De manera adicional, durante el período objeto de certificación se identificó un ingreso eventual por concepto de ${eventualRows[0].concept}, por valor de `,
           highlightedAmount(eventualRows[0].numericValue),
-          ". Dicho ingreso corresponde a un hecho económico de carácter no ordinario, no fijo y no periódico; en consecuencia, no integra el ingreso mensual recurrente acreditado, aunque sí se considera dentro del análisis del período por encontrarse soportado documentalmente. Por lo anterior, el total de ingresos eventuales acreditados durante el período asciende a ",
+          ". Dicho ingreso corresponde a un hecho económico de carácter no ordinario, no fijo y no periódico; en consecuencia, no integra el ingreso mensual recurrente descrito, aunque sí se considera dentro del análisis del período por encontrarse soportado documentalmente."
+        ])
+      );
+      blocks.push(
+        paragraph([
+          "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
+          highlightedAmount(totalRecurringPeriod),
+          ", junto con el ingreso eventual identificado durante dicho lapso, por valor de ",
           highlightedAmount(totalEventualPeriod),
-          " y el total global de ingresos acreditados durante el período objeto de certificación asciende a ",
+          ", el total global de ingresos observado para el período objeto de certificación asciende a ",
           highlightedAmount(totalGlobalPeriod),
           "."
         ])
@@ -688,15 +695,30 @@ export function buildCertificationNarrative(record = {}) {
     } else if (eventualRows.length === 2) {
       blocks.push(
         paragraph([
-          `De manera adicional, durante el período objeto de certificación se identificaron ingresos eventuales correspondientes a ${eventualRows[0].concept} por valor de `,
+          `De manera adicional, durante el período objeto de certificación se identificó un ingreso eventual por concepto de ${eventualRows[0].concept}, por valor de `,
           highlightedAmount(eventualRows[0].numericValue),
-          " y a ",
-          eventualRows[1].concept,
-          " por valor de ",
+          "."
+        ])
+      );
+      blocks.push(
+        paragraph([
+          `Así mismo, se identificó un ingreso eventual por concepto de ${eventualRows[1].concept}, por valor de `,
           highlightedAmount(eventualRows[1].numericValue),
-          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente acreditado, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente. Por lo anterior, el total de ingresos eventuales acreditados durante el período asciende a ",
+          "."
+        ])
+      );
+      blocks.push(
+        paragraph(
+          "Ambos ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
+        )
+      );
+      blocks.push(
+        paragraph([
+          "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
+          highlightedAmount(totalRecurringPeriod),
+          ", junto con los ingresos eventuales identificados durante dicho lapso, cuya sumatoria asciende a ",
           highlightedAmount(totalEventualPeriod),
-          " y el total global de ingresos acreditados durante el período objeto de certificación asciende a ",
+          ", el total global de ingresos observado para el período objeto de certificación asciende a ",
           highlightedAmount(totalGlobalPeriod),
           "."
         ])
@@ -716,9 +738,18 @@ export function buildCertificationNarrative(record = {}) {
       });
       blocks.push(
         paragraph([
-          "Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente acreditado, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente. Por lo anterior, el total de ingresos eventuales acreditados durante el período asciende a ",
+          "Los ingresos eventuales antes relacionados corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente. La sumatoria de dichos ingresos asciende a ",
           highlightedAmount(totalEventualPeriod),
-          " y el total global de ingresos acreditados durante el período objeto de certificación asciende a ",
+          "."
+        ])
+      );
+      blocks.push(
+        paragraph([
+          "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
+          highlightedAmount(totalRecurringPeriod),
+          ", junto con los ingresos eventuales identificados durante dicho lapso, cuya sumatoria asciende a ",
+          highlightedAmount(totalEventualPeriod),
+          ", el total global de ingresos observado para el período objeto de certificación asciende a ",
           highlightedAmount(totalGlobalPeriod),
           "."
         ])
@@ -781,7 +812,7 @@ export async function generateCertificationPdf(record = {}) {
   const baseQrDims = qrImage.scale(Math.min(0.22, 66 / qrImage.width));
   const availableHeight = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN;
   const footerBottomY = 38;
-  const minimumFooterGap = (currentScale) => 28 * currentScale;
+  const desiredFooterGap = (currentScale) => 30 * currentScale;
   let scale = 1;
   const fitSafetyPadding = 16;
 
@@ -864,7 +895,7 @@ export async function generateCertificationPdf(record = {}) {
   };
 
   while (
-    estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + minimumFooterGap(scale) + fitSafetyPadding > availableHeight &&
+    estimateBodyHeight(scale) + estimateSignatureBlockHeight(scale) + desiredFooterGap(scale) + fitSafetyPadding > availableHeight &&
     scale > 0.42
   ) {
     scale -= scale > 0.68 ? 0.04 : 0.02;
@@ -885,7 +916,7 @@ export async function generateCertificationPdf(record = {}) {
     width: baseQrDims.width * scale,
     height: baseQrDims.height * scale
   };
-  const signatureBlockTopY = footerBottomY + estimateSignatureBlockHeight(scale);
+  const minimumFooterTopY = footerBottomY + estimateSignatureBlockHeight(scale) - 12 * scale;
   const compactIncomeMode = certificationContent.compactNarrative;
 
   page.drawRectangle({
@@ -1090,8 +1121,7 @@ export async function generateCertificationPdf(record = {}) {
     });
   });
 
-  y = Math.max(y - 4 * scale, signatureBlockTopY + minimumFooterGap(scale));
-  const footerTopY = footerBottomY + estimateSignatureBlockHeight(scale) - 12 * scale;
+  const footerTopY = Math.max(minimumFooterTopY, y - 8 * scale);
   const footerGap = 28 * scale;
   const leftColumnWidth = (contentWidth - footerGap) * 0.56;
   const rightColumnWidth = contentWidth - footerGap - leftColumnWidth;
