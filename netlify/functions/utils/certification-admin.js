@@ -374,6 +374,23 @@ export async function listAllCertifications() {
   ]);
 
   const entries = new Map();
+  const shouldIncludePendingRecord = (record = {}) => {
+    const paymentStatus = String(record.status || "").toLowerCase();
+    const lastEventStatus = String(record.lastEventStatus || "").toLowerCase();
+    const explicitCertificationStatus = String(record.certificationStatus || "").trim();
+
+    if (paymentStatus === "approved") return true;
+    if (FINAL_FAILED_STATUSES.has(paymentStatus)) return true;
+    if (FINAL_FAILED_STATUSES.has(lastEventStatus)) return true;
+    if (
+      explicitCertificationStatus &&
+      explicitCertificationStatus !== "en_revision"
+    ) {
+      return true;
+    }
+
+    return false;
+  };
 
   const paidRecords = await Promise.all(
     (paidList.blobs || []).map(async ({ key }) => {
@@ -389,7 +406,8 @@ export async function listAllCertifications() {
   const pendingRecords = await Promise.all(
     (pendingList.blobs || []).map(async ({ key }) => {
       const record = await store.get(key, { type: "json" });
-      return record ? summarizeRecord(record, "pending") : null;
+      if (!record || !shouldIncludePendingRecord(record)) return null;
+      return summarizeRecord(record, "pending");
     })
   );
 
