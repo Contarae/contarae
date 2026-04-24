@@ -14,7 +14,7 @@ export default async (req) => {
     });
   }
 
-  if (req.method !== "GET") {
+  if (!["GET", "POST"].includes(req.method)) {
     return new Response("Método no permitido", {
       status: 405,
       headers: {
@@ -51,7 +51,14 @@ export default async (req) => {
 
   try {
     const url = new URL(req.url);
-    const reference = String(url.searchParams.get("reference") || "").trim();
+    const body = req.method === "POST" ? await req.json() : null;
+    const reference = String(
+      req.method === "POST" ? body?.reference || "" : url.searchParams.get("reference") || ""
+    ).trim();
+    const certificateOverrides =
+      req.method === "POST" && body?.certificateOverrides && typeof body.certificateOverrides === "object"
+        ? { ...body.certificateOverrides }
+        : null;
 
     if (!reference) {
       return new Response("Falta la referencia.", {
@@ -76,7 +83,17 @@ export default async (req) => {
       });
     }
 
-    const pdf = await generateCertificationPdf(result.record);
+    const previewRecord = certificateOverrides
+      ? {
+          ...result.record,
+          certificateOverrides: {
+            ...(result.record?.certificateOverrides || {}),
+            ...certificateOverrides
+          }
+        }
+      : result.record;
+
+    const pdf = await generateCertificationPdf(previewRecord);
 
     return new Response(pdf.bytes, {
       status: 200,

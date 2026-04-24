@@ -894,33 +894,49 @@ export default function AdminPanel() {
     setDraft((current) => ({ ...current, certificateAdjustmentNote: "" }));
   };
 
-  const buildPreviewPdfUrl = (reference, savedDetail = null) => {
-    const url = new URL("/api/admin-preview-certification-pdf", window.location.origin);
-    url.searchParams.set("reference", reference);
-    url.searchParams.set(
-      "_ts",
-      String(
-        savedDetail?.summary?.updatedAt ||
-          savedDetail?.record?.updatedAt ||
-          savedDetail?.record?.lastReviewedAt ||
-          Date.now()
-      )
-    );
-    return url.toString();
-  };
-
   const handleOpenPreviewPdf = async () => {
     if (!detail?.summary?.reference) return;
 
     setPreparingOutput("preview");
     setDetailError("");
+    const previewWindow = typeof window !== "undefined" ? window.open("", "_blank") : null;
 
     try {
-      const savedDetail = await persistDraft("save");
-      const previewUrl = buildPreviewPdfUrl(detail.summary.reference, savedDetail);
-      window.open(previewUrl, "_blank", "noopener,noreferrer");
+      if (previewWindow && previewWindow.document) {
+        previewWindow.document.write("<p style=\"font-family:Arial,sans-serif;padding:24px;color:#1D4ED8;\">Preparando borrador actualizado...</p>");
+        previewWindow.document.close();
+      }
+      const previewDraft = recalculateCertificateDerivedFields({ ...certificateDraft });
+      await persistDraft("save");
+      const response = await fetch("/api/admin-preview-certification-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: detail.summary.reference,
+          certificateOverrides: previewDraft
+        })
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "No fue posible generar el borrador actualizado.");
+      }
+
+      const pdfBlob = await response.blob();
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(pdfUrl), 60000);
       setNotice("Borrador actualizado con los últimos cambios.");
     } catch (error) {
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.close();
+      }
       setDetailError(error.message);
     } finally {
       setPreparingOutput("");
@@ -1034,6 +1050,7 @@ export default function AdminPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reference,
+          certificateOverrides: recalculateCertificateDerivedFields({ ...certificateDraft }),
           includeProfessionalCard: sendDraft.includeProfessionalCard,
           includeJccBackground: sendDraft.includeJccBackground,
           confirmedReview: sendDraft.confirmedReview

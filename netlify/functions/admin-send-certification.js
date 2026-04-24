@@ -117,6 +117,10 @@ export default async (req) => {
   try {
     const body = await req.json();
     const reference = String(body?.reference || "").trim();
+    const certificateOverrides =
+      body?.certificateOverrides && typeof body.certificateOverrides === "object"
+        ? { ...body.certificateOverrides }
+        : null;
     const includeProfessionalCard = Boolean(body?.includeProfessionalCard);
     const includeJccBackground = Boolean(body?.includeJccBackground);
     const confirmedReview = Boolean(body?.confirmedReview);
@@ -183,7 +187,17 @@ export default async (req) => {
       });
     }
 
-    const pdf = await generateCertificationPdf(result.record);
+    const previewRecord = certificateOverrides
+      ? {
+          ...result.record,
+          certificateOverrides: {
+            ...(result.record?.certificateOverrides || {}),
+            ...certificateOverrides
+          }
+        }
+      : result.record;
+
+    const pdf = await generateCertificationPdf(previewRecord);
     const attachments = [
       {
         filename: pdf.fileName,
@@ -245,6 +259,7 @@ export default async (req) => {
     });
 
     const updated = await mergeCertificationRecordUpdates(reference, {
+      ...(certificateOverrides ? { certificateOverrides } : {}),
       certificationStatus: "enviada",
       sentToClientAt: new Date().toISOString(),
       sentToClientBy: session.username,
