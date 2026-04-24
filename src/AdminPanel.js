@@ -894,6 +894,21 @@ export default function AdminPanel() {
     setDraft((current) => ({ ...current, certificateAdjustmentNote: "" }));
   };
 
+  const buildPreviewPdfUrl = (reference, savedDetail = null) => {
+    const url = new URL("/api/admin-preview-certification-pdf", window.location.origin);
+    url.searchParams.set("reference", reference);
+    url.searchParams.set(
+      "_ts",
+      String(
+        savedDetail?.summary?.updatedAt ||
+          savedDetail?.record?.updatedAt ||
+          savedDetail?.record?.lastReviewedAt ||
+          Date.now()
+      )
+    );
+    return url.toString();
+  };
+
   const handleOpenPreviewPdf = async () => {
     if (!detail?.summary?.reference) return;
 
@@ -901,8 +916,9 @@ export default function AdminPanel() {
     setDetailError("");
 
     try {
-      await persistDraft("save");
-      window.open(`/api/admin-preview-certification-pdf?reference=${encodeURIComponent(detail.summary.reference)}`, "_blank", "noopener,noreferrer");
+      const savedDetail = await persistDraft("save");
+      const previewUrl = buildPreviewPdfUrl(detail.summary.reference, savedDetail);
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
       setNotice("Borrador actualizado con los últimos cambios.");
     } catch (error) {
       setDetailError(error.message);
