@@ -40,6 +40,12 @@ const ADMIN_MODULES = [
     description: "Consulta clientes asociados a solicitudes generales, saldos y servicios activos."
   },
   {
+    id: "pagos",
+    label: "Pagos",
+    title: "Pagos y cartera",
+    description: "Gestiona links de pago, pagos manuales, saldos pendientes y recaudo por solicitud."
+  },
+  {
     id: "certificaciones",
     label: "Certificaciones",
     title: "Certificaciones de ingresos",
@@ -607,6 +613,72 @@ function buildDeliveryWhatsappLink(detail) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
+function normalizeServiceWhatsappPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("57") && digits.length >= 12) return digits;
+  if (digits.length === 10) return `57${digits}`;
+  return digits;
+}
+
+function buildServiceRequestSummaryMessage(draft = {}, detail = null) {
+  const balance = Math.max(parseCurrency(draft.agreedPrice) - parseCurrency(draft.amountPaid), 0);
+  const clientName = String(draft.client?.name || "cliente").trim();
+  const reference = draft.reference || detail?.reference || "pendiente de guardar";
+  const serviceType = getServiceTypeLabel(draft.serviceType);
+  const dueDate = draft.dueDate ? formatDateOnly(draft.dueDate) : "sin fecha de vencimiento definida";
+  const documentsCount = detail?.documents?.length || 0;
+
+  return [
+    `Hola ${clientName},`,
+    "",
+    "Te compartimos el resumen de tu solicitud en CONTARAE:",
+    "",
+    `Referencia: ${reference}`,
+    `Servicio: ${serviceType}`,
+    `Asunto: ${draft.title || serviceType}`,
+    `Estado: ${getServiceStatusMeta(draft.status).label}`,
+    `Fecha de vencimiento: ${dueDate}`,
+    `Costo pactado: ${draft.agreedPrice || "$ 0"}`,
+    `Valor pagado: ${draft.amountPaid || "$ 0"}`,
+    `Saldo pendiente: ${formatMoney(balance)}`,
+    `Documentos cargados: ${documentsCount}`,
+    "",
+    "Si tienes documentos pendientes o necesitas hacer alguna aclaración, puedes responder este mensaje."
+  ].join("\n");
+}
+
+function buildServiceWhatsappLink(draft = {}, detail = null, mode = "summary") {
+  const phone = normalizeServiceWhatsappPhone(draft.client?.phone || detail?.client?.phone);
+  if (!phone) return "";
+
+  if (mode === "chat") {
+    return `https://wa.me/${phone}`;
+  }
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(buildServiceRequestSummaryMessage(draft, detail))}`;
+}
+
+function buildServicePaymentWhatsappLink(draft = {}, paymentLink = null) {
+  const phone = normalizeServiceWhatsappPhone(draft.client?.phone);
+  if (!phone || !paymentLink?.checkoutUrl) return "";
+
+  const message = [
+    `Hola ${draft.client?.name || ""},`,
+    "",
+    "Te compartimos el link de pago de tu solicitud en CONTARAE:",
+    "",
+    `Referencia de solicitud: ${draft.reference || ""}`,
+    `Servicio: ${draft.title || getServiceTypeLabel(draft.serviceType)}`,
+    `Valor a pagar: ${paymentLink.amountLabel || paymentLink.amount || ""}`,
+    `Link de pago: ${paymentLink.checkoutUrl}`,
+    "",
+    "Cuando el pago sea confirmado, el estado se actualizará automáticamente."
+  ].join("\n");
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
 function Badge({ children, meta }) {
   return (
     <span
@@ -651,7 +723,7 @@ function InfoTile({ label, value }) {
 
 function ModuleNav({ activeModule, counts, onChange }) {
   return (
-    <div className="admin-module-nav" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
+    <div className="admin-module-nav" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
       {ADMIN_MODULES.map((module) => {
         const active = activeModule === module.id;
         const count = counts?.[module.id];
@@ -801,6 +873,9 @@ function ServiceRequestsModule({
   saving,
   docFiles,
   uploadingDocs,
+  paymentLinkBusy,
+  manualPaymentBusy,
+  manualPaymentDraft,
   onSearchChange,
   onStatusFilterChange,
   onPaymentFilterChange,
@@ -812,9 +887,17 @@ function ServiceRequestsModule({
   onCurrencyChange,
   onDocSelection,
   onRemoveDoc,
-  onUploadDocs
+  onUploadDocs,
+  onCreatePaymentLink,
+  onManualPaymentChange,
+  onRegisterManualPayment,
+  onCopyPaymentLink
 }) {
   const balance = Math.max(parseCurrency(draft.agreedPrice) - parseCurrency(draft.amountPaid), 0);
+  const summaryWhatsappLink = buildServiceWhatsappLink(draft, detail, "summary");
+  const chatWhatsappLink = buildServiceWhatsappLink(draft, detail, "chat");
+  const latestPaymentLink = detail?.paymentLinks?.[0] || null;
+  const paymentWhatsappLink = buildServicePaymentWhatsappLink(draft, latestPaymentLink);
 
   return (
     <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 380px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
@@ -948,6 +1031,101 @@ function ServiceRequestsModule({
             </div>
           </section>
 
+          <div style={{ display: "grid", gap: 18 }}>
+          <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>PAGOS DE LA SOLICITUD</div>
+            <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+              <button type="button" onClick={onCreatePaymentLink} disabled={!draft.reference || paymentLinkBusy || balance <= 0} style={{ padding: "12px 14px", borderRadius: 14, border: "none", background: !draft.reference || paymentLinkBusy || balance <= 0 ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: !draft.reference || paymentLinkBusy || balance <= 0 ? "not-allowed" : "pointer" }}>
+                {paymentLinkBusy ? "Generando link..." : "Generar link de pago por saldo"}
+              </button>
+              {latestPaymentLink?.checkoutUrl ? (
+                <div style={{ padding: 12, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, marginBottom: 8 }}>Último link generado</div>
+                  <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 800, lineHeight: 1.5, wordBreak: "break-word", marginBottom: 10 }}>{latestPaymentLink.checkoutUrl}</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => onCopyPaymentLink(latestPaymentLink.checkoutUrl)} style={{ padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                      Copiar link
+                    </button>
+                    <a href={latestPaymentLink.checkoutUrl} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>
+                      Abrir
+                    </a>
+                    {paymentWhatsappLink ? (
+                      <a href={paymentWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>
+                        Enviar link
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ padding: 12, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 14 }}>
+              <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.1px", fontWeight: 900, color: "#64748B", marginBottom: 10 }}>REGISTRAR PAGO MANUAL</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <input style={inputStyle} placeholder="Valor pagado" value={manualPaymentDraft.amount} onChange={(event) => onManualPaymentChange("amount", event.target.value)} />
+                <select style={inputStyle} value={manualPaymentDraft.method} onChange={(event) => onManualPaymentChange("method", event.target.value)}>
+                  <option value="Nequi">Nequi</option>
+                  <option value="Transferencia bancaria">Transferencia bancaria</option>
+                  <option value="Daviplata">Daviplata</option>
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Otro medio">Otro medio</option>
+                </select>
+                <textarea style={{ ...inputStyle, minHeight: 78, resize: "vertical" }} placeholder="Nota interna del pago" value={manualPaymentDraft.note} onChange={(event) => onManualPaymentChange("note", event.target.value)} />
+                <button type="button" onClick={onRegisterManualPayment} disabled={!draft.reference || manualPaymentBusy || parseCurrency(manualPaymentDraft.amount) <= 0} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: !draft.reference || manualPaymentBusy || parseCurrency(manualPaymentDraft.amount) <= 0 ? "#CBD5E1" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: !draft.reference || manualPaymentBusy || parseCurrency(manualPaymentDraft.amount) <= 0 ? "not-allowed" : "pointer" }}>
+                  {manualPaymentBusy ? "Registrando..." : "Registrar pago manual"}
+                </button>
+              </div>
+            </div>
+
+            {detail?.payments?.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {detail.payments.slice(0, 5).map((payment) => (
+                  <div key={payment.id || payment.reference} style={{ padding: 12, borderRadius: 14, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                      <strong style={{ fontFamily: F, color: "#0F172A", fontSize: 13 }}>{payment.amountLabel || formatMoney(payment.amount)}</strong>
+                      <span style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{payment.method || payment.source}</span>
+                    </div>
+                    <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.6 }}>{formatDate(payment.paidAt || payment.createdAt)} · {payment.reference}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontFamily: F, color: "#64748B", fontSize: 13, lineHeight: 1.7 }}>Aún no hay pagos registrados.</div>
+            )}
+          </section>
+
+          <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>CONTACTO CON EL CLIENTE</div>
+            <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7, marginBottom: 14 }}>
+              Envía un resumen claro de la solicitud o abre el chat rápidamente para seguimiento operativo.
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {summaryWhatsappLink ? (
+                <a href={summaryWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "12px 14px", borderRadius: 14, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none", textAlign: "center" }}>
+                  Enviar resumen por WhatsApp
+                </a>
+              ) : (
+                <button type="button" disabled style={{ padding: "12px 14px", borderRadius: 14, border: "none", background: "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "not-allowed" }}>
+                  Enviar resumen por WhatsApp
+                </button>
+              )}
+              {chatWhatsappLink ? (
+                <a href={chatWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "12px 14px", borderRadius: 14, background: "#fff", color: "#15803D", border: "1px solid rgba(21,128,61,.20)", fontFamily: F, fontWeight: 900, textDecoration: "none", textAlign: "center" }}>
+                  Abrir chat
+                </a>
+              ) : (
+                <button type="button" disabled style={{ padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(148,163,184,.24)", background: "#fff", color: "#94A3B8", fontFamily: F, fontWeight: 900, cursor: "not-allowed" }}>
+                  Abrir chat
+                </button>
+              )}
+            </div>
+            {!chatWhatsappLink ? (
+              <div style={{ marginTop: 12, fontFamily: F, color: "#B45309", fontSize: 12, lineHeight: 1.7 }}>
+                Registra el WhatsApp del cliente para habilitar estos accesos.
+              </div>
+            ) : null}
+          </section>
+
           <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
               <div>
@@ -1002,6 +1180,7 @@ function ServiceRequestsModule({
               </div>
             )}
           </section>
+          </div>
         </div>
       </main>
     </div>
@@ -1059,6 +1238,85 @@ function ClientsModule({ clients, records, onOpenClient }) {
         </div>
       )}
     </section>
+  );
+}
+
+function PaymentsModule({ payments, loading, error, onOpenRequest, onCopyPaymentLink }) {
+  const pendingLinks = payments.filter((payment) => payment.kind === "link" && payment.status === "pending");
+  const approvedPayments = payments.filter((payment) => payment.kind === "payment");
+  const pendingAmount = pendingLinks.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
+  const paidAmount = approvedPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+        <StatCard label="LINKS PENDIENTES" value={loading ? "..." : pendingLinks.length} note={`Valor pendiente: ${formatMoney(pendingAmount)}`} tone="#C2410C" />
+        <StatCard label="PAGOS REGISTRADOS" value={loading ? "..." : approvedPayments.length} note={`Recaudado: ${formatMoney(paidAmount)}`} tone="#15803D" />
+        <StatCard label="MOVIMIENTOS" value={loading ? "..." : payments.length} note="Links generados y pagos aplicados a solicitudes." />
+      </div>
+
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>MOVIMIENTOS DE PAGO</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>Control de cartera</h2>
+          </div>
+          <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{payments.length} movimiento(s)</Badge>
+        </div>
+
+        {error ? (
+          <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, marginBottom: 14 }}>
+            {error}
+          </div>
+        ) : null}
+
+        {payments.length ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {payments.map((payment) => {
+              const request = payment.request || {};
+              const isPayment = payment.kind === "payment";
+              const paymentBadge = isPayment
+                ? { label: "Pago aplicado", meta: getServicePaymentMeta("pagado_manual") }
+                : payment.status === "approved"
+                  ? { label: "Link aprobado", meta: getServicePaymentMeta("pagado") }
+                  : payment.status === "failed"
+                    ? { label: "Link fallido", meta: { tone: "#991B1B", bg: "rgba(220,38,38,.10)" } }
+                    : payment.status === "superseded"
+                      ? { label: "Link reemplazado", meta: { tone: "#64748B", bg: "rgba(100,116,139,.10)" } }
+                      : { label: "Link pendiente", meta: getServicePaymentMeta("pendiente") };
+              return (
+                <div key={`${payment.kind}-${payment.reference}-${payment.createdAt || payment.paidAt}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center", padding: 16, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+                  <div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                      <Badge meta={paymentBadge.meta}>{paymentBadge.label}</Badge>
+                      <span style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{formatDate(payment.paidAt || payment.createdAt)}</span>
+                    </div>
+                    <div style={{ fontFamily: F, fontSize: 15, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{request.clientName || "Cliente sin nombre"} · {payment.amountLabel || formatMoney(payment.amount)}</div>
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>{request.title || getServiceTypeLabel(request.serviceType)} · {payment.reference}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {request.reference ? (
+                      <button type="button" onClick={() => onOpenRequest(request.reference)} style={{ padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                        Ver solicitud
+                      </button>
+                    ) : null}
+                    {payment.checkoutUrl ? (
+                      <button type="button" onClick={() => onCopyPaymentLink(payment.checkoutUrl)} style={{ padding: "9px 11px", borderRadius: 12, border: "none", background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                        Copiar link
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+            Aún no hay links ni pagos registrados en solicitudes generales.
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -1182,6 +1440,12 @@ export default function AdminPanel() {
   const [serviceSaving, setServiceSaving] = useState(false);
   const [serviceDocFiles, setServiceDocFiles] = useState([]);
   const [serviceUploadingDocs, setServiceUploadingDocs] = useState(false);
+  const [servicePayments, setServicePayments] = useState([]);
+  const [servicePaymentsLoading, setServicePaymentsLoading] = useState(false);
+  const [servicePaymentsError, setServicePaymentsError] = useState("");
+  const [paymentLinkBusy, setPaymentLinkBusy] = useState(false);
+  const [manualPaymentBusy, setManualPaymentBusy] = useState(false);
+  const [manualPaymentDraft, setManualPaymentDraft] = useState({ amount: "", method: "Nequi", note: "" });
   const draftRef = useRef(draft);
   const certificateDraftRef = useRef(certificateDraft);
 
@@ -1329,6 +1593,26 @@ export default function AdminPanel() {
     }
   };
 
+  const loadServicePayments = async () => {
+    setServicePaymentsLoading(true);
+    setServicePaymentsError("");
+
+    try {
+      const response = await fetch("/api/admin-list-service-payments");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar los pagos.");
+      }
+
+      setServicePayments(data.payments || []);
+    } catch (error) {
+      setServicePaymentsError(error.message);
+    } finally {
+      setServicePaymentsLoading(false);
+    }
+  };
+
   const loadDetail = async (reference) => {
     if (!reference) return;
 
@@ -1370,6 +1654,7 @@ export default function AdminPanel() {
     if (session.authenticated) {
       loadRecords();
       loadServiceRecords();
+      loadServicePayments();
     }
   }, [session.authenticated]);
 
@@ -1504,6 +1789,7 @@ export default function AdminPanel() {
     setDraft(buildReviewDraft());
     setCertificateDraft(buildCertificateDraftState());
     setServiceRecords([]);
+    setServicePayments([]);
     setSelectedServiceReference("");
     setServiceDetail(null);
     setServiceDraft(buildEmptyServiceDraft());
@@ -1748,7 +2034,16 @@ export default function AdminPanel() {
       setServiceDraft(buildServiceDraftFromDetail(data.detail));
       setSelectedServiceReference(data.detail.reference);
       await loadServiceRecords(data.detail.reference);
-      setNotice("Solicitud general guardada.");
+      await loadServicePayments();
+      if (data.paymentLinkWarning) {
+        setNotice(`Solicitud general guardada. No se pudo generar el link automático: ${data.paymentLinkWarning}`);
+      } else if (data.paymentLinkCreated) {
+        setNotice("Solicitud general guardada y link de pago generado automáticamente.");
+      } else if (data.paymentLinkReused) {
+        setNotice("Solicitud general guardada. El link de pago vigente quedó disponible en el portal.");
+      } else {
+        setNotice("Solicitud general guardada.");
+      }
       return data.detail;
     } catch (error) {
       setServiceError(error.message);
@@ -1767,6 +2062,94 @@ export default function AdminPanel() {
 
   const handleRemoveServiceDoc = (index) => {
     setServiceDocFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  };
+
+  const handleCopyPaymentLink = async (url) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setNotice("Link de pago copiado.");
+    } catch {
+      setNotice("No fue posible copiar automáticamente. Puedes copiar el link manualmente.");
+    }
+  };
+
+  const handleCreateServicePaymentLink = async () => {
+    if (!serviceDraft.reference) return;
+
+    setPaymentLinkBusy(true);
+    setServiceError("");
+
+    try {
+      const response = await fetch("/api/admin-create-service-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: serviceDraft.reference
+        })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible generar el link de pago.");
+      }
+
+      setServiceDetail(data.detail);
+      setServiceDraft(buildServiceDraftFromDetail(data.detail));
+      await loadServiceRecords(data.detail.reference);
+      await loadServicePayments();
+      setNotice("Link de pago generado para esta solicitud.");
+      if (data.paymentLink?.checkoutUrl) {
+        await handleCopyPaymentLink(data.paymentLink.checkoutUrl);
+      }
+    } catch (error) {
+      setServiceError(error.message);
+    } finally {
+      setPaymentLinkBusy(false);
+    }
+  };
+
+  const handleManualPaymentDraftChange = (field, value) => {
+    setManualPaymentDraft((current) => ({
+      ...current,
+      [field]: field === "amount" ? normalizeCurrencyInput(value) : value
+    }));
+  };
+
+  const handleRegisterManualServicePayment = async () => {
+    if (!serviceDraft.reference) return;
+
+    setManualPaymentBusy(true);
+    setServiceError("");
+
+    try {
+      const response = await fetch("/api/admin-register-service-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: serviceDraft.reference,
+          amount: manualPaymentDraft.amount,
+          method: manualPaymentDraft.method,
+          note: manualPaymentDraft.note
+        })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible registrar el pago manual.");
+      }
+
+      setServiceDetail(data.detail);
+      setServiceDraft(buildServiceDraftFromDetail(data.detail));
+      setManualPaymentDraft({ amount: "", method: "Nequi", note: "" });
+      await loadServiceRecords(data.detail.reference);
+      await loadServicePayments();
+      setNotice("Pago manual registrado y saldo actualizado.");
+    } catch (error) {
+      setServiceError(error.message);
+    } finally {
+      setManualPaymentBusy(false);
+    }
   };
 
   const handleUploadServiceDocuments = async () => {
@@ -1794,6 +2177,7 @@ export default function AdminPanel() {
       setServiceDraft(buildServiceDraftFromDetail(data.detail));
       setServiceDocFiles([]);
       await loadServiceRecords(data.detail.reference);
+      await loadServicePayments();
       setNotice(data.uploadedCount === 1 ? "Documento cargado en la solicitud." : `Se cargaron ${data.uploadedCount} documentos.`);
     } catch (error) {
       setServiceError(error.message);
@@ -1812,6 +2196,7 @@ export default function AdminPanel() {
   const handleRefreshPanel = () => {
     loadRecords();
     loadServiceRecords();
+    loadServicePayments();
     if (selectedServiceReference) {
       loadServiceDetail(selectedServiceReference);
     }
@@ -2132,6 +2517,7 @@ export default function AdminPanel() {
           counts={{
             solicitudes: serviceRecords.length,
             clientes: clientRows.length,
+            pagos: servicePayments.length,
             certificaciones: records.length
           }}
         />
@@ -2168,6 +2554,9 @@ export default function AdminPanel() {
             saving={serviceSaving}
             docFiles={serviceDocFiles}
             uploadingDocs={serviceUploadingDocs}
+            paymentLinkBusy={paymentLinkBusy}
+            manualPaymentBusy={manualPaymentBusy}
+            manualPaymentDraft={manualPaymentDraft}
             onSearchChange={setServiceSearch}
             onStatusFilterChange={setServiceStatusFilter}
             onPaymentFilterChange={setServicePaymentFilter}
@@ -2180,11 +2569,25 @@ export default function AdminPanel() {
             onDocSelection={handleServiceDocSelection}
             onRemoveDoc={handleRemoveServiceDoc}
             onUploadDocs={handleUploadServiceDocuments}
+            onCreatePaymentLink={handleCreateServicePaymentLink}
+            onManualPaymentChange={handleManualPaymentDraftChange}
+            onRegisterManualPayment={handleRegisterManualServicePayment}
+            onCopyPaymentLink={handleCopyPaymentLink}
           />
         ) : null}
 
         {activeModule === "clientes" ? (
           <ClientsModule clients={clientRows} records={serviceRecords} onOpenClient={handleOpenClientRequests} />
+        ) : null}
+
+        {activeModule === "pagos" ? (
+          <PaymentsModule
+            payments={servicePayments}
+            loading={servicePaymentsLoading}
+            error={servicePaymentsError}
+            onOpenRequest={handleSelectServiceRequest}
+            onCopyPaymentLink={handleCopyPaymentLink}
+          />
         ) : null}
 
         {activeModule === "certificaciones" ? (

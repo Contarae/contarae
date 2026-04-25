@@ -32,6 +32,10 @@ const ADMIN_ROUTE="/admin/certificaciones";
 const ADMIN_ROUTE_ALIASES=new Set([ADMIN_ROUTE,"/admin"]);
 const VERIFY_ROUTE="/verificar-certificado";
 const VERIFY_ROUTE_ALIASES=new Set([VERIFY_ROUTE,"/verificar-certificacion"]);
+const PAYMENT_ROUTE="/pago-solicitud";
+const PAYMENT_ROUTE_ALIASES=new Set([PAYMENT_ROUTE,"/pagar-solicitud"]);
+const PAYMENTS_PORTAL_ROUTE="/portal-pagos";
+const PAYMENTS_PORTAL_ROUTE_ALIASES=new Set([PAYMENTS_PORTAL_ROUTE,"/pagos","/portal-de-pagos"]);
 const OPEN_CERT_FORM_EVENT="contarae:open-certification-form";
 const normPath=p=>{if(!p)return"/";const c=p.replace(/\/+$/,"");return c||"/";};
 const TOOL_ROUTES=[
@@ -183,6 +187,8 @@ TOOL_ROUTES.forEach(cfg=>{
 const isCertificationPath=p=>CERT_ROUTE_ALIASES.has(normPath(p));
 const isAdminPath=p=>ADMIN_ROUTE_ALIASES.has(normPath(p));
 const isVerifyPath=p=>VERIFY_ROUTE_ALIASES.has(normPath(p));
+const isPaymentPath=p=>PAYMENT_ROUTE_ALIASES.has(normPath(p));
+const isPaymentsPortalPath=p=>PAYMENTS_PORTAL_ROUTE_ALIASES.has(normPath(p));
 const getToolRouteConfig=p=>TOOL_ROUTE_BY_PATH.get(normPath(p))||null;
 const isToolPath=p=>!!getToolRouteConfig(p);
 const getCurrentPath=()=>typeof window==="undefined"?"/":normPath(window.location.pathname);
@@ -1233,6 +1239,280 @@ function ToolRouteShell({config}){
     </>
   );
 }
+
+function ServicePaymentPage(){
+  const getReference=()=>new URLSearchParams(window.location.search).get("ref")||new URLSearchParams(window.location.search).get("reference")||"";
+  const[paymentRef]=useState(getReference());
+  const[data,setData]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState("");
+  const[phase,setPhase]=useState("idle");
+  const pollRef=useRef(null);
+  const startedAtRef=useRef(0);
+
+  const loadPayment=async()=>{
+    if(!paymentRef){setError("Falta la referencia del pago.");setLoading(false);return null;}
+    try{
+      const response=await fetch(`/api/get-service-payment?reference=${encodeURIComponent(paymentRef)}`);
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible consultar el pago.");
+      setData(payload);
+      setError("");
+      return payload;
+    }catch(err){
+      setError(err.message);
+      return null;
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  const pollPayment=()=>{
+    window.clearTimeout(pollRef.current);
+    startedAtRef.current=Date.now();
+    setPhase("awaiting");
+    const tick=async()=>{
+      const payload=await loadPayment();
+      const status=String(payload?.payment?.status||"").toLowerCase();
+      if(status==="approved"){setPhase("approved");return;}
+      if(status==="failed"){setPhase("failed");return;}
+      if(Date.now()-startedAtRef.current>120000){setPhase("timeout");return;}
+      pollRef.current=window.setTimeout(tick,2500);
+    };
+    tick();
+  };
+
+  useEffect(()=>{loadPayment();return()=>window.clearTimeout(pollRef.current);},[]);
+
+  const payment=data?.payment||{};
+  const request=data?.request||{};
+  const client=request.client||{};
+  const canPay=payment.status==="pending"&&Number(payment.amountInCents||0)>0;
+  const paymentStatusText=payment.status==="approved"?"Pago aprobado":payment.status==="failed"?"Pago no confirmado":payment.status==="superseded"?"Link reemplazado":"Pendiente de pago";
+  const phoneDigits=normalizeColombianMobileNumber(client.phone);
+  const legalIdType=client.documentType==="PAS"?"PP":client.documentType;
+
+  const openWompi=()=>{
+    if(typeof window==="undefined"||!window.WidgetCheckout){alert("La pasarela de pago aún se está cargando. Intenta nuevamente en unos segundos.");return;}
+    const checkout=new window.WidgetCheckout({
+      currency:payment.currency||"COP",
+      amountInCents:payment.amountInCents,
+      reference:payment.reference,
+      publicKey:payment.publicKey||WK,
+      signature:{integrity:payment.signature},
+      redirectUrl:window.location.href,
+      customerData:{
+        email:client.email||undefined,
+        fullName:client.name||undefined,
+        phoneNumber:phoneDigits||undefined,
+        phoneNumberPrefix:phoneDigits?"+57":undefined,
+        legalId:client.documentNumber||undefined,
+        legalIdType:legalIdType||undefined
+      }
+    });
+    setPhase("opening");
+    checkout.open(result=>{
+      const status=String(result?.transaction?.status||"").toUpperCase();
+      if(status==="APPROVED"){pollPayment();return;}
+      if(["DECLINED","ERROR","VOIDED","FAILED","REJECTED","CANCELED","CANCELLED"].includes(status)){setPhase("failed");loadPayment();return;}
+      setPhase("idle");
+    });
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#eef4ff,#f8fbff 45%,#f5f8fd)",padding:"36px 18px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:"min(720px,100%)",background:"#fff",border:"1px solid rgba(37,99,235,.12)",borderRadius:24,boxShadow:"0 24px 64px rgba(15,23,42,.10)",padding:28}}>
+        <div style={{fontSize:12,letterSpacing:"1.8px",color:"#2563EB",fontWeight:800,fontFamily:F,marginBottom:10}}>PAGO SEGURO CONTARAE</div>
+        <h1 style={{fontFamily:FH,fontSize:"clamp(30px,5vw,44px)",lineHeight:1.08,color:"#0B1D3A",margin:"0 0 10px"}}>Pago de solicitud</h1>
+        <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.8,margin:"0 0 22px"}}>Revisa el resumen antes de continuar a la pasarela segura de Wompi.</p>
+
+        {loading?<div style={{fontFamily:F,color:"#64748B"}}>Cargando link de pago...</div>:null}
+        {error?<div style={{padding:14,borderRadius:16,background:"rgba(220,38,38,.08)",color:"#991B1B",fontFamily:F,fontWeight:700,marginBottom:16}}>{error}</div>:null}
+
+        {data&&!error?<>
+          <div style={{display:"grid",gap:10,marginBottom:18}}>
+            {[["Cliente",client.name||"Sin nombre"],["Referencia de pago",payment.reference],["Referencia de solicitud",request.reference],["Servicio",request.title||"Servicio CONTARAE"],["Valor a pagar",payment.amountLabel||`$ ${fm(Math.round(Number(payment.amountInCents||0)/100))}`],["Estado",paymentStatusText]].map(([label,value])=>(
+              <div key={label} style={{display:"grid",gridTemplateColumns:"170px minmax(0,1fr)",gap:12,padding:"12px 14px",borderRadius:14,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)"}}>
+                <div style={{fontFamily:F,fontSize:12,letterSpacing:"1.1px",fontWeight:800,color:"#64748B"}}>{label}</div>
+                <div style={{fontFamily:F,fontSize:14,fontWeight:800,color:"#0F172A",lineHeight:1.5,wordBreak:"break-word"}}>{value||"Sin dato"}</div>
+              </div>
+            ))}
+          </div>
+
+          {payment.status==="approved"||phase==="approved"?<div style={{padding:16,borderRadius:18,background:"rgba(34,197,94,.10)",color:"#15803D",fontFamily:F,fontWeight:800,lineHeight:1.7,marginBottom:16}}>Pago confirmado. CONTARAE continuará con la gestión de tu solicitud.</div>:null}
+          {payment.status==="failed"||phase==="failed"?<div style={{padding:16,borderRadius:18,background:"rgba(220,38,38,.08)",color:"#991B1B",fontFamily:F,fontWeight:800,lineHeight:1.7,marginBottom:16}}>El pago no quedó confirmado. Puedes intentar nuevamente o escribirnos para soporte.</div>:null}
+          {payment.status==="superseded"?<div style={{padding:16,borderRadius:18,background:"rgba(245,158,11,.10)",color:"#92400E",fontFamily:F,fontWeight:800,lineHeight:1.7,marginBottom:16}}>Este link fue reemplazado por un link más reciente. Ingresa al portal de pagos o escríbenos para recibir el enlace vigente.</div>:null}
+          {phase==="awaiting"?<div style={{padding:16,borderRadius:18,background:"rgba(37,99,235,.08)",color:"#1D4ED8",fontFamily:F,fontWeight:800,lineHeight:1.7,marginBottom:16}}>Estamos confirmando el pago con Wompi. Esto puede tardar unos segundos.</div>:null}
+
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
+            <button type="button" onClick={openWompi} disabled={!canPay||phase==="awaiting"} style={{padding:"14px 24px",borderRadius:14,border:"none",background:canPay&&phase!=="awaiting"?"linear-gradient(135deg,#0B1D3A,#2563EB)":"#CBD5E1",color:"#fff",fontFamily:F,fontWeight:800,cursor:canPay&&phase!=="awaiting"?"pointer":"not-allowed"}}>
+              {phase==="awaiting"?"Confirmando pago...":"Pagar con Wompi"}
+            </button>
+            <a href={wm(`Hola CONTARAE, necesito ayuda con el pago ${payment.reference||paymentRef}.`)} target="_blank" rel="noopener noreferrer" style={{padding:"14px 24px",borderRadius:14,background:"#25D366",color:"#fff",fontFamily:F,fontWeight:800,textDecoration:"none"}}>
+              Ayuda por WhatsApp
+            </a>
+          </div>
+        </>:null}
+      </div>
+    </div>
+  );
+}
+
+function PaymentsPortalPage(){
+  const[form,setForm]=useState({documentType:"CC",documentNumber:""});
+  const[result,setResult]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+  const[searched,setSearched]=useState(false);
+  const cleanDocument=value=>String(value||"").replace(/[^\dA-Za-z.-]/g,"").slice(0,30);
+  const update=(field,value)=>setForm(current=>({...current,[field]:field==="documentNumber"?cleanDocument(value):value}));
+  const serviceLabel=value=>({
+    renta:"Declaración de renta",
+    contabilidad:"Contabilidad",
+    impuestos:"Impuestos",
+    nomina:"Nómina",
+    rut:"RUT y trámites DIAN",
+    camara_comercio:"Cámara de comercio",
+    asesoria:"Asesoría",
+    otros:"Servicio CONTARAE"
+  }[value]||"Servicio CONTARAE");
+  const statusLabel=value=>({
+    nuevo:"Nuevo",
+    cotizado:"Cotizado",
+    pendiente_documentos:"Pendiente de documentos",
+    en_proceso:"En proceso",
+    pendiente_pago:"Pendiente de pago",
+    finalizado:"Finalizado",
+    cancelado:"Cancelado"
+  }[value]||"En revisión");
+  const paymentLabel=value=>({
+    pendiente:"Pendiente",
+    parcial:"Pago parcial",
+    pagado:"Pagado",
+    pagado_manual:"Pagado manual",
+    no_requiere:"No requiere pago"
+  }[value]||"Pendiente");
+
+  const consult=async event=>{
+    event.preventDefault();
+    setSearched(true);
+    setResult(null);
+    setError("");
+    if(cleanDocument(form.documentNumber).length<5){
+      setError("Ingresa un número de documento válido.");
+      return;
+    }
+    setLoading(true);
+    try{
+      const response=await fetch("/api/public-service-payments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible consultar los pagos.");
+      setResult(payload);
+    }catch(err){
+      setError(err.message);
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  const requests=result?.requests||[];
+  const pending=requests.filter(request=>Number(request.balanceAmount||0)>0);
+  const paid=requests.filter(request=>Number(request.balanceAmount||0)<=0);
+  const helpLink=wm(`Hola CONTARAE, necesito ayuda consultando mis pagos pendientes. Documento: ${form.documentType} ${form.documentNumber||""}.`);
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#eef4ff,#f8fbff 45%,#f5f8fd)",padding:"34px 18px"}}>
+      <div style={{width:"min(980px,100%)",margin:"0 auto",display:"grid",gap:18}}>
+        <section style={{background:"#fff",border:"1px solid rgba(37,99,235,.12)",borderRadius:24,boxShadow:"0 24px 64px rgba(15,23,42,.10)",padding:"clamp(22px,4vw,34px)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:18,alignItems:"flex-start",flexWrap:"wrap",marginBottom:22}}>
+            <div style={{maxWidth:620}}>
+              <div style={{fontSize:12,letterSpacing:"1.8px",color:"#2563EB",fontWeight:800,fontFamily:F,marginBottom:10}}>PORTAL DE PAGOS CONTARAE</div>
+              <h1 style={{fontFamily:FH,fontSize:"clamp(32px,5vw,50px)",lineHeight:1.05,color:"#0B1D3A",margin:"0 0 10px"}}>Consulta tus pagos pendientes</h1>
+              <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.8,margin:0}}>Ingresa el documento registrado en tu solicitud para ver saldos y links disponibles.</p>
+            </div>
+            <a href="/" style={{padding:"11px 15px",borderRadius:14,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.12)",color:"#1D4ED8",fontFamily:F,fontWeight:800,textDecoration:"none"}}>Volver a CONTARAE</a>
+          </div>
+
+          <form onSubmit={consult} style={{display:"grid",gridTemplateColumns:"160px minmax(220px,1fr) auto",gap:10,alignItems:"center"}}>
+            <select value={form.documentType} onChange={event=>update("documentType",event.target.value)} style={{...IS,borderRadius:14,padding:"14px 15px"}}>
+              <option value="CC">Cédula</option>
+              <option value="CE">Cédula extranjería</option>
+              <option value="NIT">NIT</option>
+              <option value="PAS">Pasaporte</option>
+            </select>
+            <input value={form.documentNumber} onChange={event=>update("documentNumber",event.target.value)} placeholder="Número de documento" style={{...IS,borderRadius:14,padding:"14px 15px"}}/>
+            <button type="submit" disabled={loading} style={{padding:"14px 22px",borderRadius:14,border:"none",background:loading?"#CBD5E1":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:900,cursor:loading?"not-allowed":"pointer",whiteSpace:"nowrap"}}>
+              {loading?"Consultando...":"Consultar"}
+            </button>
+          </form>
+          <style>{`@media(max-width:760px){form{grid-template-columns:1fr!important;}}`}</style>
+          {error?<div style={{marginTop:14,padding:14,borderRadius:16,background:"rgba(220,38,38,.08)",color:"#991B1B",fontFamily:F,fontWeight:800,lineHeight:1.7}}>{error}</div>:null}
+        </section>
+
+        {result?(
+          <section style={{display:"grid",gap:18}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:12}}>
+              <div style={{padding:18,borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div style={{fontFamily:F,fontSize:11,letterSpacing:"1.3px",fontWeight:900,color:"#64748B"}}>CLIENTE</div><div style={{fontFamily:FH,fontSize:24,color:"#0B1D3A",marginTop:6}}>{result.clientName||"Documento consultado"}</div></div>
+              <div style={{padding:18,borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div style={{fontFamily:F,fontSize:11,letterSpacing:"1.3px",fontWeight:900,color:"#64748B"}}>SALDO PENDIENTE</div><div style={{fontFamily:FH,fontSize:24,color:pending.length?"#C2410C":"#15803D",marginTop:6}}>{result.pendingAmountLabel||"$ 0"}</div></div>
+              <div style={{padding:18,borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div style={{fontFamily:F,fontSize:11,letterSpacing:"1.3px",fontWeight:900,color:"#64748B"}}>SOLICITUDES</div><div style={{fontFamily:FH,fontSize:24,color:"#0B1D3A",marginTop:6}}>{requests.length}</div></div>
+            </div>
+
+            {pending.length?(
+              <div style={{display:"grid",gap:12}}>
+                {pending.map(request=>(
+                  <div key={request.reference} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:14,alignItems:"center",padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.10)",boxShadow:"0 14px 36px rgba(15,23,42,.06)"}}>
+                    <div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                        <span style={{fontFamily:F,fontSize:11,fontWeight:900,color:"#1D4ED8",background:"rgba(37,99,235,.08)",padding:"5px 9px",borderRadius:999}}>{paymentLabel(request.paymentStatus)}</span>
+                        <span style={{fontFamily:F,fontSize:11,fontWeight:900,color:"#475569",background:"rgba(100,116,139,.10)",padding:"5px 9px",borderRadius:999}}>{statusLabel(request.status)}</span>
+                      </div>
+                      <div style={{fontFamily:F,fontSize:16,fontWeight:900,color:"#0F172A",lineHeight:1.35}}>{request.title||serviceLabel(request.serviceType)}</div>
+                      <div style={{fontFamily:F,fontSize:13,color:"#64748B",lineHeight:1.8,marginTop:4}}>Referencia: {request.reference} · Saldo: <strong>{request.balance}</strong></div>
+                    </div>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                      {request.canPay&&request.paymentLink?.checkoutUrl?(
+                        <a href={request.paymentLink.checkoutUrl} style={{padding:"12px 16px",borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:900,textDecoration:"none",whiteSpace:"nowrap"}}>Pagar ahora</a>
+                      ):(
+                        <a href={helpLink} target="_blank" rel="noopener noreferrer" style={{padding:"12px 16px",borderRadius:14,background:"#25D366",color:"#fff",fontFamily:F,fontWeight:900,textDecoration:"none",whiteSpace:"nowrap"}}>Solicitar link</a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ):searched?(
+              <div style={{padding:20,borderRadius:20,background:"#fff",border:"1px dashed rgba(37,99,235,.18)",fontFamily:F,color:"#52647F",lineHeight:1.8}}>
+                No encontramos pagos pendientes para este documento.
+              </div>
+            ):null}
+
+            {paid.length?(
+              <details style={{background:"#fff",border:"1px solid rgba(37,99,235,.10)",borderRadius:18,padding:18}}>
+                <summary style={{fontFamily:F,fontWeight:900,color:"#0B1D3A",cursor:"pointer"}}>Ver solicitudes sin saldo pendiente ({paid.length})</summary>
+                <div style={{display:"grid",gap:8,marginTop:14}}>
+                  {paid.map(request=>(
+                    <div key={request.reference} style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",fontFamily:F,fontSize:13,color:"#52647F",padding:"10px 0",borderTop:"1px solid rgba(37,99,235,.08)"}}>
+                      <span>{request.title||serviceLabel(request.serviceType)} · {request.reference}</span>
+                      <strong style={{color:"#15803D"}}>{paymentLabel(request.paymentStatus)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ):null}
+          </section>
+        ):searched&&!loading&&!error?(
+          <section style={{padding:20,borderRadius:20,background:"#fff",border:"1px dashed rgba(37,99,235,.18)",fontFamily:F,color:"#52647F",lineHeight:1.8}}>
+            No encontramos solicitudes con pagos asociados a ese documento.
+          </section>
+        ):null}
+
+        <div style={{textAlign:"center"}}>
+          <a href={helpLink} target="_blank" rel="noopener noreferrer" style={{fontFamily:F,color:"#15803D",fontWeight:800,textDecoration:"none"}}>¿Necesitas ayuda? Escríbenos por WhatsApp</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
   const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
@@ -1750,7 +2030,7 @@ const PV=[{t:"1. Responsable",c:`CONTARAE. Bogotá D.C. ${EM}. +57 300 143 2008.
 function Prv(){const[s,sS]=useState(false);return(<div style={{maxWidth:900,margin:"0 auto",padding:"0 24px"}}><div style={{textAlign:"center",marginBottom:16}}><button onClick={()=>sS(!s)} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:F,textDecoration:"underline"}}>{s?"Ocultar":"Consultar"} Política de Datos</button></div>{s&&<div style={{padding:24,borderRadius:13,background:"rgba(255,255,255,.05)",border:"1px solid rgba(96,165,250,.1)",marginBottom:18}}><h3 style={{fontFamily:FH,fontSize:17,fontWeight:700,color:"#fff",marginBottom:16,textAlign:"center"}}>Política de Tratamiento de Datos Personales</h3>{PV.map((p,i)=><div key={i} style={{marginBottom:12}}><h4 style={{fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:3,fontFamily:F}}>{p.t}</h4><p style={{fontSize:13,color:"rgba(255,255,255,.6)",lineHeight:1.8,fontFamily:F}}>{p.c}</p></div>)}</div>}</div>)}
 
 /* ══════ FOOTER ══════ */
-function Ftr(){return(<><section id="contacto" style={{padding:"88px 24px",background:B[7]}}><div style={{maxWidth:700,margin:"0 auto",textAlign:"center",padding:"56px 36px",borderRadius:24,background:"linear-gradient(135deg,#0B1D3A,#17345D 55%,#1B3A5C)",position:"relative",overflow:"hidden",boxShadow:"0 24px 60px rgba(15,23,42,.18)",border:"1px solid rgba(125,211,252,.12)"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 20% 20%, rgba(56,189,248,.12), transparent 32%), radial-gradient(circle at 80% 22%, rgba(59,130,246,.10), transparent 28%)"}}/><h2 style={{position:"relative",fontFamily:FH,fontSize:"clamp(23px,3.7vw,34px)",fontWeight:700,color:"#fff",marginBottom:14}}>¿Listo para ordenar sus finanzas?</h2><p style={{position:"relative",fontSize:15,color:"rgba(255,255,255,.70)",margin:"0 auto 28px",fontFamily:F,maxWidth:520,lineHeight:1.8}}>Contadores Públicos certificados en Bogotá a su servicio, con una experiencia clara, cercana y profesional en cada paso.</p><div style={{position:"relative",display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}><a href={wm("Hola CONTARAE, quiero recibir asesoría contable.")} target="_blank" rel="noopener noreferrer" style={{padding:"13px 28px",borderRadius:14,background:"#25D366",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 12px 24px rgba(37,211,102,.18)"}}>WhatsApp</a><a href={`mailto:${EM}`} style={{padding:"13px 28px",borderRadius:14,background:"rgba(255,255,255,.1)",color:"#fff",fontSize:15,fontWeight:600,textDecoration:"none",border:"1px solid rgba(255,255,255,.16)",fontFamily:F,backdropFilter:"blur(8px)"}}>Correo</a></div></div></section>
+function Ftr(){return(<><section id="contacto" style={{padding:"88px 24px",background:B[7]}}><div style={{maxWidth:700,margin:"0 auto",textAlign:"center",padding:"56px 36px",borderRadius:24,background:"linear-gradient(135deg,#0B1D3A,#17345D 55%,#1B3A5C)",position:"relative",overflow:"hidden",boxShadow:"0 24px 60px rgba(15,23,42,.18)",border:"1px solid rgba(125,211,252,.12)"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 20% 20%, rgba(56,189,248,.12), transparent 32%), radial-gradient(circle at 80% 22%, rgba(59,130,246,.10), transparent 28%)"}}/><h2 style={{position:"relative",fontFamily:FH,fontSize:"clamp(23px,3.7vw,34px)",fontWeight:700,color:"#fff",marginBottom:14}}>¿Listo para ordenar sus finanzas?</h2><p style={{position:"relative",fontSize:15,color:"rgba(255,255,255,.70)",margin:"0 auto 28px",fontFamily:F,maxWidth:520,lineHeight:1.8}}>Contadores Públicos certificados en Bogotá a su servicio, con una experiencia clara, cercana y profesional en cada paso.</p><div style={{position:"relative",display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}><a href={wm("Hola CONTARAE, quiero recibir asesoría contable.")} target="_blank" rel="noopener noreferrer" style={{padding:"13px 28px",borderRadius:14,background:"#25D366",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 12px 24px rgba(37,211,102,.18)"}}>WhatsApp</a><a href={`mailto:${EM}`} style={{padding:"13px 28px",borderRadius:14,background:"rgba(255,255,255,.1)",color:"#fff",fontSize:15,fontWeight:600,textDecoration:"none",border:"1px solid rgba(255,255,255,.16)",fontFamily:F,backdropFilter:"blur(8px)"}}>Correo</a><a href={PAYMENTS_PORTAL_ROUTE} style={{padding:"13px 28px",borderRadius:14,background:"rgba(96,165,250,.18)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",border:"1px solid rgba(191,219,254,.22)",fontFamily:F,backdropFilter:"blur(8px)"}}>Portal de pagos</a></div></div></section>
 <footer style={{padding:"44px 24px 32px",background:"#080E1B"}}><LogoFt/><div style={{maxWidth:620,margin:"0 auto",textAlign:"center"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:20}}><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📱 <strong style={{color:"#fff"}}>WhatsApp:</strong> +57 300 143 2008</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>✉️ <strong style={{color:"#fff"}}>Correo:</strong> {EM}</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📍 <strong style={{color:"#fff"}}>Ubicación:</strong> Bogotá D.C.</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>🕐 <strong style={{color:"#fff"}}>Horario:</strong> Lun-Vie 8am-6pm</div></div><Prv/><div style={{display:"flex",justifyContent:"center",marginBottom:14}}><a href={ADMIN_ROUTE} style={{fontSize:12,color:"rgba(255,255,255,.45)",fontFamily:F,textDecoration:"none",padding:"9px 14px",borderRadius:999,border:"1px solid rgba(96,165,250,.14)",background:"rgba(255,255,255,.03)",transition:"all .2s ease"}} onMouseEnter={e=>{e.currentTarget.style.color="#BFDBFE";e.currentTarget.style.borderColor="rgba(96,165,250,.3)";e.currentTarget.style.background="rgba(37,99,235,.09)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(255,255,255,.45)";e.currentTarget.style.borderColor="rgba(96,165,250,.14)";e.currentTarget.style.background="rgba(255,255,255,.03)";}}>Panel de funcionarios</a></div><div style={{borderTop:"1px solid rgba(96,165,250,.1)",paddingTop:18,marginTop:12}}><p style={{fontSize:11,color:"rgba(255,255,255,.35)",fontFamily:F}}>© 2026 CONTARAE · Bogotá D.C., Colombia · Todos los derechos reservados</p><p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:F}}>Ley 1581 de 2012 — Protección de Datos Personales</p></div></div></footer></>)}
 
 /* ══════ FLOATS ══════ */
@@ -1764,18 +2044,23 @@ export default function App(){
   const certRoute=isCertificationPath(path);
   const adminRoute=isAdminPath(path);
   const verifyRoute=isVerifyPath(path);
+  const paymentRoute=isPaymentPath(path);
+  const paymentsPortalRoute=isPaymentsPortalPath(path);
   const toolConfig=getToolRouteConfig(path);
   const toolRoute=!!toolConfig;
 
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
-  useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute]);
-  useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute]);
-  useEffect(()=>{if(adminRoute||verifyRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute]);
-  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":verifyRoute?"Validación de certificados | CONTARAE":toolRoute?toolConfig.metaTitle:certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":verifyRoute?"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.":toolRoute?toolConfig.metaDescription:certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,toolRoute,toolConfig,adminRoute,verifyRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":verifyRoute?"Validación de certificados | CONTARAE":paymentRoute?"Pago de solicitud | CONTARAE":paymentsPortalRoute?"Portal de pagos | CONTARAE":toolRoute?toolConfig.metaTitle:certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":verifyRoute?"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.":paymentRoute?"Portal de pago seguro para solicitudes de servicios CONTARAE.":paymentsPortalRoute?"Consulte y pague saldos pendientes de solicitudes CONTARAE con su número de documento.":toolRoute?toolConfig.metaDescription:certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,toolRoute,toolConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}}`}</style>
-    {adminRoute?<AdminPanel/>:verifyRoute?<CertificateVerificationPage/>:<>
+    {adminRoute?<AdminPanel/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
+    <script src="https://checkout.wompi.co/widget.js" async></script>
+    <ServicePaymentPage/>
+    </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573001432008","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}

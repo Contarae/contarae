@@ -10,9 +10,12 @@ import {
 
 const SERVICE_STORE_NAME = "service-requests";
 const SERVICE_REQUEST_PREFIX = "request:";
+const SERVICE_PAYMENT_PREFIX = "payment:";
 const SERVICE_DOCUMENT_PREFIX = "service-documents";
 const MAX_SERVICE_DOCUMENTS_PER_UPLOAD = 8;
 const MAX_SERVICE_DOCUMENT_SIZE = 10 * 1024 * 1024;
+const DEFAULT_CURRENCY = "COP";
+const DEFAULT_WOMPI_PUBLIC_KEY = "pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 
 export const SERVICE_REQUEST_STATUSES = [
   "nuevo",
@@ -38,11 +41,15 @@ function cleanText(value = "") {
   return String(value || "").trim();
 }
 
-function normalizeDocumentNumber(value = "") {
+export function normalizeDocumentNumber(value = "") {
   return String(value || "").replace(/[^\dA-Za-z.-]/g, "").trim();
 }
 
-function parseCurrency(value) {
+function canonicalDocumentNumber(value = "") {
+  return normalizeDocumentNumber(value).replace(/[^\dA-Za-z]/g, "").toUpperCase();
+}
+
+export function parseCurrency(value) {
   const raw = String(value || "").trim();
   if (!raw) return 0;
 
@@ -102,6 +109,61 @@ function randomId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function createPaymentId() {
+  return randomId().replace(/-/g, "").slice(0, 12).toUpperCase();
+}
+
+function buildPaymentReference(now = new Date()) {
+  const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+  return `CONTARAE-PAY-${datePart}-${createPaymentId().slice(0, 6)}`;
+}
+
+function buildIntegritySignature(reference, amountInCents, currency = DEFAULT_CURRENCY) {
+  const integrityKey = process.env.WOMPI_INTEGRITY_KEY || "";
+  if (!integrityKey) {
+    throw new Error("Falta WOMPI_INTEGRITY_KEY para generar links de pago.");
+  }
+
+  return crypto
+    .createHash("sha256")
+    .update(`${reference}${amountInCents}${currency}${integrityKey}`)
+    .digest("hex");
+}
+
+function getPublicBaseUrl(origin = "") {
+  const explicitUrl =
+    process.env.PUBLIC_SITE_URL ||
+    process.env.URL ||
+    process.env.DEPLOY_PRIME_URL ||
+    "";
+  return String(origin || explicitUrl || "https://contarae.com").replace(/\/+$/, "");
+}
+
+function getWompiPublicKey() {
+  return process.env.WOMPI_PUBLIC_KEY || DEFAULT_WOMPI_PUBLIC_KEY;
+}
+
+function normalizePaymentAmount(value) {
+  const amount = Math.round(parseCurrency(value));
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function summarizePayment(payment = {}) {
+  const amount = Number(payment.amount || 0);
+  return {
+    ...payment,
+    amountLabel: formatCurrencyValue(amount) || "$ 0",
+    checkoutUrl: payment.checkoutUrl || ""
+  };
+}
+
+function sortByDateDesc(items = []) {
+  return [...items].sort((left, right) => {
+    return new Date(right.createdAt || right.paidAt || right.updatedAt || 0) -
+      new Date(left.createdAt || left.paidAt || left.updatedAt || 0);
+  });
+}
+
 export function getServiceRequestStore() {
   return getStore(SERVICE_STORE_NAME);
 }
@@ -120,6 +182,8 @@ export function buildServiceRequestDetail(record = {}) {
   const agreedPriceAmount = parseCurrency(record.agreedPrice);
   const amountPaidAmount = parseCurrency(record.amountPaid);
   const balanceAmount = Math.max(agreedPriceAmount - amountPaidAmount, 0);
+  const payments = sortByDateDesc(Array.isArray(record.payments) ? record.payments : []).map(summarizePayment);
+  const paymentLinks = sortByDateDesc(Array.isArray(record.paymentLinks) ? record.paymentLinks : []).map(summarizePayment);
 
   const documents = (Array.isArray(record.documents) ? record.documents : []).map((document) => ({
     ...document,
@@ -130,6 +194,8 @@ export function buildServiceRequestDetail(record = {}) {
   return {
     ...record,
     documents,
+    payments,
+    paymentLinks,
     financials: {
       agreedPriceAmount,
       amountPaidAmount,
@@ -156,6 +222,8 @@ export function summarizeServiceRequest(record = {}) {
     clientEmail: detail.client?.email || "",
     clientPhone: detail.client?.phone || "",
     documentsCount: detail.documents?.length || 0,
+    paymentsCount: detail.payments?.length || 0,
+    paymentLinksCount: detail.paymentLinks?.length || 0,
     createdAt: detail.createdAt || "",
     updatedAt: detail.updatedAt || ""
   };
@@ -188,6 +256,8 @@ export function sanitizeServiceRequestInput(input = {}, existing = {}) {
       email: cleanText(clientInput.email ?? existingClient.email).toLowerCase()
     },
     documents: Array.isArray(existing.documents) ? existing.documents : [],
+    payments: Array.isArray(existing.payments) ? existing.payments : [],
+    paymentLinks: Array.isArray(existing.paymentLinks) ? existing.paymentLinks : [],
     createdAt: existing.createdAt || now,
     createdBy: existing.createdBy || cleanText(input.actor) || "admin",
     updatedAt: now,
@@ -228,10 +298,442 @@ export async function upsertServiceRequest(input = {}, actor = "admin") {
     ? await store.get(`${SERVICE_REQUEST_PREFIX}${reference}`, { type: "json" })
     : null;
 
-  const record = sanitizeServiceRequestInput({ ...input, actor }, existing || {});
+  const record = mergePaymentState(sanitizeServiceRequestInput({ ...input, actor }, existing || {}));
   await store.setJSON(`${SERVICE_REQUEST_PREFIX}${record.reference}`, record);
 
   return buildServiceRequestDetail(record);
+}
+
+function calculatePaymentState(record = {}) {
+  const payments = Array.isArray(record.payments) ? record.payments : [];
+  const paymentHistoryAmount = payments.reduce((sum, payment) => {
+    if (["approved", "manual"].includes(payment.status)) {
+      return sum + Number(payment.amount || 0);
+    }
+    return sum;
+  }, 0);
+  const amountPaid = payments.length ? paymentHistoryAmount : parseCurrency(record.amountPaid);
+  const agreedPrice = parseCurrency(record.agreedPrice);
+  const balance = Math.max(agreedPrice - amountPaid, 0);
+  const paymentStatus =
+    agreedPrice <= 0
+      ? "no_requiere"
+      : amountPaid <= 0
+        ? "pendiente"
+        : balance > 0
+          ? "parcial"
+          : payments.some((payment) => payment.source === "wompi")
+            ? "pagado"
+            : "pagado_manual";
+
+  return {
+    amountPaid,
+    balance,
+    paymentStatus
+  };
+}
+
+async function createPaymentLinkForRecord(store, record = {}, input = {}, actor = "admin", origin = "", options = {}) {
+  const normalizedReference = normalizeReference(record.reference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+
+  const detail = buildServiceRequestDetail(record);
+  const requestedAmount = normalizePaymentAmount(input.amount);
+  const defaultAmount = Math.round(detail.financials?.balanceAmount || 0);
+  const amount = requestedAmount || defaultAmount;
+
+  if (amount <= 0) {
+    return {
+      detail,
+      paymentLink: null,
+      created: false,
+      reused: false
+    };
+  }
+
+  const existingLinks = Array.isArray(record.paymentLinks) ? record.paymentLinks : [];
+  const reusableLink = existingLinks.find((link) =>
+    link.status === "pending" &&
+    link.checkoutUrl &&
+    Math.round(Number(link.amount || 0)) === amount
+  );
+
+  if (options.reuseExisting && reusableLink) {
+    return {
+      detail,
+      paymentLink: summarizePayment(reusableLink),
+      created: false,
+      reused: true
+    };
+  }
+
+  const now = new Date().toISOString();
+  const supersededLinks = [];
+  const paymentLinks = existingLinks.map((link) => {
+    if (link.status !== "pending") return link;
+    const nextLink = {
+      ...link,
+      status: "superseded",
+      supersededAt: now,
+      supersededBy: actor
+    };
+    supersededLinks.push(nextLink);
+    return nextLink;
+  });
+
+  const paymentReference = buildPaymentReference();
+  const amountInCents = amount * 100;
+  const currency = DEFAULT_CURRENCY;
+  const baseUrl = getPublicBaseUrl(origin);
+  const checkoutUrl = `${baseUrl}/pago-solicitud?ref=${encodeURIComponent(paymentReference)}`;
+  const signature = buildIntegritySignature(paymentReference, amountInCents, currency);
+  const description =
+    cleanText(input.description) ||
+    `Pago servicio CONTARAE ${record.title || record.serviceType || normalizedReference}`;
+
+  const paymentLink = {
+    id: randomId(),
+    reference: paymentReference,
+    serviceReference: normalizedReference,
+    amount,
+    amountInCents,
+    amountLabel: formatCurrencyValue(amount),
+    currency,
+    status: "pending",
+    source: "wompi_link",
+    description,
+    checkoutUrl,
+    signature,
+    publicKey: getWompiPublicKey(),
+    createdAt: now,
+    createdBy: actor,
+    lastEventStatus: "",
+    lastEventAt: ""
+  };
+
+  const nextRecord = mergePaymentState({
+    ...record,
+    status: record.status === "nuevo" || record.status === "cotizado" ? "pendiente_pago" : record.status,
+    paymentLinks: [...paymentLinks, paymentLink],
+    updatedAt: now,
+    updatedBy: actor
+  });
+
+  await Promise.all(
+    supersededLinks
+      .filter((link) => link.reference)
+      .map((link) => store.setJSON(`${SERVICE_PAYMENT_PREFIX}${link.reference}`, link))
+  );
+  await store.setJSON(`${SERVICE_PAYMENT_PREFIX}${paymentReference}`, paymentLink);
+  await store.setJSON(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, nextRecord);
+
+  return {
+    detail: buildServiceRequestDetail(nextRecord),
+    paymentLink: summarizePayment(paymentLink),
+    created: true,
+    reused: false
+  };
+}
+
+function mergePaymentState(record = {}) {
+  const state = calculatePaymentState(record);
+  return {
+    ...record,
+    amountPaid: formatCurrencyValue(state.amountPaid),
+    paymentStatus: state.paymentStatus
+  };
+}
+
+export async function createServicePaymentLink(reference, input = {}, actor = "admin", origin = "") {
+  const normalizedReference = normalizeReference(reference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+
+  const store = getServiceRequestStore();
+  const record = await store.get(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!record) throw new Error("Solicitud no encontrada.");
+
+  const result = await createPaymentLinkForRecord(store, record, input, actor, origin, { reuseExisting: false });
+  if (!result.paymentLink) {
+    throw new Error("La solicitud no tiene saldo pendiente para generar un link de pago.");
+  }
+
+  return {
+    detail: result.detail,
+    paymentLink: result.paymentLink
+  };
+}
+
+export async function ensureServicePaymentLink(reference, input = {}, actor = "admin", origin = "") {
+  const normalizedReference = normalizeReference(reference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+
+  const store = getServiceRequestStore();
+  const record = await store.get(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!record) throw new Error("Solicitud no encontrada.");
+
+  return createPaymentLinkForRecord(store, record, input, actor, origin, { reuseExisting: true });
+}
+
+export async function registerManualServicePayment(reference, input = {}, actor = "admin") {
+  const normalizedReference = normalizeReference(reference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+
+  const store = getServiceRequestStore();
+  const record = await store.get(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!record) throw new Error("Solicitud no encontrada.");
+
+  const amount = normalizePaymentAmount(input.amount);
+  if (amount <= 0) {
+    throw new Error("Ingresa un valor de pago manual válido.");
+  }
+
+  const now = new Date().toISOString();
+  const payment = {
+    id: randomId(),
+    reference: `MANUAL-${createPaymentId()}`,
+    serviceReference: normalizedReference,
+    amount,
+    amountLabel: formatCurrencyValue(amount),
+    currency: DEFAULT_CURRENCY,
+    status: "manual",
+    source: "manual",
+    method: cleanText(input.method) || "Pago manual",
+    note: cleanText(input.note),
+    paidAt: cleanText(input.paidAt) || now,
+    createdAt: now,
+    createdBy: actor
+  };
+
+  const nextRecord = mergePaymentState({
+    ...record,
+    payments: [...(Array.isArray(record.payments) ? record.payments : []), payment],
+    updatedAt: now,
+    updatedBy: actor
+  });
+
+  await store.setJSON(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, nextRecord);
+
+  return {
+    detail: buildServiceRequestDetail(nextRecord),
+    payment: summarizePayment(payment)
+  };
+}
+
+export async function getServicePaymentByReference(paymentReference) {
+  const normalizedReference = normalizeReference(paymentReference);
+  if (!normalizedReference) return null;
+
+  const store = getServiceRequestStore();
+  const paymentLink = await store.get(`${SERVICE_PAYMENT_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!paymentLink) return null;
+
+  const request = await store.get(`${SERVICE_REQUEST_PREFIX}${paymentLink.serviceReference}`, { type: "json" });
+  if (!request) return null;
+
+  return {
+    payment: summarizePayment(paymentLink),
+    request: {
+      reference: request.reference,
+      title: request.title,
+      serviceType: request.serviceType,
+      status: request.status,
+      paymentStatus: request.paymentStatus,
+      client: request.client || {},
+      dueDate: request.dueDate || ""
+    }
+  };
+}
+
+function buildPublicPaymentSummary(detail = {}) {
+  const pendingLink = (detail.paymentLinks || []).find((link) => link.status === "pending" && link.checkoutUrl);
+  const latestLink = pendingLink || (detail.paymentLinks || []).find((link) => link.checkoutUrl) || null;
+  const balanceAmount = Number(detail.financials?.balanceAmount || 0);
+  const agreedPriceAmount = Number(detail.financials?.agreedPriceAmount || 0);
+  const amountPaidAmount = Number(detail.financials?.amountPaidAmount || 0);
+
+  return {
+    reference: detail.reference || "",
+    title: detail.title || "",
+    serviceType: detail.serviceType || DEFAULT_SERVICE_TYPE,
+    status: detail.status || "nuevo",
+    paymentStatus: detail.paymentStatus || "pendiente",
+    dueDate: detail.dueDate || "",
+    agreedPrice: formatCurrencyValue(agreedPriceAmount),
+    amountPaid: formatCurrencyValue(amountPaidAmount) || "$ 0",
+    balance: formatCurrencyValue(balanceAmount) || "$ 0",
+    balanceAmount,
+    canPay: balanceAmount > 0 && Boolean(pendingLink?.checkoutUrl),
+    paymentLink: latestLink
+      ? {
+          reference: latestLink.reference || "",
+          status: latestLink.status || "pending",
+          amount: latestLink.amount || 0,
+          amountLabel: latestLink.amountLabel || formatCurrencyValue(latestLink.amount),
+          checkoutUrl: latestLink.checkoutUrl || "",
+          createdAt: latestLink.createdAt || ""
+        }
+      : null,
+    updatedAt: detail.updatedAt || ""
+  };
+}
+
+export async function listPublicServicePaymentsByDocument(input = {}) {
+  const documentNumber = normalizeDocumentNumber(input.documentNumber);
+  const canonicalDocument = canonicalDocumentNumber(input.documentNumber);
+  const documentType = cleanText(input.documentType).toUpperCase();
+
+  if (!canonicalDocument || canonicalDocument.length < 5) {
+    throw new Error("Ingresa un número de documento válido.");
+  }
+
+  const store = getServiceRequestStore();
+  const list = await store.list({ prefix: SERVICE_REQUEST_PREFIX });
+  const records = await Promise.all(
+    (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
+  );
+
+  const matchingRecords = records
+    .filter(Boolean)
+    .filter((record) => {
+      const client = record.client || {};
+      const sameDocument = canonicalDocumentNumber(client.documentNumber) === canonicalDocument;
+      const sameType = !documentType || cleanText(client.documentType).toUpperCase() === documentType;
+      return sameDocument && sameType;
+    })
+    .filter((record) => record.status !== "cancelado")
+    .map(buildServiceRequestDetail)
+    .filter((detail) => Number(detail.financials?.agreedPriceAmount || 0) > 0)
+    .map(buildPublicPaymentSummary)
+    .sort((left, right) => {
+      if ((right.balanceAmount || 0) !== (left.balanceAmount || 0)) {
+        return (right.balanceAmount || 0) - (left.balanceAmount || 0);
+      }
+      return new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0);
+    });
+
+  const pending = matchingRecords.filter((request) => request.balanceAmount > 0);
+  const paid = matchingRecords.filter((request) => request.balanceAmount <= 0);
+  const pendingAmount = pending.reduce((sum, request) => sum + Number(request.balanceAmount || 0), 0);
+
+  return {
+    documentType,
+    documentNumber,
+    clientName: records.find((record) => {
+      const client = record?.client || {};
+      return canonicalDocumentNumber(client.documentNumber) === canonicalDocument &&
+        (!documentType || cleanText(client.documentType).toUpperCase() === documentType);
+    })?.client?.name || "",
+    pendingAmount,
+    pendingAmountLabel: formatCurrencyValue(pendingAmount) || "$ 0",
+    requests: matchingRecords,
+    pendingCount: pending.length,
+    paidCount: paid.length
+  };
+}
+
+export async function listServicePayments() {
+  const records = await listAllServiceRequests();
+  const details = await Promise.all(records.map((record) => getServiceRequestByReference(record.reference)));
+  const items = [];
+
+  details.filter(Boolean).forEach((detail) => {
+    const requestSummary = summarizeServiceRequest(detail);
+    (detail.paymentLinks || []).forEach((payment) => {
+      items.push({
+        ...payment,
+        kind: "link",
+        request: requestSummary
+      });
+    });
+    (detail.payments || []).forEach((payment) => {
+      items.push({
+        ...payment,
+        kind: "payment",
+        request: requestSummary
+      });
+    });
+  });
+
+  return sortByDateDesc(items);
+}
+
+export async function processServicePaymentEvent(paymentReference, transaction = {}) {
+  const normalizedReference = normalizeReference(paymentReference);
+  if (!normalizedReference) throw new Error("Falta la referencia del pago.");
+
+  const store = getServiceRequestStore();
+  const paymentLink = await store.get(`${SERVICE_PAYMENT_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!paymentLink) return null;
+
+  const request = await store.get(`${SERVICE_REQUEST_PREFIX}${paymentLink.serviceReference}`, { type: "json" });
+  if (!request) throw new Error("La solicitud asociada al pago no existe.");
+
+  const status = String(transaction.status || "").toUpperCase().trim();
+  const now = new Date().toISOString();
+  const finalFailedStatuses = new Set(["DECLINED", "ERROR", "VOIDED", "FAILED", "REJECTED", "CANCELED", "CANCELLED"]);
+  const approved = status === "APPROVED";
+  const failed = finalFailedStatuses.has(status);
+  const amount = Math.round(Number(transaction.amount_in_cents || paymentLink.amountInCents || 0) / 100);
+
+  const nextPaymentLink = {
+    ...paymentLink,
+    status: approved ? "approved" : failed ? "failed" : paymentLink.status || "pending",
+    lastEventStatus: status,
+    lastEventAt: now,
+    wompiTransaction: {
+      id: transaction.id,
+      status: transaction.status,
+      amount_in_cents: transaction.amount_in_cents,
+      currency: transaction.currency,
+      payment_method_type: transaction.payment_method_type,
+      customer_email: transaction.customer_email
+    }
+  };
+
+  let payments = Array.isArray(request.payments) ? request.payments : [];
+
+  if (approved && !payments.some((payment) => payment.reference === normalizedReference)) {
+    payments = [
+      ...payments,
+      {
+        id: randomId(),
+        reference: normalizedReference,
+        serviceReference: paymentLink.serviceReference,
+        amount,
+        amountLabel: formatCurrencyValue(amount),
+        currency: transaction.currency || DEFAULT_CURRENCY,
+        status: "approved",
+        source: "wompi",
+        method: transaction.payment_method_type || "Wompi",
+        paidAt: now,
+        createdAt: now,
+        wompiTransaction: nextPaymentLink.wompiTransaction
+      }
+    ];
+  }
+
+  const paymentLinks = (Array.isArray(request.paymentLinks) ? request.paymentLinks : []).map((link) =>
+    link.reference === normalizedReference ? nextPaymentLink : link
+  );
+
+  const nextRequest = mergePaymentState({
+    ...request,
+    paymentLinks,
+    payments,
+    updatedAt: now,
+    updatedBy: "wompi-webhook"
+  });
+
+  await store.setJSON(`${SERVICE_PAYMENT_PREFIX}${normalizedReference}`, nextPaymentLink);
+  await store.setJSON(`${SERVICE_REQUEST_PREFIX}${paymentLink.serviceReference}`, nextRequest);
+
+  return {
+    payment: summarizePayment(nextPaymentLink),
+    detail: buildServiceRequestDetail(nextRequest),
+    approved,
+    failed,
+    status
+  };
 }
 
 function buildServiceDocumentBlobKey(reference, originalName) {

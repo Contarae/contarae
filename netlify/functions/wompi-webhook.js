@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getStore } from "@netlify/blobs";
+import { processServicePaymentEvent } from "./utils/service-requests.js";
 
 function getValueByPath(obj, path) {
   return path.split(".").reduce((acc, key) => acc?.[key], obj);
@@ -488,6 +489,29 @@ export default async (req, context) => {
       console.log("Evento ignorado:", eventName);
       return new Response(
         JSON.stringify({ ok: true, message: "Evento ignorado", event: eventName }),
+        { status: 200, headers }
+      );
+    }
+
+    if (String(reference).startsWith("CONTARAE-PAY-")) {
+      const servicePaymentResult = await processServicePaymentEvent(reference, transaction);
+
+      if (!servicePaymentResult) {
+        return new Response(
+          JSON.stringify({ error: "Pago de solicitud general no encontrado", reference }),
+          { status: 404, headers }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          message: "Pago de solicitud general procesado",
+          reference,
+          status: servicePaymentResult.status,
+          approved: servicePaymentResult.approved,
+          failed: servicePaymentResult.failed
+        }),
         { status: 200, headers }
       );
     }

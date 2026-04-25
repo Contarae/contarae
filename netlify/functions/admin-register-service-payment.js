@@ -1,5 +1,5 @@
 import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-auth.js";
-import { ensureServicePaymentLink, upsertServiceRequest } from "./utils/service-requests.js";
+import { registerManualServicePayment } from "./utils/service-requests.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -33,37 +33,21 @@ export default async (req) => {
 
   try {
     const body = await req.json();
-    let detail = await upsertServiceRequest(body, session.username);
-    let paymentLink = null;
-    let paymentLinkCreated = false;
-    let paymentLinkReused = false;
-    let paymentLinkWarning = "";
+    const reference = String(body?.reference || "").trim();
 
-    if (body?.autoPaymentLink !== false) {
-      try {
-        const paymentResult = await ensureServicePaymentLink(
-          detail.reference,
-          {},
-          session.username,
-          new URL(req.url).origin
-        );
-        detail = paymentResult.detail;
-        paymentLink = paymentResult.paymentLink;
-        paymentLinkCreated = Boolean(paymentResult.created);
-        paymentLinkReused = Boolean(paymentResult.reused);
-      } catch (paymentError) {
-        paymentLinkWarning = paymentError.message;
-      }
+    if (!reference) {
+      return new Response(JSON.stringify({ error: "Falta la referencia de la solicitud" }), {
+        status: 400,
+        headers
+      });
     }
+
+    const result = await registerManualServicePayment(reference, body, session.username);
 
     return new Response(
       JSON.stringify({
         ok: true,
-        detail,
-        paymentLink,
-        paymentLinkCreated,
-        paymentLinkReused,
-        paymentLinkWarning
+        ...result
       }),
       {
         status: 200,
@@ -73,7 +57,7 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible guardar la solicitud operativa",
+        error: "No fue posible registrar el pago manual",
         detail: error.message
       }),
       {
