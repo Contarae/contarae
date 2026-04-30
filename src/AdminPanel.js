@@ -37,7 +37,7 @@ const ADMIN_MODULES = [
     id: "clientes",
     label: "Clientes",
     title: "Clientes",
-    description: "Consulta clientes asociados a solicitudes generales, saldos y servicios activos."
+    description: "Consulta clientes captados desde la web, autorizaciones de contacto, saldos y servicios activos."
   },
   {
     id: "pagos",
@@ -426,6 +426,51 @@ function buildClientRows(records = []) {
   return Array.from(clients.values()).sort((left, right) => {
     return new Date(right.lastUpdatedAt || 0) - new Date(left.lastUpdatedAt || 0);
   });
+}
+
+function normalizeWhatsappPhone(value = "") {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("57") && digits.length === 12) return digits;
+  if (digits.length === 10 && digits.startsWith("3")) return `57${digits}`;
+  return digits.length > 10 ? digits : "";
+}
+
+function buildLeadWhatsappLink(lead, message = "") {
+  const phone = normalizeWhatsappPhone(lead?.phone);
+  if (!phone) return "";
+  const text = message || `Hola ${lead?.name || ""}, te saludamos de CONTARAE. Recibimos tus datos para ${lead?.serviceInterest || "asesoría contable"} y queremos ayudarte con tu solicitud.`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+}
+
+function buildLeadMailtoLink(leads = [], subject = "CONTARAE - Información de tu solicitud", body = "") {
+  const emails = leads.map((lead) => String(lead.email || "").trim()).filter(Boolean);
+  if (!emails.length) return "";
+  const params = new URLSearchParams({
+    bcc: emails.join(","),
+    subject,
+    body: body || "Hola, te saludamos de CONTARAE. Queremos compartirte información relacionada con tu solicitud y quedamos atentos para ayudarte."
+  });
+  return `mailto:?${params.toString()}`;
+}
+
+function buildLeadsCsv(leads = []) {
+  const headers = ["id", "fecha", "nombre", "documento", "whatsapp", "correo", "servicio", "comentario", "autoriza_tratamiento", "autoriza_comunicaciones", "origen"];
+  const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const rows = leads.map((lead) => [
+    lead.id,
+    lead.createdAt,
+    lead.name,
+    lead.documentNumber,
+    lead.phone,
+    lead.email,
+    lead.serviceInterest,
+    lead.comment,
+    lead.treatmentConsent ? "SI" : "NO",
+    lead.marketingConsent ? "SI" : "NO",
+    lead.sourcePath || lead.sourceLabel
+  ].map(escape).join(","));
+  return [headers.join(","), ...rows].join("\n");
 }
 
 function normalizeComparableValue(field, value) {
@@ -1187,57 +1232,120 @@ function ServiceRequestsModule({
   );
 }
 
-function ClientsModule({ clients, records, onOpenClient }) {
-  return (
-    <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
-        <div>
-          <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES DE SOLICITUDES GENERALES</div>
-          <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{clients.length} cliente(s)</h2>
-        </div>
-        <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{records.length} solicitud(es)</Badge>
-      </div>
+function ClientsModule({
+  clients = [],
+  records = [],
+  leads = [],
+  leadsLoading,
+  leadsError,
+  selectedLeadIds = new Set(),
+  onToggleLead,
+  onToggleAllLeads,
+  onOpenClient,
+  onExportLeads,
+  onCopyLeadPhones,
+  onOpenBulkEmail
+}) {
+  const authorizedLeads = leads.filter((lead) => lead.marketingConsent);
+  const selectedAuthorizedLeads = leads.filter((lead) => selectedLeadIds.has(lead.id) && lead.marketingConsent);
+  const allAuthorizedSelected = authorizedLeads.length > 0 && authorizedLeads.every((lead) => selectedLeadIds.has(lead.id));
 
-      {clients.length ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          {clients.map((client) => (
-            <button
-              key={client.key}
-              type="button"
-              onClick={() => onOpenClient(client)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0,1fr) 120px 140px auto",
-                gap: 14,
-                alignItems: "center",
-                textAlign: "left",
-                padding: 16,
-                borderRadius: 18,
-                border: "1px solid rgba(37,99,235,.10)",
-                background: "#fff",
-                cursor: "pointer"
-              }}
-            >
-              <div>
-                <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{client.name}</div>
-                <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
-                  {client.documentNumber || "Sin documento"} · {client.email || "Sin correo"} · {client.phone || "Sin teléfono"}
-                </div>
-              </div>
-              <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.requests} solicitud(es)</div>
-              <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.active} activa(s)</div>
-              <Badge meta={client.receivable > 0 ? getServicePaymentMeta("pendiente") : getServicePaymentMeta("pagado_manual")}>
-                {client.receivable > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(client.receivable)}` : "Sin saldo"}
-              </Badge>
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES CAPTADOS DESDE LA WEB</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{leads.length} registro(s)</h2>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => onToggleAllLeads(allAuthorizedSelected ? [] : authorizedLeads.map((lead) => lead.id))} disabled={!authorizedLeads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: authorizedLeads.length ? "pointer" : "not-allowed" }}>
+              {allAuthorizedSelected ? "Quitar selección" : "Seleccionar autorizados"}
             </button>
-          ))}
+            <button type="button" onClick={onExportLeads} disabled={!leads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "none", background: leads.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: leads.length ? "pointer" : "not-allowed" }}>
+              Exportar CSV
+            </button>
+            <button type="button" onClick={() => onCopyLeadPhones(selectedAuthorizedLeads)} disabled={!selectedAuthorizedLeads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(21,128,61,.20)", background: "#fff", color: "#15803D", fontFamily: F, fontWeight: 900, cursor: selectedAuthorizedLeads.length ? "pointer" : "not-allowed" }}>
+              Copiar WhatsApps
+            </button>
+            <a href={buildLeadMailtoLink(selectedAuthorizedLeads)} onClick={(event) => { if (!selectedAuthorizedLeads.length) event.preventDefault(); else onOpenBulkEmail(selectedAuthorizedLeads); }} style={{ padding: "10px 13px", borderRadius: 13, background: selectedAuthorizedLeads.length ? "rgba(37,99,235,.08)" : "#E2E8F0", color: selectedAuthorizedLeads.length ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, textDecoration: "none", cursor: selectedAuthorizedLeads.length ? "pointer" : "not-allowed" }}>
+              Correo masivo
+            </a>
+          </div>
         </div>
-      ) : (
-        <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
-          Aún no hay clientes registrados en el módulo de solicitudes generales.
+
+        {leadsLoading ? <div style={{ fontFamily: F, color: "#64748B" }}>Cargando clientes captados...</div> : null}
+        {leadsError ? <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, marginBottom: 14 }}>{leadsError}</div> : null}
+
+        {leads.length ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {leads.map((lead) => {
+              const whatsappLink = buildLeadWhatsappLink(lead);
+              const selected = selectedLeadIds.has(lead.id);
+              return (
+                <div key={lead.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 14, alignItems: "center", padding: 16, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
+                  <input type="checkbox" checked={selected} disabled={!lead.marketingConsent} onChange={() => onToggleLead(lead.id)} title={lead.marketingConsent ? "Seleccionar para comunicaciones" : "No autorizó comunicaciones comerciales"} />
+                  <div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{lead.name}</div>
+                      <Badge meta={lead.marketingConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
+                        {lead.marketingConsent ? "Autoriza comunicaciones" : "Solo gestión de solicitud"}
+                      </Badge>
+                    </div>
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
+                      {lead.serviceInterest || "Servicio pendiente"} · {lead.phone || "Sin WhatsApp"} · {lead.email || "Sin correo"} · {formatDate(lead.createdAt)}
+                    </div>
+                    {lead.comment ? <div style={{ marginTop: 6, fontFamily: F, fontSize: 13, color: "#334155", lineHeight: 1.6 }}>{lead.comment}</div> : null}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {whatsappLink ? <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>WhatsApp</a> : null}
+                    {lead.email ? <a href={`mailto:${lead.email}`} style={{ padding: "9px 11px", borderRadius: 12, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>Correo</a> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+            Aún no hay clientes captados desde el formulario web.
+          </div>
+        )}
+      </section>
+
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES DE SOLICITUDES GENERALES</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{clients.length} cliente(s)</h2>
+          </div>
+          <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{records.length} solicitud(es)</Badge>
         </div>
-      )}
-    </section>
+
+        {clients.length ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {clients.map((client) => (
+              <button key={client.key} type="button" onClick={() => onOpenClient(client)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px 140px auto", gap: 14, alignItems: "center", textAlign: "left", padding: 16, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff", cursor: "pointer" }}>
+                <div>
+                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{client.name}</div>
+                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
+                    {client.documentNumber || "Sin documento"} · {client.email || "Sin correo"} · {client.phone || "Sin teléfono"}
+                  </div>
+                </div>
+                <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.requests} solicitud(es)</div>
+                <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.active} activa(s)</div>
+                <Badge meta={client.receivable > 0 ? getServicePaymentMeta("pendiente") : getServicePaymentMeta("pagado_manual")}>
+                  {client.receivable > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(client.receivable)}` : "Sin saldo"}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+            Aún no hay clientes registrados en el módulo de solicitudes generales.
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -1443,6 +1551,10 @@ export default function AdminPanel() {
   const [servicePayments, setServicePayments] = useState([]);
   const [servicePaymentsLoading, setServicePaymentsLoading] = useState(false);
   const [servicePaymentsError, setServicePaymentsError] = useState("");
+  const [clientLeads, setClientLeads] = useState([]);
+  const [clientLeadsLoading, setClientLeadsLoading] = useState(false);
+  const [clientLeadsError, setClientLeadsError] = useState("");
+  const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
   const [paymentLinkBusy, setPaymentLinkBusy] = useState(false);
   const [manualPaymentBusy, setManualPaymentBusy] = useState(false);
   const [manualPaymentDraft, setManualPaymentDraft] = useState({ amount: "", method: "Nequi", note: "" });
@@ -1613,6 +1725,31 @@ export default function AdminPanel() {
     }
   };
 
+  const loadClientLeads = async () => {
+    setClientLeadsLoading(true);
+    setClientLeadsError("");
+
+    try {
+      const response = await fetch("/api/admin-list-client-leads");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar los clientes captados.");
+      }
+
+      const nextLeads = data.leads || [];
+      setClientLeads(nextLeads);
+      setSelectedLeadIds((current) => {
+        const validIds = new Set(nextLeads.map((lead) => lead.id));
+        return new Set([...current].filter((leadId) => validIds.has(leadId)));
+      });
+    } catch (error) {
+      setClientLeadsError(error.message);
+    } finally {
+      setClientLeadsLoading(false);
+    }
+  };
+
   const loadDetail = async (reference) => {
     if (!reference) return;
 
@@ -1655,6 +1792,7 @@ export default function AdminPanel() {
       loadRecords();
       loadServiceRecords();
       loadServicePayments();
+      loadClientLeads();
     }
   }, [session.authenticated]);
 
@@ -1790,6 +1928,8 @@ export default function AdminPanel() {
     setCertificateDraft(buildCertificateDraftState());
     setServiceRecords([]);
     setServicePayments([]);
+    setClientLeads([]);
+    setSelectedLeadIds(new Set());
     setSelectedServiceReference("");
     setServiceDetail(null);
     setServiceDraft(buildEmptyServiceDraft());
@@ -2193,10 +2333,59 @@ export default function AdminPanel() {
     setActiveModule("solicitudes");
   };
 
+  const handleToggleLead = (leadId) => {
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+      } else {
+        next.add(leadId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAllLeads = (leadIds = []) => {
+    setSelectedLeadIds(new Set(leadIds));
+  };
+
+  const handleExportClientLeads = () => {
+    const csv = buildLeadsCsv(clientLeads);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `clientes-contarae-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setNotice("Base de clientes exportada.");
+  };
+
+  const handleCopyLeadPhones = async (leads = []) => {
+    const phones = leads.map((lead) => normalizeWhatsappPhone(lead.phone)).filter(Boolean);
+    if (!phones.length) return;
+
+    try {
+      await navigator.clipboard.writeText(phones.join("\n"));
+      setNotice("WhatsApps autorizados copiados.");
+    } catch {
+      setNotice("No fue posible copiar automaticamente. Puedes copiar los numeros desde la lista.");
+    }
+  };
+
+  const handleOpenBulkEmail = (leads = []) => {
+    if (leads.length) {
+      setNotice(`Correo masivo preparado para ${leads.length} cliente(s) autorizado(s).`);
+    }
+  };
+
   const handleRefreshPanel = () => {
     loadRecords();
     loadServiceRecords();
     loadServicePayments();
+    loadClientLeads();
     if (selectedServiceReference) {
       loadServiceDetail(selectedServiceReference);
     }
@@ -2516,7 +2705,7 @@ export default function AdminPanel() {
           onChange={setActiveModule}
           counts={{
             solicitudes: serviceRecords.length,
-            clientes: clientRows.length,
+            clientes: clientRows.length + clientLeads.length,
             pagos: servicePayments.length,
             certificaciones: records.length
           }}
@@ -2577,7 +2766,20 @@ export default function AdminPanel() {
         ) : null}
 
         {activeModule === "clientes" ? (
-          <ClientsModule clients={clientRows} records={serviceRecords} onOpenClient={handleOpenClientRequests} />
+          <ClientsModule
+            clients={clientRows}
+            records={serviceRecords}
+            leads={clientLeads}
+            leadsLoading={clientLeadsLoading}
+            leadsError={clientLeadsError}
+            selectedLeadIds={selectedLeadIds}
+            onToggleLead={handleToggleLead}
+            onToggleAllLeads={handleToggleAllLeads}
+            onOpenClient={handleOpenClientRequests}
+            onExportLeads={handleExportClientLeads}
+            onCopyLeadPhones={handleCopyLeadPhones}
+            onOpenBulkEmail={handleOpenBulkEmail}
+          />
         ) : null}
 
         {activeModule === "pagos" ? (

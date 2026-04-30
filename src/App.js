@@ -4,6 +4,13 @@ import AdminPanel from "./AdminPanel";
 import CertificateVerificationPage from "./CertificateVerificationPage";
 
 const WA="573001432008",WL=`https://wa.me/${WA}`,EM="info@contarae.com",F="'Outfit',sans-serif",FH="'Libre Baskerville',serif";
+const SOCIAL_LINKS=[
+  ["Facebook","https://www.facebook.com/share/1ENSxjgYCH/?mibextid=wwXIfr"],
+  ["Instagram","https://www.instagram.com/oficial.contarae?igsh=OWJmd250d3ljMmR2&utm_source=qr"],
+  ["TikTok","https://www.tiktok.com/@contarae.oficial?_r=1&_t=ZS-95xXx2QEhHQ"],
+  ["YouTube","https://www.youtube.com/@CONTARAE_Servicios_contables"]
+];
+const CERTIFICATION_VIDEO_EMBED="https://www.youtube.com/embed/yHF1p9T9kgU";
 const fm=n=>new Intl.NumberFormat("es-CO").format(n);
 const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
@@ -37,6 +44,119 @@ const PAYMENT_ROUTE_ALIASES=new Set([PAYMENT_ROUTE,"/pagar-solicitud"]);
 const PAYMENTS_PORTAL_ROUTE="/portal-pagos";
 const PAYMENTS_PORTAL_ROUTE_ALIASES=new Set([PAYMENTS_PORTAL_ROUTE,"/pagos","/portal-de-pagos"]);
 const OPEN_CERT_FORM_EVENT="contarae:open-certification-form";
+const SITE_URL="https://contarae.com";
+const CERTIFICATION_SUPPORT_ROUTES=[
+  {
+    path:"/certificado-de-ingresos-contador-publico",
+    sectionId:"certificado-contador-publico",
+    metaTitle:"Certificado de ingresos por Contador Público | CONTARAE",
+    metaDescription:"Conozca cuándo se requiere un certificado de ingresos firmado por Contador Público, qué soportes se revisan y cómo solicitarlo en línea con CONTARAE.",
+    badge:"CERTIFICADO FIRMADO POR CONTADOR",
+    title:"Certificado de ingresos firmado por Contador Público",
+    intro:"Este documento permite acreditar ingresos ante terceros cuando se requiere una certificación profesional sustentada en soportes verificables. En CONTARAE se emite con revisión previa, firma de Contador Público y entrega digital.",
+    intent:"Ideal para personas naturales que necesitan demostrar ingresos ante bancos, inmobiliarias, embajadas, concesionarios, procesos de contratación o entidades privadas.",
+    cards:[
+      ["Qué certifica","El nivel de ingresos de una persona durante un período determinado, indicando el origen de los ingresos y los valores certificados con base en documentación soporte."],
+      ["Quién lo firma","Un Contador Público con tarjeta profesional, en ejercicio de las facultades reconocidas por la Ley 43 de 1990 para dar fe pública en actos propios de la profesión."],
+      ["Qué debe aportar el cliente","Soportes coherentes con los ingresos reportados: desprendibles, contratos, facturas, extractos, certificaciones, comprobantes de pago u otros documentos verificables."],
+      ["Cómo se entrega","En PDF, listo para presentar ante la entidad solicitante, con datos del cliente, período certificado, valores en números y letras, firma profesional y datos de validación."]
+    ],
+    checklist:["Defina ante quién presentará el certificado.","Indique el período que le exige la entidad.","Relacione sus ingresos recurrentes y, si aplica, eventuales.","Adjunte soportes claros y legibles para agilizar la revisión."],
+    faqs:[
+      ["¿Certificado de ingresos y certificación de ingresos son lo mismo?","En la práctica suelen usarse como equivalentes. Lo importante es que el documento esté firmado por Contador Público y que los ingresos certificados tengan soporte verificable."],
+      ["¿Sirve si soy empleado?","Sí. Puede soportarse con desprendibles de nómina, certificaciones laborales, certificados de ingresos y retenciones u otros documentos emitidos por el empleador."],
+      ["¿Sirve si soy independiente?","Sí. En ese caso se revisan soportes como contratos, facturas, extractos bancarios, comprobantes de pago y evidencia de la actividad económica."]
+    ]
+  },
+  {
+    path:"/certificado-de-ingresos-para-independientes",
+    sectionId:"certificado-independientes",
+    metaTitle:"Certificado de ingresos para independientes | CONTARAE",
+    metaDescription:"Solicite una certificación de ingresos para independientes, contratistas o freelancers con revisión de soportes, período certificado y firma de Contador Público.",
+    badge:"INDEPENDIENTES Y CONTRATISTAS",
+    title:"Certificación de ingresos para independientes",
+    intro:"Cuando una persona trabaja por cuenta propia, no siempre cuenta con desprendibles de nómina. Por eso la certificación debe construirse a partir de soportes que demuestren la realidad económica de sus ingresos.",
+    intent:"Pensada para contratistas, freelancers, comerciantes, profesionales independientes, rentistas y personas con ingresos variables que necesitan acreditar capacidad económica.",
+    cards:[
+      ["Soportes frecuentes","Contratos de prestación de servicios, facturas, cuentas de cobro, extractos bancarios, certificados de retención, comprobantes de pago o evidencia de la actividad económica."],
+      ["Ingreso mensual recurrente","Se identifica el ingreso que se repite de manera habitual y se expresa como valor mensual certificado para el período solicitado."],
+      ["Ingresos eventuales","Si existieron ingresos no fijos o extraordinarios, pueden incluirse de forma separada, dejando claro que no hacen parte del ingreso mensual recurrente."],
+      ["Revisión profesional","Antes de emitir, se valida que la información reportada sea coherente con los soportes y con el destino del trámite."]
+    ],
+    checklist:["Tenga claro el período que quiere certificar.","Organice extractos o comprobantes por mes.","Separe ingresos habituales de ingresos eventuales.","Indique si la entidad exige algún texto o formato especial."],
+    faqs:[
+      ["¿Puedo certificar ingresos si me pagan por transferencia?","Sí, siempre que los movimientos puedan relacionarse razonablemente con la actividad económica o el servicio prestado."],
+      ["¿Puedo incluir ventas ocasionales?","Sí, pero deben presentarse como ingresos eventuales si no son fijos ni periódicos."],
+      ["¿Se puede certificar un promedio mensual?","Sí, siempre que el período y los soportes permitan explicar técnicamente ese promedio."]
+    ]
+  },
+  {
+    path:"/certificado-de-ingresos-para-banco",
+    sectionId:"certificado-banco",
+    metaTitle:"Certificado de ingresos para banco o crédito | CONTARAE",
+    metaDescription:"Prepare una certificación de ingresos para banco, crédito, estudio financiero o entidad financiera con valores claros, soportes y firma profesional.",
+    badge:"BANCOS Y ENTIDADES FINANCIERAS",
+    title:"Certificado de ingresos para banco o crédito",
+    intro:"Los bancos suelen solicitar un documento claro para evaluar capacidad de pago. La certificación debe mostrar ingresos verificables, período certificado y destino de presentación.",
+    intent:"Útil para créditos de libre inversión, tarjetas, estudios financieros, compra de vehículo, crédito hipotecario o solicitudes de productos bancarios.",
+    cards:[
+      ["Capacidad de pago","El documento ayuda a presentar de forma ordenada los ingresos acreditados para que la entidad pueda analizarlos dentro de su propio proceso."],
+      ["Período certificado","Se debe indicar si la entidad pide último mes, tres meses, seis meses, año completo u otro período específico."],
+      ["Claridad de valores","Los valores se expresan en números y letras, separando ingresos recurrentes e ingresos eventuales cuando existan."],
+      ["Alcance profesional","La certificación no reemplaza el análisis de crédito del banco; sirve como soporte profesional de la información suministrada."]
+    ],
+    checklist:["Confirme el requisito exacto del banco.","Defina el producto financiero para el que se presenta.","Adjunte soportes del período solicitado.","Revise que sus datos personales coincidan con los documentos."],
+    faqs:[
+      ["¿El banco está obligado a aceptar el certificado?","La aceptación depende de la política interna de cada entidad, pero una certificación clara y soportada reduce observaciones."],
+      ["¿Sirve para crédito hipotecario?","Puede servir como soporte dentro del estudio, siempre que cumpla los requisitos solicitados por la entidad financiera."],
+      ["¿Puede incluir varios tipos de ingresos?","Sí. Pueden presentarse varias fuentes recurrentes y, si aplica, ingresos eventuales separados."]
+    ]
+  },
+  {
+    path:"/certificado-de-ingresos-para-arrendamiento",
+    sectionId:"certificado-arrendamiento",
+    metaTitle:"Certificado de ingresos para arrendamiento | CONTARAE",
+    metaDescription:"Obtenga una certificación de ingresos para arrendar vivienda, inmobiliaria, aseguradora o arrendador, con revisión de soportes y firma de Contador Público.",
+    badge:"ARRIENDOS E INMOBILIARIAS",
+    title:"Certificado de ingresos para arrendamiento",
+    intro:"En procesos de arriendo, inmobiliarias y aseguradoras suelen pedir soporte de ingresos para evaluar capacidad de pago del canon. La certificación debe ser precisa, verificable y fácil de presentar.",
+    intent:"Aplica para solicitudes ante inmobiliarias, aseguradoras de arrendamiento, propietarios directos, administraciones o estudios de arrendatario.",
+    cards:[
+      ["Destino del trámite","Conviene indicar si será presentado ante inmobiliaria, aseguradora, propietario o administración para ajustar el texto del documento."],
+      ["Ingresos requeridos","Se certifican los ingresos demostrables del solicitante según el período exigido por quien evalúa el arriendo."],
+      ["Soportes útiles","Desprendibles, contratos, extractos, certificaciones, facturas o comprobantes que evidencien ingresos estables o demostrables."],
+      ["Presentación formal","El PDF queda preparado para entregar digitalmente, con datos del solicitante, valores certificados y firma profesional."]
+    ],
+    checklist:["Confirme el canon o trámite para el que aplica.","Identifique el período que pide la inmobiliaria.","Adjunte soportes recientes.","Informe si la entidad exige formato propio."],
+    faqs:[
+      ["¿Sirve para aseguradora de arrendamiento?","Sí, puede usarse como soporte, aunque la aprobación final depende de la aseguradora."],
+      ["¿Puedo solicitarla si soy codeudor?","Sí, si necesita acreditar ingresos propios dentro del estudio del arrendamiento."],
+      ["¿Qué pasa si tengo varios ingresos pequeños?","Se pueden presentar por separado o en lista, según la cantidad y naturaleza de las fuentes."]
+    ]
+  },
+  {
+    path:"/comprar-certificado-de-ingresos",
+    sectionId:"comprar-certificado-ingresos",
+    metaTitle:"Comprar certificado de ingresos en línea | CONTARAE",
+    metaDescription:"Compre y solicite en línea su certificación de ingresos con pago seguro, revisión profesional, soportes verificables y entrega en PDF firmado.",
+    badge:"SOLICITUD EN LÍNEA",
+    title:"Comprar certificado de ingresos en línea",
+    intro:"En CONTARAE puede iniciar la solicitud en línea, pagar de forma segura y recibir seguimiento por referencia mientras se revisan los soportes y se prepara la certificación.",
+    intent:"Ruta pensada para quien ya sabe que necesita una certificación de ingresos y quiere iniciar el proceso sin desplazamientos.",
+    cards:[
+      ["Formulario guiado","El sistema solicita datos personales, destino, período, ingresos recurrentes, ingresos eventuales y soportes disponibles."],
+      ["Pago seguro","El pago se procesa mediante Wompi y la solicitud queda registrada para revisión profesional una vez se confirma la transacción."],
+      ["Revisión antes de emitir","El equipo revisa que los ingresos reportados cuenten con soportes suficientes y coherentes antes de generar el PDF."],
+      ["Entrega digital","La certificación se entrega por medios digitales y puede validarse con los datos incorporados en el documento."]
+    ],
+    checklist:["Complete el formulario con datos reales.","Use un celular colombiano válido para el pago si elige Nequi.","Adjunte soportes si ya los tiene disponibles.","Revise el resumen antes de pagar."],
+    faqs:[
+      ["¿Puedo pagar en línea?","Sí. La página permite pagar por Wompi con los medios habilitados en la pasarela."],
+      ["¿Qué pasa después del pago?","La solicitud entra a revisión profesional y el equipo puede pedir soportes o aclaraciones si son necesarios."],
+      ["¿Puedo iniciar si todavía no tengo todos los soportes?","Sí, pero la emisión depende de que finalmente existan soportes suficientes para certificar responsablemente."]
+    ]
+  }
+];
 const normPath=p=>{if(!p)return"/";const c=p.replace(/\/+$/,"");return c||"/";};
 const TOOL_ROUTES=[
   {
@@ -184,27 +304,116 @@ TOOL_ROUTES.forEach(cfg=>{
   TOOL_ROUTE_BY_ID.set(cfg.toolId,cfg);
   cfg.aliases.forEach(alias=>TOOL_ROUTE_BY_PATH.set(normPath(alias),cfg));
 });
+const CERTIFICATION_SUPPORT_ROUTE_BY_PATH=new Map(CERTIFICATION_SUPPORT_ROUTES.map(cfg=>[normPath(cfg.path),cfg]));
 const isCertificationPath=p=>CERT_ROUTE_ALIASES.has(normPath(p));
 const isAdminPath=p=>ADMIN_ROUTE_ALIASES.has(normPath(p));
 const isVerifyPath=p=>VERIFY_ROUTE_ALIASES.has(normPath(p));
 const isPaymentPath=p=>PAYMENT_ROUTE_ALIASES.has(normPath(p));
 const isPaymentsPortalPath=p=>PAYMENTS_PORTAL_ROUTE_ALIASES.has(normPath(p));
 const getToolRouteConfig=p=>TOOL_ROUTE_BY_PATH.get(normPath(p))||null;
+const getCertificationSupportRouteConfig=p=>CERTIFICATION_SUPPORT_ROUTE_BY_PATH.get(normPath(p))||null;
 const isToolPath=p=>!!getToolRouteConfig(p);
 const getCurrentPath=()=>typeof window==="undefined"?"/":normPath(window.location.pathname);
-const getStandaloneLocalSectionId=path=>isCertificationPath(path)?"certificacion":getToolRouteConfig(path)?.sectionId||null;
+const getStandaloneLocalSectionId=path=>isCertificationPath(path)?"certificacion":getToolRouteConfig(path)?.sectionId||getCertificationSupportRouteConfig(path)?.sectionId||null;
 const getSectionHref=(id,path)=>{
   const currentTool=getToolRouteConfig(path);
+  const currentSupport=getCertificationSupportRouteConfig(path);
   const targetTool=TOOL_ROUTE_BY_ID.get(id);
   if(targetTool){
     if(currentTool?.toolId===id)return `#${id}`;
-    if(currentTool||isCertificationPath(path))return targetTool.path;
+    if(currentTool||isCertificationPath(path)||currentSupport)return targetTool.path;
   }
+  if(id==="certificacion"&&currentSupport)return CERT_ROUTE;
   const localId=getStandaloneLocalSectionId(path);
   return localId&&id!==localId?`/#${id}`:`#${id}`;
 };
 const scrollToId=(id,behavior="smooth")=>{if(typeof window==="undefined")return false;const el=document.getElementById(id);if(!el)return false;const top=el.getBoundingClientRect().top+window.pageYOffset-156;window.scrollTo({top,behavior});return true;};
 const openCertificationForm=()=>{if(typeof window==="undefined")return;window.dispatchEvent(new CustomEvent(OPEN_CERT_FORM_EVENT));};
+const canonicalUrlForPath=path=>{
+  const normalized=normPath(path);
+  const tool=getToolRouteConfig(normalized);
+  const support=getCertificationSupportRouteConfig(normalized);
+  const canonicalPath=isCertificationPath(normalized)?CERT_ROUTE:tool?.path||support?.path||normalized;
+  return new URL(canonicalPath, SITE_URL).href;
+};
+const upsertMeta=(selector,attrs)=>{
+  if(typeof document==="undefined")return;
+  let el=document.querySelector(selector);
+  if(!el){
+    el=document.createElement("meta");
+    document.head.appendChild(el);
+  }
+  Object.entries(attrs).forEach(([key,value])=>el.setAttribute(key,value));
+};
+const upsertLink=(rel,href)=>{
+  if(typeof document==="undefined")return;
+  let el=document.querySelector(`link[rel="${rel}"]`);
+  if(!el){
+    el=document.createElement("link");
+    el.setAttribute("rel",rel);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("href",href);
+};
+const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig})=>{
+  if(adminRoute)return{title:"Panel interno | CONTARAE",description:"Panel interno de revisión de CONTARAE.",canonical:canonicalUrlForPath("/admin"),noindex:true};
+  if(verifyRoute)return{title:"Validación de certificados | CONTARAE",description:"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.",canonical:canonicalUrlForPath(VERIFY_ROUTE),noindex:true};
+  if(paymentRoute)return{title:"Pago de solicitud | CONTARAE",description:"Portal de pago seguro para solicitudes de servicios CONTARAE.",canonical:canonicalUrlForPath(PAYMENT_ROUTE),noindex:true};
+  if(paymentsPortalRoute)return{title:"Portal de pagos | CONTARAE",description:"Consulte y pague saldos pendientes de solicitudes CONTARAE con su número de documento.",canonical:canonicalUrlForPath(PAYMENTS_PORTAL_ROUTE),noindex:true};
+  if(toolRoute)return{title:toolConfig.metaTitle,description:toolConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
+  if(certSupportConfig)return{title:certSupportConfig.metaTitle,description:certSupportConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
+  if(certRoute)return{title:"Certificación de ingresos por Contador Público | CONTARAE",description:"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.",canonical:canonicalUrlForPath(CERT_ROUTE),noindex:false};
+  return{title:"CONTARAE | Servicios contables, tributarios y financieros",description:"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.",canonical:canonicalUrlForPath("/"),noindex:false};
+};
+const buildBreadcrumbSchema=(items)=>({"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":items.map((item,index)=>({"@type":"ListItem","position":index+1,"name":item.name,"item":new URL(item.path,SITE_URL).href}))});
+const buildStructuredData=(path,meta,toolConfig,certSupportConfig)=>{
+  const normalized=normPath(path);
+  const base=[
+    {"@context":"https://schema.org","@type":"ProfessionalService","@id":`${SITE_URL}/#negocio`,"name":"CONTARAE","description":"Servicios contables, tributarios y financieros en Colombia, con certificación de ingresos por Contador Público y herramientas de cálculo tributario y laboral.","url":SITE_URL,"telephone":"+573001432008","email":EM,"address":{"@type":"PostalAddress","addressLocality":"Bogotá D.C.","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00","sameAs":SOCIAL_LINKS.map(([,url])=>url)},
+    {"@context":"https://schema.org","@type":"WebSite","@id":`${SITE_URL}/#website`,"name":"CONTARAE","url":SITE_URL,"inLanguage":"es-CO"}
+  ];
+  if(isCertificationPath(normalized)){
+    base.push({"@context":"https://schema.org","@type":"Service","name":"Certificación de ingresos por Contador Público","description":meta.description,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":"Certificación de ingresos","url":meta.canonical});
+    base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","publisher":{"@id":`${SITE_URL}/#negocio`}});
+    base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE}]));
+  }else if(certSupportConfig){
+    base.push({"@context":"https://schema.org","@type":"Article","headline":certSupportConfig.title,"description":certSupportConfig.metaDescription,"inLanguage":"es-CO","author":{"@id":`${SITE_URL}/#negocio`},"publisher":{"@id":`${SITE_URL}/#negocio`},"mainEntityOfPage":meta.canonical});
+    base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE},{name:certSupportConfig.title,path:certSupportConfig.path}]));
+  }else if(toolConfig){
+    base.push({"@context":"https://schema.org","@type":"WebApplication","name":toolConfig.heroTitle,"description":toolConfig.metaDescription,"url":meta.canonical,"applicationCategory":"FinanceApplication","operatingSystem":"Web","inLanguage":"es-CO","provider":{"@id":`${SITE_URL}/#negocio`}});
+    base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Herramientas",path:"/#herramientas"},{name:toolConfig.heroTitle,path:toolConfig.path}]));
+  }else if(normalized==="/"){
+    base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"}]));
+  }
+  return base;
+};
+const syncSeoTags=(meta,path,toolConfig,certSupportConfig)=>{
+  if(typeof document==="undefined")return;
+  document.title=meta.title;
+  upsertMeta('meta[name="description"]',{name:"description",content:meta.description});
+  upsertMeta('meta[name="robots"]',{name:"robots",content:meta.noindex?"noindex, nofollow":"index, follow"});
+  upsertLink("canonical",meta.canonical);
+  upsertMeta('meta[property="og:type"]',{property:"og:type",content:"website"});
+  upsertMeta('meta[property="og:site_name"]',{property:"og:site_name",content:"CONTARAE"});
+  upsertMeta('meta[property="og:title"]',{property:"og:title",content:meta.title});
+  upsertMeta('meta[property="og:description"]',{property:"og:description",content:meta.description});
+  upsertMeta('meta[property="og:url"]',{property:"og:url",content:meta.canonical});
+  upsertMeta('meta[property="og:image"]',{property:"og:image",content:new URL("/logo512.png",SITE_URL).href});
+  upsertMeta('meta[property="og:image:alt"]',{property:"og:image:alt",content:meta.title});
+  upsertMeta('meta[name="twitter:card"]',{name:"twitter:card",content:"summary_large_image"});
+  upsertMeta('meta[name="twitter:title"]',{name:"twitter:title",content:meta.title});
+  upsertMeta('meta[name="twitter:description"]',{name:"twitter:description",content:meta.description});
+  upsertMeta('meta[name="twitter:image"]',{name:"twitter:image",content:new URL("/logo512.png",SITE_URL).href});
+  document.querySelectorAll("script[data-contarae-schema]").forEach(el=>el.remove());
+  if(meta.noindex)return;
+  buildStructuredData(path,meta,toolConfig,certSupportConfig).forEach(schema=>{
+    const script=document.createElement("script");
+    script.type="application/ld+json";
+    script.setAttribute("data-contarae-schema","client");
+    script.textContent=JSON.stringify(schema);
+    document.head.appendChild(script);
+  });
+};
 
 const CITIES=["Bogotá D.C.","Medellín","Cali","Barranquilla","Cartagena","Cúcuta","Bucaramanga","Pereira","Santa Marta","Ibagué","Pasto","Manizales","Neiva","Villavicencio","Armenia","Valledupar","Montería","Sincelejo","Popayán","Tunja","Florencia","Riohacha","Quibdó","Yopal","Mocoa","Arauca","Leticia","Inírida","Mitú","Puerto Carreño","San José del Guaviare","San Andrés","Buenaventura","Soacha","Bello","Soledad","Itagüí","Envigado","Palmira","Floridablanca","Dosquebradas","Tulúa","Barrancabermeja","Maicao","Girardot","Zipaquirá","Facatativá","Chía","Fusagasugá","Tuluá","Sogamoso","Duitama","Girón","Piedecuesta","Apartadó","Turbo","Lorica","Magangué","Aguachica","Ocaña","Pamplona","Ciénaga","Fundación","Cartago","Buga","Tumaco","Ipiales","Sabaneta","La Estrella","Copacabana","Rionegro","Cajicá","Mosquera","Madrid","Funza"];
 
@@ -260,9 +469,10 @@ function Nav({path}){
   const[op,sO]=useState(false);
   const certRoute=isCertificationPath(path);
   const toolConfig=getToolRouteConfig(path);
-  const standaloneRoute=certRoute||!!toolConfig;
-  const localStandaloneId=certRoute?"certificacion":toolConfig?.sectionId;
-  const[act,sAct]=useState(certRoute?"certificacion":toolConfig?"herramientas":"inicio");
+  const certSupportConfig=getCertificationSupportRouteConfig(path);
+  const standaloneRoute=certRoute||!!toolConfig||!!certSupportConfig;
+  const localStandaloneId=certRoute?"certificacion":toolConfig?.sectionId||certSupportConfig?.sectionId;
+  const[act,sAct]=useState(certRoute||certSupportConfig?"certificacion":toolConfig?"herramientas":"inicio");
   const[dd,sDD]=useState(null);
 
   const menu=[
@@ -277,7 +487,7 @@ function Nav({path}){
 
   useEffect(()=>{
     if(standaloneRoute){
-      sAct(certRoute?"certificacion":"herramientas");
+      sAct(certRoute||certSupportConfig?"certificacion":"herramientas");
       return;
     }
     const ids=["inicio","servicios","planes","escenarios","tramites","certificacion","herramientas","tool-renta","tool-retencion","tool-planilla","tool-nomina","tool-iva","tool-precio","calendario","blog","descargas","faq","alertas","whyus","nosotros","contacto"];
@@ -293,7 +503,7 @@ function Nav({path}){
     });
 
     return()=>obs.disconnect();
-  },[standaloneRoute,certRoute]);
+  },[standaloneRoute,certRoute,certSupportConfig]);
 
   const navBase={
     textDecoration:"none",
@@ -1011,6 +1221,80 @@ function MiniTrustIcon({kind}){
   return(<svg {...common}><path d="M12 3.5l6 2.2v5.2c0 4-2.4 7.1-6 9.1-3.6-2-6-5.1-6-9.1V5.7L12 3.5z"/><path d="M9.2 12.1l1.8 1.8 4-4"/></svg>);
 }
 
+function CertificationVideoSection(){
+  return(
+    <section style={{padding:"38px 24px 18px",background:B[6]}}>
+      <div style={{maxWidth:980,margin:"0 auto",display:"grid",gap:18}}>
+        <div style={{textAlign:"center",maxWidth:760,margin:"0 auto"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:999,background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:800,color:"#2563EB",letterSpacing:"1.5px",marginBottom:12,fontFamily:F}}>VIDEO EXPLICATIVO</div>
+          <h2 style={{fontFamily:FH,fontSize:"clamp(26px,3.5vw,38px)",lineHeight:1.1,color:"#0B1D3A",margin:"0 0 10px"}}>Conoce el paso a paso de la certificación de ingresos</h2>
+          <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.8,margin:0}}>En este video explicamos cómo funciona la solicitud, qué información se revisa y cómo se entrega el documento firmado por Contador Público.</p>
+        </div>
+        <div style={{aspectRatio:"16 / 9",borderRadius:22,overflow:"hidden",boxShadow:"0 22px 54px rgba(15,23,42,.12)",border:"1px solid rgba(37,99,235,.12)",background:"#0B1D3A"}}>
+          <iframe title="Paso a paso certificación de ingresos CONTARAE" src={CERTIFICATION_VIDEO_EMBED} style={{width:"100%",height:"100%",border:0,display:"block"}} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen/>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LeadCaptureForm(){
+  const initial={name:"",documentNumber:"",phone:"",email:"",serviceInterest:"Certificación de ingresos",comment:"",treatmentConsent:false,marketingConsent:false};
+  const[form,setForm]=useState(initial);
+  const[busy,setBusy]=useState(false);
+  const[message,setMessage]=useState("");
+  const[error,setError]=useState("");
+  const update=(field,value)=>setForm(current=>({...current,[field]:value}));
+  const submit=async event=>{
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try{
+      const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,sourcePath:window.location.pathname})});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
+      setMessage("Datos registrados correctamente. Te contactaremos por el canal que indicaste.");
+      setForm(initial);
+    }catch(err){
+      setError(err.message);
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  return(
+    <form onSubmit={submit} style={{position:"relative",zIndex:1,display:"grid",gap:10,textAlign:"left",padding:22,borderRadius:22,background:"rgba(255,255,255,.08)",border:"1px solid rgba(191,219,254,.18)",backdropFilter:"blur(10px)"}}>
+      <div style={{fontSize:12,letterSpacing:"1.5px",fontWeight:900,color:"#93C5FD",fontFamily:F}}>RECIBE ASESORÍA</div>
+      <div style={{fontFamily:FH,fontSize:24,lineHeight:1.15,color:"#fff"}}>Déjanos tus datos y te contactamos</div>
+      <div className="lead-form-grid" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
+        <input required value={form.name} onChange={e=>update("name",e.target.value)} placeholder="Nombre completo" style={{...IS,borderRadius:13}}/>
+        <input value={form.documentNumber} onChange={e=>update("documentNumber",e.target.value)} placeholder="Documento o NIT (opcional)" style={{...IS,borderRadius:13}}/>
+        <input value={form.phone} onChange={e=>update("phone",e.target.value)} placeholder="WhatsApp" style={{...IS,borderRadius:13}}/>
+        <input value={form.email} onChange={e=>update("email",e.target.value)} placeholder="Correo electrónico" style={{...IS,borderRadius:13}}/>
+      </div>
+      <select value={form.serviceInterest} onChange={e=>update("serviceInterest",e.target.value)} style={{...IS,borderRadius:13}}>
+        {["Certificación de ingresos","Declaración de renta","Contabilidad mensual","Asesoría tributaria","Creación de empresa","Facturación electrónica","Otro servicio"].map(item=><option key={item} value={item}>{item}</option>)}
+      </select>
+      <textarea value={form.comment} onChange={e=>update("comment",e.target.value)} placeholder="Cuéntanos brevemente qué necesitas" style={{...IS,borderRadius:13,minHeight:86,resize:"vertical"}}/>
+      <label style={{display:"flex",gap:10,alignItems:"flex-start",fontFamily:F,fontSize:12,color:"rgba(255,255,255,.78)",lineHeight:1.6}}>
+        <input type="checkbox" checked={form.treatmentConsent} onChange={e=>update("treatmentConsent",e.target.checked)} required style={{marginTop:3}}/>
+        Autorizo el tratamiento de mis datos personales conforme a la política de privacidad de CONTARAE para gestionar mi solicitud.
+      </label>
+      <label style={{display:"flex",gap:10,alignItems:"flex-start",fontFamily:F,fontSize:12,color:"rgba(255,255,255,.70)",lineHeight:1.6}}>
+        <input type="checkbox" checked={form.marketingConsent} onChange={e=>update("marketingConsent",e.target.checked)} style={{marginTop:3}}/>
+        Autorizo recibir comunicaciones comerciales o informativas por WhatsApp y/o correo.
+      </label>
+      {message?<div style={{padding:12,borderRadius:13,background:"rgba(34,197,94,.16)",color:"#DCFCE7",fontFamily:F,fontWeight:800,lineHeight:1.6}}>{message}</div>:null}
+      {error?<div style={{padding:12,borderRadius:13,background:"rgba(220,38,38,.16)",color:"#FEE2E2",fontFamily:F,fontWeight:800,lineHeight:1.6}}>{error}</div>:null}
+      <button type="submit" disabled={busy} style={{padding:"13px 18px",borderRadius:14,border:"none",background:busy?"#94A3B8":"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontFamily:F,fontWeight:900,cursor:busy?"not-allowed":"pointer"}}>
+        {busy?"Enviando datos...":"Enviar datos"}
+      </button>
+      <style>{`@media(max-width:720px){.lead-form-grid{grid-template-columns:1fr!important;}}`}</style>
+    </form>
+  );
+}
+
 function CertificationHero(){
   const heroMetrics=[["Tiempo estimado","Menos de 1 día hábil"],["Proceso","100% online"],["Pago","Wompi seguro"]];
   const priceRanges=[["Desde $0 hasta $2.000.000","$80.000"],["Desde $2.000.001 hasta $4.000.000","$100.000"],["Desde $4.000.001 hasta $7.000.000","$120.000"],["Desde $7.000.001 hasta $12.000.000","$150.000"],["Desde $12.000.001 hasta $20.000.000","$180.000"],["Más de $20.000.000","$200.000"]];
@@ -1129,6 +1413,72 @@ function CertificationHero(){
     </section>
   )
 }
+
+function CertificationSupportPage({config}){
+  const related=CERTIFICATION_SUPPORT_ROUTES.filter(item=>item.path!==config.path).slice(0,4);
+  return(
+    <>
+      <section id={config.sectionId} style={{padding:"154px 24px 56px",background:"linear-gradient(135deg,#F4F8FF 0%,#EAF7FF 52%,#F8FBFF 100%)",overflow:"hidden"}}>
+        <div style={{maxWidth:1060,margin:"0 auto",display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(280px,.48fr)",gap:24,alignItems:"center"}} className="cert-hero-grid">
+          <div>
+            <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"8px 16px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.12)",fontSize:11,fontWeight:800,color:"#2563EB",letterSpacing:"1.5px",fontFamily:F,marginBottom:16}}>{config.badge}</div>
+            <h1 style={{fontFamily:FH,fontSize:"clamp(31px,4.5vw,52px)",lineHeight:1.04,color:"#0B1D3A",margin:"0 0 16px",maxWidth:760}}>{config.title}</h1>
+            <p style={{fontFamily:F,fontSize:17,color:"#3F5A7A",lineHeight:1.85,margin:"0 0 16px",maxWidth:780}}>{config.intro}</p>
+            <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.8,margin:"0 0 24px",maxWidth:780}}>{config.intent}</p>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <a href={CERT_ROUTE} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>Solicitar certificación</a>
+              <a href="#guia-certificacion" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Ver guía del caso</a>
+            </div>
+          </div>
+          <div style={{padding:24,borderRadius:24,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
+            <div style={{fontSize:12,letterSpacing:"1.4px",fontWeight:900,color:"#1D4ED8",fontFamily:F,marginBottom:14}}>ANTES DE SOLICITAR</div>
+            <div style={{display:"grid",gap:12}}>
+              {config.checklist.map((item,index)=><div key={index} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr)",gap:10,alignItems:"start"}}><div style={{width:28,height:28,borderRadius:"50%",background:"rgba(37,99,235,.10)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#2563EB",fontFamily:F}}>{index+1}</div><div style={{fontSize:14,color:"#334155",lineHeight:1.65,fontFamily:F,fontWeight:650}}>{item}</div></div>)}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Sec id="guia-certificacion" title="Guía práctica para este caso" sub="CONTENIDO ÚTIL" bg={B[1]}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:18}} className="tool-grid">
+          {config.cards.map(([title,desc],index)=>(
+            <Cd key={index} s={{background:"#fff"}}>
+              <h2 style={{fontFamily:FH,fontSize:24,lineHeight:1.2,color:"#0B1D3A",marginBottom:10}}>{title}</h2>
+              <p style={{fontSize:15,color:"#52647F",lineHeight:1.85,margin:0}}>{desc}</p>
+            </Cd>
+          ))}
+        </div>
+      </Sec>
+
+      <Sec id="preguntas-caso" title="Preguntas frecuentes de este caso" sub="ACLARACIONES" bg={B[6]} narrow>
+        <div style={{display:"grid",gap:12}}>
+          {config.faqs.map(([question,answer],index)=>(
+            <div key={index} style={{padding:"22px 24px",borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.04)"}}>
+              <h2 style={{fontFamily:F,fontSize:17,lineHeight:1.4,color:"#0B1D3A",margin:"0 0 8px",fontWeight:900}}>{question}</h2>
+              <p style={{fontSize:15,color:"#52647F",lineHeight:1.85,margin:0}}>{answer}</p>
+            </div>
+          ))}
+        </div>
+      </Sec>
+
+      <Sec id="rutas-relacionadas" title="También puede interesarle" sub="RUTAS RELACIONADAS" bg={B[1]}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:14}} className="tool-grid">
+          {related.map(item=>(
+            <a key={item.path} href={item.path} style={{display:"block",padding:18,borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 12px 26px rgba(15,23,42,.04)",textDecoration:"none"}}>
+              <div style={{fontFamily:F,fontSize:11,letterSpacing:"1.2px",fontWeight:900,color:"#2563EB",marginBottom:8}}>GUÍA</div>
+              <h2 style={{fontFamily:FH,fontSize:19,lineHeight:1.25,color:"#0B1D3A",margin:"0 0 8px"}}>{item.title}</h2>
+              <p style={{fontFamily:F,fontSize:13,color:"#64748B",lineHeight:1.65,margin:0}}>Leer guía específica y continuar hacia la solicitud principal.</p>
+            </a>
+          ))}
+        </div>
+        <div style={{textAlign:"center",marginTop:24}}>
+          <a href={CERT_ROUTE} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F}}>Ir a la página principal de certificación</a>
+        </div>
+      </Sec>
+    </>
+  );
+}
+
 function ToolRouteWidget({toolId}){
   const uv25=49799,uv26=52374;
   if(toolId==="tool-renta")return <ToolRenta uv={uv25}/>;
@@ -2030,8 +2380,8 @@ const PV=[{t:"1. Responsable",c:`CONTARAE. Bogotá D.C. ${EM}. +57 300 143 2008.
 function Prv(){const[s,sS]=useState(false);return(<div style={{maxWidth:900,margin:"0 auto",padding:"0 24px"}}><div style={{textAlign:"center",marginBottom:16}}><button onClick={()=>sS(!s)} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:F,textDecoration:"underline"}}>{s?"Ocultar":"Consultar"} Política de Datos</button></div>{s&&<div style={{padding:24,borderRadius:13,background:"rgba(255,255,255,.05)",border:"1px solid rgba(96,165,250,.1)",marginBottom:18}}><h3 style={{fontFamily:FH,fontSize:17,fontWeight:700,color:"#fff",marginBottom:16,textAlign:"center"}}>Política de Tratamiento de Datos Personales</h3>{PV.map((p,i)=><div key={i} style={{marginBottom:12}}><h4 style={{fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:3,fontFamily:F}}>{p.t}</h4><p style={{fontSize:13,color:"rgba(255,255,255,.6)",lineHeight:1.8,fontFamily:F}}>{p.c}</p></div>)}</div>}</div>)}
 
 /* ══════ FOOTER ══════ */
-function Ftr(){return(<><section id="contacto" style={{padding:"88px 24px",background:B[7]}}><div style={{maxWidth:700,margin:"0 auto",textAlign:"center",padding:"56px 36px",borderRadius:24,background:"linear-gradient(135deg,#0B1D3A,#17345D 55%,#1B3A5C)",position:"relative",overflow:"hidden",boxShadow:"0 24px 60px rgba(15,23,42,.18)",border:"1px solid rgba(125,211,252,.12)"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 20% 20%, rgba(56,189,248,.12), transparent 32%), radial-gradient(circle at 80% 22%, rgba(59,130,246,.10), transparent 28%)"}}/><h2 style={{position:"relative",fontFamily:FH,fontSize:"clamp(23px,3.7vw,34px)",fontWeight:700,color:"#fff",marginBottom:14}}>¿Listo para ordenar sus finanzas?</h2><p style={{position:"relative",fontSize:15,color:"rgba(255,255,255,.70)",margin:"0 auto 28px",fontFamily:F,maxWidth:520,lineHeight:1.8}}>Contadores Públicos certificados en Bogotá a su servicio, con una experiencia clara, cercana y profesional en cada paso.</p><div style={{position:"relative",display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}><a href={wm("Hola CONTARAE, quiero recibir asesoría contable.")} target="_blank" rel="noopener noreferrer" style={{padding:"13px 28px",borderRadius:14,background:"#25D366",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 12px 24px rgba(37,211,102,.18)"}}>WhatsApp</a><a href={`mailto:${EM}`} style={{padding:"13px 28px",borderRadius:14,background:"rgba(255,255,255,.1)",color:"#fff",fontSize:15,fontWeight:600,textDecoration:"none",border:"1px solid rgba(255,255,255,.16)",fontFamily:F,backdropFilter:"blur(8px)"}}>Correo</a><a href={PAYMENTS_PORTAL_ROUTE} style={{padding:"13px 28px",borderRadius:14,background:"rgba(96,165,250,.18)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",border:"1px solid rgba(191,219,254,.22)",fontFamily:F,backdropFilter:"blur(8px)"}}>Portal de pagos</a></div></div></section>
-<footer style={{padding:"44px 24px 32px",background:"#080E1B"}}><LogoFt/><div style={{maxWidth:620,margin:"0 auto",textAlign:"center"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:20}}><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📱 <strong style={{color:"#fff"}}>WhatsApp:</strong> +57 300 143 2008</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>✉️ <strong style={{color:"#fff"}}>Correo:</strong> {EM}</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📍 <strong style={{color:"#fff"}}>Ubicación:</strong> Bogotá D.C.</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>🕐 <strong style={{color:"#fff"}}>Horario:</strong> Lun-Vie 8am-6pm</div></div><Prv/><div style={{display:"flex",justifyContent:"center",marginBottom:14}}><a href={ADMIN_ROUTE} style={{fontSize:12,color:"rgba(255,255,255,.45)",fontFamily:F,textDecoration:"none",padding:"9px 14px",borderRadius:999,border:"1px solid rgba(96,165,250,.14)",background:"rgba(255,255,255,.03)",transition:"all .2s ease"}} onMouseEnter={e=>{e.currentTarget.style.color="#BFDBFE";e.currentTarget.style.borderColor="rgba(96,165,250,.3)";e.currentTarget.style.background="rgba(37,99,235,.09)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(255,255,255,.45)";e.currentTarget.style.borderColor="rgba(96,165,250,.14)";e.currentTarget.style.background="rgba(255,255,255,.03)";}}>Panel de funcionarios</a></div><div style={{borderTop:"1px solid rgba(96,165,250,.1)",paddingTop:18,marginTop:12}}><p style={{fontSize:11,color:"rgba(255,255,255,.35)",fontFamily:F}}>© 2026 CONTARAE · Bogotá D.C., Colombia · Todos los derechos reservados</p><p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:F}}>Ley 1581 de 2012 — Protección de Datos Personales</p></div></div></footer></>)}
+function Ftr(){return(<><section id="contacto" style={{padding:"88px 24px",background:B[7]}}><div style={{maxWidth:880,margin:"0 auto",textAlign:"center",padding:"56px 36px",borderRadius:24,background:"linear-gradient(135deg,#0B1D3A,#17345D 55%,#1B3A5C)",position:"relative",overflow:"hidden",boxShadow:"0 24px 60px rgba(15,23,42,.18)",border:"1px solid rgba(125,211,252,.12)"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 20% 20%, rgba(56,189,248,.12), transparent 32%), radial-gradient(circle at 80% 22%, rgba(59,130,246,.10), transparent 28%)"}}/><h2 style={{position:"relative",fontFamily:FH,fontSize:"clamp(23px,3.7vw,34px)",fontWeight:700,color:"#fff",marginBottom:14}}>¿Listo para ordenar sus finanzas?</h2><p style={{position:"relative",fontSize:15,color:"rgba(255,255,255,.70)",margin:"0 auto 28px",fontFamily:F,maxWidth:600,lineHeight:1.8}}>Contadores Públicos certificados en Bogotá a su servicio, con una experiencia clara, cercana y profesional en cada paso.</p><div style={{position:"relative",display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}><a href={wm("Hola CONTARAE, quiero recibir asesoría contable.")} target="_blank" rel="noopener noreferrer" style={{padding:"13px 28px",borderRadius:14,background:"#25D366",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 12px 24px rgba(37,211,102,.18)"}}>WhatsApp</a><a href={`mailto:${EM}`} style={{padding:"13px 28px",borderRadius:14,background:"rgba(255,255,255,.1)",color:"#fff",fontSize:15,fontWeight:600,textDecoration:"none",border:"1px solid rgba(255,255,255,.16)",fontFamily:F,backdropFilter:"blur(8px)"}}>Correo</a><a href={PAYMENTS_PORTAL_ROUTE} style={{padding:"13px 28px",borderRadius:14,background:"rgba(96,165,250,.18)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",border:"1px solid rgba(191,219,254,.22)",fontFamily:F,backdropFilter:"blur(8px)"}}>Portal de pagos</a></div><LeadCaptureForm/></div></section>
+<footer style={{padding:"44px 24px 32px",background:"#080E1B"}}><LogoFt/><div style={{maxWidth:720,margin:"0 auto",textAlign:"center"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:20}}><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📱 <strong style={{color:"#fff"}}>WhatsApp:</strong> +57 300 143 2008</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>✉️ <strong style={{color:"#fff"}}>Correo:</strong> {EM}</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📍 <strong style={{color:"#fff"}}>Ubicación:</strong> Bogotá D.C.</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>🕐 <strong style={{color:"#fff"}}>Horario:</strong> Lun-Vie 8am-6pm</div></div><div style={{display:"flex",justifyContent:"center",gap:10,flexWrap:"wrap",marginBottom:20}}>{SOCIAL_LINKS.map(([label,url])=><a key={label} href={url} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#BFDBFE",fontFamily:F,textDecoration:"none",padding:"9px 13px",borderRadius:999,border:"1px solid rgba(96,165,250,.16)",background:"rgba(255,255,255,.04)"}}>{label}</a>)}</div><Prv/><div style={{display:"flex",justifyContent:"center",marginBottom:14}}><a href={ADMIN_ROUTE} style={{fontSize:12,color:"rgba(255,255,255,.45)",fontFamily:F,textDecoration:"none",padding:"9px 14px",borderRadius:999,border:"1px solid rgba(96,165,250,.14)",background:"rgba(255,255,255,.03)",transition:"all .2s ease"}} onMouseEnter={e=>{e.currentTarget.style.color="#BFDBFE";e.currentTarget.style.borderColor="rgba(96,165,250,.3)";e.currentTarget.style.background="rgba(37,99,235,.09)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(255,255,255,.45)";e.currentTarget.style.borderColor="rgba(96,165,250,.14)";e.currentTarget.style.background="rgba(255,255,255,.03)";}}>Panel de funcionarios</a></div><div style={{borderTop:"1px solid rgba(96,165,250,.1)",paddingTop:18,marginTop:12}}><p style={{fontSize:11,color:"rgba(255,255,255,.35)",fontFamily:F}}>© 2026 CONTARAE · Bogotá D.C., Colombia · Todos los derechos reservados</p><p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:F}}>Ley 1581 de 2012 — Protección de Datos Personales</p></div></div></footer></>)}
 
 /* ══════ FLOATS ══════ */
 function Flt(){const[s,sS]=useState(false);useEffect(()=>{const h=()=>sS(window.scrollY>400);window.addEventListener("scroll",h);return()=>window.removeEventListener("scroll",h);},[]);
@@ -2048,12 +2398,17 @@ export default function App(){
   const paymentsPortalRoute=isPaymentsPortalPath(path);
   const toolConfig=getToolRouteConfig(path);
   const toolRoute=!!toolConfig;
+  const certSupportConfig=getCertificationSupportRouteConfig(path);
+  const certSupportRoute=!!certSupportConfig;
 
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
-  useEffect(()=>{document.title=adminRoute?"Panel interno | CONTARAE":verifyRoute?"Validación de certificados | CONTARAE":paymentRoute?"Pago de solicitud | CONTARAE":paymentsPortalRoute?"Portal de pagos | CONTARAE":toolRoute?toolConfig.metaTitle:certRoute?"Certificación de ingresos | CONTARAE":"CONTARAE | Servicios contables, tributarios y financieros";const meta=document.querySelector('meta[name=\"description\"]');if(meta)meta.setAttribute("content",adminRoute?"Panel interno de revision de certificaciones de CONTARAE.":verifyRoute?"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.":paymentRoute?"Portal de pago seguro para solicitudes de servicios CONTARAE.":paymentsPortalRoute?"Consulte y pague saldos pendientes de solicitudes CONTARAE con su número de documento.":toolRoute?toolConfig.metaDescription:certRoute?"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.");},[certRoute,toolRoute,toolConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+  useEffect(()=>{
+    const meta=getClientSeoMeta({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig});
+    syncSeoTags(meta,path,toolConfig,certSupportConfig);
+  },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}}`}</style>
@@ -2062,15 +2417,20 @@ export default function App(){
     <ServicePaymentPage/>
     </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({"@context":"https://schema.org","@type":"ProfessionalService","name":"CONTARAE","description":"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para microempresas, emprendedores y pymes en Colombia.","url":"https://contarae.com","telephone":"+573001432008","email":"info@contarae.com","address":{"@type":"PostalAddress","addressLocality":"Bogotá","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00"})}}/>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
     <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
-    {toolRoute?<>
+    {certSupportRoute?<>
+      <CertificationSupportPage config={certSupportConfig}/>
+      <div className="ai"><CertificationVideoSection/></div>
+      <div className="ai"><FaqS/></div>
+      <div className="ai"><Ftr/></div>
+    </>:toolRoute?<>
       <ToolRouteShell config={toolConfig}/>
       <div className="ai"><FaqS/></div>
       <div className="ai"><Ftr/></div>
     </>:certRoute?<>
       <CertificationHero/>
+      <CertificationVideoSection/>
       <div className="ai"><CrtS/></div>
       <div className="ai"><FaqS/></div>
       <div className="ai"><Ftr/></div>
@@ -2081,6 +2441,7 @@ export default function App(){
       <div className="ai"><ScnS/></div>
       <div className="ai"><TrmS/></div>
       <div className="ai"><CrtS/></div>
+      <div className="ai"><CertificationVideoSection/></div>
       <div className="ai"><Tools/></div>
       <div className="ai"><TlS/></div>
       <div className="ai"><BlgS/></div>
