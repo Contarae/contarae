@@ -767,37 +767,80 @@ function InfoTile({ label, value }) {
 }
 
 function ModuleNav({ activeModule, counts, onChange }) {
+  const activeModuleMeta = ADMIN_MODULES.find((module) => module.id === activeModule) || ADMIN_MODULES[0];
   return (
-    <div className="admin-module-nav" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
-      {ADMIN_MODULES.map((module) => {
-        const active = activeModule === module.id;
-        const count = counts?.[module.id];
-        return (
-          <button
-            key={module.id}
-            type="button"
-            onClick={() => onChange(module.id)}
+    <div className="admin-module-nav" style={{ display: "grid", gap: 12, marginBottom: 18 }}>
+      <div className="admin-module-select-card" style={{ display: "grid", gridTemplateColumns: "minmax(220px,.36fr) minmax(0,1fr)", gap: 12, alignItems: "center", padding: 16, borderRadius: 22, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 34px rgba(15,23,42,.05)" }}>
+        <div>
+          <div style={{ fontSize: 11, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 6 }}>MENÚ DEL PANEL</div>
+          <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.55 }}>
+            Cambia de módulo sin recorrer todas las tarjetas.
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+          <select
+            value={activeModule}
+            onChange={(event) => onChange(event.target.value)}
             style={{
+              width: "100%",
               padding: "13px 14px",
-              borderRadius: 18,
-              border: active ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)",
-              background: active ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "rgba(255,255,255,.92)",
-              color: active ? "#fff" : "#0B1D3A",
-              boxShadow: active ? "0 14px 30px rgba(37,99,235,.18)" : "none",
+              borderRadius: 16,
+              border: "1px solid rgba(37,99,235,.16)",
+              background: "#F8FBFF",
+              color: "#0B1D3A",
               fontFamily: F,
-              textAlign: "left",
+              fontWeight: 900,
+              fontSize: 15,
               cursor: "pointer"
             }}
+            aria-label="Seleccionar módulo del panel"
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-              <span style={{ fontWeight: 900, fontSize: 14 }}>{module.label}</span>
-              {typeof count === "number" ? (
-                <span style={{ fontSize: 12, fontWeight: 900, opacity: active ? 0.9 : 0.65 }}>{count}</span>
-              ) : null}
-            </div>
-          </button>
-        );
-      })}
+            {ADMIN_MODULES.map((module) => {
+              const count = counts?.[module.id];
+              return (
+                <option key={module.id} value={module.id}>
+                  {module.label}{typeof count === "number" ? ` (${count})` : ""}
+                </option>
+              );
+            })}
+          </select>
+          <div style={{ padding: "11px 13px", borderRadius: 14, background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" }}>
+            {activeModuleMeta.label}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-module-tab-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+        {ADMIN_MODULES.map((module) => {
+          const active = activeModule === module.id;
+          const count = counts?.[module.id];
+          return (
+            <button
+              key={module.id}
+              type="button"
+              onClick={() => onChange(module.id)}
+              style={{
+                padding: "13px 14px",
+                borderRadius: 18,
+                border: active ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)",
+                background: active ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "rgba(255,255,255,.92)",
+                color: active ? "#fff" : "#0B1D3A",
+                boxShadow: active ? "0 14px 30px rgba(37,99,235,.18)" : "none",
+                fontFamily: F,
+                textAlign: "left",
+                cursor: "pointer"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <span style={{ fontWeight: 900, fontSize: 14 }}>{module.label}</span>
+                {typeof count === "number" ? (
+                  <span style={{ fontSize: 12, fontWeight: 900, opacity: active ? 0.9 : 0.65 }}>{count}</span>
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1457,8 +1500,17 @@ export default function AdminPanel() {
       .admin-pdf-primary-grid,
       .admin-pdf-income-grid,
       .admin-module-nav,
+      .admin-module-select-card,
       .admin-dashboard-grid {
         grid-template-columns: 1fr !important;
+      }
+
+      .admin-module-select-card > div:last-child {
+        grid-template-columns: 1fr !important;
+      }
+
+      .admin-module-tab-grid {
+        display: none !important;
       }
 
       .admin-login-card,
@@ -1469,8 +1521,8 @@ export default function AdminPanel() {
       }
 
       .admin-sidebar-list {
-        max-height: none !important;
-        overflow: visible !important;
+        max-height: min(52vh, 520px) !important;
+        overflow-y: auto !important;
         padding-right: 0 !important;
       }
 
@@ -2111,6 +2163,9 @@ export default function AdminPanel() {
     setServiceDocFiles([]);
     setServiceError("");
     setActiveModule("solicitudes");
+    if (typeof window !== "undefined" && window.innerWidth <= 768) {
+      window.setTimeout(() => document.querySelector(".admin-main")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    }
   };
 
   const handleStartNewServiceRequest = () => {
@@ -2826,7 +2881,12 @@ export default function AdminPanel() {
                   <button
                     key={record.reference}
                     type="button"
-                    onClick={() => setSelectedReference(record.reference)}
+                    onClick={() => {
+                      setSelectedReference(record.reference);
+                      if (typeof window !== "undefined" && window.innerWidth <= 768) {
+                        window.setTimeout(() => document.querySelector(".admin-main")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+                      }
+                    }}
                     style={{
                       textAlign: "left",
                       padding: 16,
