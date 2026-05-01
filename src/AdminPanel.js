@@ -285,6 +285,54 @@ function daysUntilDue(dueDate) {
   return Math.ceil((due.getTime() - today.getTime()) / 86400000);
 }
 
+function getMonthLabel(year, monthIndex) {
+  return new Intl.DateTimeFormat("es-CO", {
+    month: "long",
+    year: "numeric",
+    timeZone: "America/Bogota"
+  }).format(new Date(Date.UTC(year, monthIndex, 1, 12)));
+}
+
+function buildMonthlyDueCalendar(records = [], baseDate = getTodayDateString()) {
+  const [baseYear, baseMonth] = String(baseDate).slice(0, 10).split("-").map(Number);
+  const year = baseYear || new Date().getFullYear();
+  const monthIndex = Number.isFinite(baseMonth) ? baseMonth - 1 : new Date().getMonth();
+  const firstDay = new Date(Date.UTC(year, monthIndex, 1, 12));
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0, 12)).getUTCDate();
+  const mondayStartOffset = (firstDay.getUTCDay() + 6) % 7;
+  const activeRecords = records.filter((record) => !["finalizado", "cancelado"].includes(record.status));
+  const byDate = activeRecords.reduce((acc, record) => {
+    const date = String(record.dueDate || "").slice(0, 10);
+    if (!date) return acc;
+    acc[date] = [...(acc[date] || []), record];
+    return acc;
+  }, {});
+
+  const cells = [];
+  for (let index = 0; index < mondayStartOffset; index += 1) {
+    cells.push({ empty: true, key: `empty-${index}` });
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const requests = byDate[date] || [];
+    const urgentCount = requests.filter((request) => getDueMeta(request).urgent).length;
+    cells.push({
+      key: date,
+      date,
+      day,
+      requests,
+      urgentCount,
+      isToday: date === getTodayDateString()
+    });
+  }
+
+  return {
+    label: getMonthLabel(year, monthIndex),
+    cells
+  };
+}
+
 function getDueMeta(request = {}) {
   if (!request.dueDate) {
     return { label: "Sin vencimiento", tone: "#64748B", bg: "rgba(100,116,139,.10)", urgent: false };
@@ -769,77 +817,39 @@ function InfoTile({ label, value }) {
 function ModuleNav({ activeModule, counts, onChange }) {
   const activeModuleMeta = ADMIN_MODULES.find((module) => module.id === activeModule) || ADMIN_MODULES[0];
   return (
-    <div className="admin-module-nav" style={{ display: "grid", gap: 12, marginBottom: 18 }}>
-      <div className="admin-module-select-card" style={{ display: "grid", gridTemplateColumns: "minmax(220px,.36fr) minmax(0,1fr)", gap: 12, alignItems: "center", padding: 16, borderRadius: 22, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 34px rgba(15,23,42,.05)" }}>
-        <div>
-          <div style={{ fontSize: 11, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 6 }}>MENÚ DEL PANEL</div>
-          <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.55 }}>
-            Cambia de módulo sin recorrer todas las tarjetas.
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-          <select
-            value={activeModule}
-            onChange={(event) => onChange(event.target.value)}
-            style={{
-              width: "100%",
-              padding: "13px 14px",
-              borderRadius: 16,
-              border: "1px solid rgba(37,99,235,.16)",
-              background: "#F8FBFF",
-              color: "#0B1D3A",
-              fontFamily: F,
-              fontWeight: 900,
-              fontSize: 15,
-              cursor: "pointer"
-            }}
-            aria-label="Seleccionar módulo del panel"
-          >
-            {ADMIN_MODULES.map((module) => {
-              const count = counts?.[module.id];
-              return (
-                <option key={module.id} value={module.id}>
-                  {module.label}{typeof count === "number" ? ` (${count})` : ""}
-                </option>
-              );
-            })}
-          </select>
-          <div style={{ padding: "11px 13px", borderRadius: 14, background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" }}>
-            {activeModuleMeta.label}
-          </div>
-        </div>
-      </div>
-
-      <div className="admin-module-tab-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
-        {ADMIN_MODULES.map((module) => {
-          const active = activeModule === module.id;
-          const count = counts?.[module.id];
-          return (
-            <button
-              key={module.id}
-              type="button"
-              onClick={() => onChange(module.id)}
-              style={{
-                padding: "13px 14px",
-                borderRadius: 18,
-                border: active ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)",
-                background: active ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "rgba(255,255,255,.92)",
-                color: active ? "#fff" : "#0B1D3A",
-                boxShadow: active ? "0 14px 30px rgba(37,99,235,.18)" : "none",
-                fontFamily: F,
-                textAlign: "left",
-                cursor: "pointer"
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <span style={{ fontWeight: 900, fontSize: 14 }}>{module.label}</span>
-                {typeof count === "number" ? (
-                  <span style={{ fontSize: 12, fontWeight: 900, opacity: active ? 0.9 : 0.65 }}>{count}</span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
+    <div className="admin-module-nav" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <label style={{ display: "grid", gap: 4, minWidth: 230 }}>
+        <span style={{ fontSize: 10, letterSpacing: "1.4px", fontWeight: 900, color: "#64748B", fontFamily: F }}>MÓDULOS</span>
+        <select
+          value={activeModule}
+          onChange={(event) => onChange(event.target.value)}
+          style={{
+            width: "100%",
+            padding: "11px 36px 11px 13px",
+            borderRadius: 999,
+            border: "1px solid rgba(37,99,235,.16)",
+            background: "#fff",
+            color: "#0B1D3A",
+            fontFamily: F,
+            fontWeight: 900,
+            fontSize: 14,
+            cursor: "pointer",
+            boxShadow: "0 10px 26px rgba(15,23,42,.06)"
+          }}
+          aria-label="Seleccionar módulo del panel"
+        >
+          {ADMIN_MODULES.map((module) => {
+            const count = counts?.[module.id];
+            return (
+              <option key={module.id} value={module.id}>
+                {module.label}{typeof count === "number" ? ` (${count})` : ""}
+              </option>
+            );
+          })}
+        </select>
+      </label>
+      <div style={{ padding: "10px 13px", borderRadius: 999, background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" }}>
+        {activeModuleMeta.label}
       </div>
     </div>
   );
@@ -855,7 +865,30 @@ function StatCard({ label, value, note, tone = "#1D4ED8" }) {
   );
 }
 
-function OperationsDashboard({ summary, serviceRecords, loading, error, onOpenRequest, onOpenModule }) {
+function OperationsDashboard({
+  summary,
+  serviceRecords,
+  certificationRecords = [],
+  clientLeads = [],
+  payments = [],
+  loading,
+  error,
+  onOpenRequest,
+  onOpenModule
+}) {
+  const today = getTodayDateString();
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(today);
+  const calendar = useMemo(() => buildMonthlyDueCalendar(serviceRecords, today), [serviceRecords, today]);
+  const selectedDayRequests = serviceRecords.filter((record) => String(record.dueDate || "").slice(0, 10) === selectedCalendarDate);
+  const certificationPending = certificationRecords.filter((record) => ["en_revision", "documentos_solicitados"].includes(record.certificationStatus)).length;
+  const currentMonth = today.slice(0, 7);
+  const monthPayments = payments.filter((payment) => payment.kind === "payment" && String(payment.paidAt || payment.createdAt || "").startsWith(currentMonth));
+  const monthPaidAmount = monthPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
+  const monthLeads = clientLeads.filter((lead) => String(lead.createdAt || "").startsWith(currentMonth)).length;
+  const monthSalesAmount = serviceRecords
+    .filter((record) => String(record.createdAt || record.updatedAt || "").startsWith(currentMonth))
+    .reduce((sum, record) => sum + parseCurrency(record.agreedPrice), 0);
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       {error ? (
@@ -868,6 +901,10 @@ function OperationsDashboard({ summary, serviceRecords, loading, error, onOpenRe
         <StatCard label="VENCIDAS" value={loading ? "..." : summary.overdueCount} tone="#DC2626" note="Requieren atención prioritaria." />
         <StatCard label="PRÓXIMAS A VENCER" value={loading ? "..." : summary.dueSoonCount} tone="#B45309" note="Vencen hoy o en máximo 3 días." />
         <StatCard label="CUENTAS POR COBRAR" value={loading ? "..." : summary.receivables} tone="#0F766E" note={`${summary.pendingPaymentCount} solicitud(es) con pago pendiente o parcial.`} />
+        <StatCard label="VENTAS DEL MES" value={loading ? "..." : formatMoney(monthSalesAmount)} tone="#1D4ED8" note="Servicios generales creados este mes." />
+        <StatCard label="RECAUDO DEL MES" value={loading ? "..." : formatMoney(monthPaidAmount)} tone="#15803D" note={`${monthPayments.length} pago(s) registrados.`} />
+        <StatCard label="CLIENTES NUEVOS" value={loading ? "..." : monthLeads} tone="#7C3AED" note="Leads captados desde la web este mes." />
+        <StatCard label="CERTIFICACIONES" value={loading ? "..." : certificationPending} tone="#C2410C" note="Pendientes o con documentos solicitados." />
       </div>
 
       <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "1.35fr .65fr", gap: 18, alignItems: "start" }}>
@@ -875,50 +912,86 @@ function OperationsDashboard({ summary, serviceRecords, loading, error, onOpenRe
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CALENDARIO Y ALERTAS</div>
-              <h2 style={{ margin: 0, fontFamily: FH, fontSize: 28, color: "#0B1D3A" }}>Vencimientos de solicitudes</h2>
+              <h2 style={{ margin: 0, fontFamily: FH, fontSize: 28, color: "#0B1D3A" }}>{calendar.label}</h2>
             </div>
             <button type="button" onClick={() => onOpenModule("solicitudes")} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
               Ver solicitudes
             </button>
           </div>
 
-          {summary.calendar.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {summary.calendar.map((request) => {
-                const dueMeta = getDueMeta(request);
-                return (
-                  <button
-                    key={request.reference}
-                    type="button"
-                    onClick={() => onOpenRequest(request.reference)}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "110px minmax(0,1fr) auto",
-                      gap: 14,
-                      alignItems: "center",
-                      textAlign: "left",
-                      padding: 14,
-                      borderRadius: 18,
-                      border: dueMeta.urgent ? "1px solid rgba(220,38,38,.18)" : "1px solid rgba(37,99,235,.10)",
-                      background: dueMeta.urgent ? "rgba(254,242,242,.80)" : "#F8FBFF",
-                      cursor: "pointer"
-                    }}
-                  >
-                    <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 900 }}>{formatDateOnly(request.dueDate)}</div>
-                    <div>
-                      <div style={{ fontFamily: F, fontSize: 14, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{request.title || getServiceTypeLabel(request.serviceType)}</div>
-                      <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.7 }}>{request.clientName || "Cliente sin nombre"} · {getServiceTypeLabel(request.serviceType)}</div>
-                    </div>
-                    <Badge meta={dueMeta}>{dueMeta.label}</Badge>
-                  </button>
-                );
-              })}
+          <div className="admin-calendar-weekdays" style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 8, marginBottom: 8 }}>
+            {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((day) => (
+              <div key={day} style={{ fontFamily: F, color: "#64748B", fontSize: 11, fontWeight: 900, textAlign: "center", letterSpacing: ".8px" }}>{day}</div>
+            ))}
+          </div>
+          <div className="admin-calendar-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 8 }}>
+            {calendar.cells.map((cell) => {
+              if (cell.empty) {
+                return <div key={cell.key} style={{ minHeight: 78 }} />;
+              }
+              const selected = cell.date === selectedCalendarDate;
+              const hasRequests = cell.requests.length > 0;
+              const tone = cell.urgentCount ? "#DC2626" : hasRequests ? "#1D4ED8" : "#64748B";
+              return (
+                <button
+                  key={cell.key}
+                  type="button"
+                  onClick={() => setSelectedCalendarDate(cell.date)}
+                  style={{
+                    minHeight: 78,
+                    padding: 10,
+                    borderRadius: 18,
+                    border: selected ? "2px solid rgba(37,99,235,.70)" : cell.isToday ? "1px solid rgba(37,99,235,.32)" : "1px solid rgba(37,99,235,.10)",
+                    background: selected ? "rgba(37,99,235,.10)" : cell.urgentCount ? "rgba(254,242,242,.90)" : hasRequests ? "#F8FBFF" : "#fff",
+                    cursor: "pointer",
+                    textAlign: "left"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontFamily: F, fontSize: 13, fontWeight: 900, color: cell.isToday ? "#1D4ED8" : "#0F172A" }}>{cell.day}</span>
+                    {hasRequests ? (
+                      <span style={{ minWidth: 22, height: 22, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: cell.urgentCount ? "rgba(220,38,38,.12)" : "rgba(37,99,235,.10)", color: tone, fontFamily: F, fontWeight: 900, fontSize: 11 }}>
+                        {cell.requests.length}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={{ fontFamily: F, color: tone, fontSize: 11, fontWeight: 800, lineHeight: 1.35 }}>
+                    {hasRequests ? `${cell.requests.length} vencimiento(s)` : "Libre"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 18, padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B" }}>DÍA SELECCIONADO</div>
+                <div style={{ fontFamily: FH, color: "#0B1D3A", fontSize: 20 }}>{formatDateOnly(selectedCalendarDate)}</div>
+              </div>
+              <Badge meta={{ tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" }}>{selectedDayRequests.length} solicitud(es)</Badge>
             </div>
-          ) : (
-            <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
-              Aún no hay vencimientos registrados en solicitudes generales.
-            </div>
-          )}
+            {selectedDayRequests.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {selectedDayRequests.map((request) => {
+                  const dueMeta = getDueMeta(request);
+                  return (
+                    <button key={request.reference} type="button" onClick={() => onOpenRequest(request.reference)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", textAlign: "left", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff", cursor: "pointer" }}>
+                      <div>
+                        <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 900 }}>{request.title || getServiceTypeLabel(request.serviceType)}</div>
+                        <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.6 }}>{request.clientName || "Cliente sin nombre"} · {request.reference}</div>
+                      </div>
+                      <Badge meta={dueMeta}>{dueMeta.label}</Badge>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontFamily: F, color: "#64748B", lineHeight: 1.7, fontSize: 13 }}>
+                No hay solicitudes con vencimiento para este día.
+              </div>
+            )}
+          </div>
         </section>
 
         <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
@@ -941,6 +1014,14 @@ function OperationsDashboard({ summary, serviceRecords, loading, error, onOpenRe
           ) : (
             <div style={{ fontFamily: F, color: "#64748B", fontSize: 13, lineHeight: 1.7 }}>Sin servicios activos clasificados.</div>
           )}
+          <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+            <button type="button" onClick={() => onOpenModule("solicitudes")} style={{ width: "100%", padding: "12px 14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Gestionar solicitudes
+            </button>
+            <button type="button" onClick={() => onOpenModule("pagos")} style={{ width: "100%", padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Revisar cartera
+            </button>
+          </div>
         </section>
       </div>
     </div>
@@ -979,87 +1060,21 @@ function ServiceRequestsModule({
   onCreatePaymentLink,
   onManualPaymentChange,
   onRegisterManualPayment,
-  onCopyPaymentLink
+  onCopyPaymentLink,
+  dialogOpen,
+  onClose
 }) {
   const balance = Math.max(parseCurrency(draft.agreedPrice) - parseCurrency(draft.amountPaid), 0);
   const summaryWhatsappLink = buildServiceWhatsappLink(draft, detail, "summary");
   const chatWhatsappLink = buildServiceWhatsappLink(draft, detail, "chat");
   const latestPaymentLink = detail?.paymentLinks?.[0] || null;
   const paymentWhatsappLink = buildServicePaymentWhatsappLink(draft, latestPaymentLink);
+  const loadingDetail = Boolean(selectedReference && !detail && !draft.reference);
 
-  return (
-    <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 380px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
-      <aside className="admin-sidebar" style={{ padding: 18, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)", position: "sticky", top: 20 }}>
-        <button type="button" onClick={onNew} style={{ width: "100%", padding: "13px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer", marginBottom: 14 }}>
-          Nueva solicitud
-        </button>
-        <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
-          <input style={inputStyle} placeholder="Buscar por cliente, documento o referencia" value={search} onChange={(event) => onSearchChange(event.target.value)} />
-          <select style={inputStyle} value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
-            <option value="all">Todos los estados</option>
-            {Object.keys(SERVICE_STATUS_META).map((status) => (
-              <option key={status} value={status}>{getServiceStatusMeta(status).label}</option>
-            ))}
-          </select>
-          <select style={inputStyle} value={paymentFilter} onChange={(event) => onPaymentFilterChange(event.target.value)}>
-            <option value="all">Todos los pagos</option>
-            {Object.keys(SERVICE_PAYMENT_META).map((status) => (
-              <option key={status} value={status}>{getServicePaymentMeta(status).label}</option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: "#1D4ED8", letterSpacing: "1.2px", fontFamily: F }}>SOLICITUDES GENERALES</div>
-          <div style={{ fontSize: 12, color: "#64748B", fontFamily: F }}>{filteredRecords.length}</div>
-        </div>
-        {loading && <div style={{ fontFamily: F, color: "#64748B", fontSize: 14 }}>Cargando solicitudes...</div>}
-        {error && <div style={{ fontFamily: F, color: "#991B1B", fontSize: 14, lineHeight: 1.6 }}>{error}</div>}
-
-        <div className="admin-sidebar-list" style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 330px)", overflowY: "auto", paddingRight: 4 }}>
-          {filteredRecords.map((record) => {
-            const selected = selectedReference === record.reference;
-            const dueMeta = getDueMeta(record);
-            return (
-              <button
-                key={record.reference}
-                type="button"
-                onClick={() => onSelect(record.reference)}
-                style={{
-                  textAlign: "left",
-                  padding: 16,
-                  borderRadius: 18,
-                  border: selected ? "1px solid rgba(37,99,235,.24)" : "1px solid rgba(37,99,235,.10)",
-                  background: selected ? "rgba(37,99,235,.08)" : "#fff",
-                  cursor: "pointer"
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
-                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{record.clientName || "Cliente sin nombre"}</div>
-                  <Badge meta={getServiceStatusMeta(record.status)}>{getServiceStatusMeta(record.status).label}</Badge>
-                </div>
-                <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", marginBottom: 6 }}>{record.reference}</div>
-                <div style={{ fontFamily: F, fontSize: 13, color: "#41556F", lineHeight: 1.55 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
-                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Badge meta={dueMeta}>{dueMeta.label}</Badge>
-                  <Badge meta={getServicePaymentMeta(record.paymentStatus)}>{getServicePaymentMeta(record.paymentStatus).label}</Badge>
-                </div>
-                <div style={{ marginTop: 8, fontFamily: F, fontSize: 12, color: "#52647F", fontWeight: 800 }}>
-                  Saldo: {record.balance || "$ 0"} · Docs: {record.documentsCount || 0}
-                </div>
-              </button>
-            );
-          })}
-          {!filteredRecords.length && !loading ? (
-            <div style={{ padding: 14, borderRadius: 16, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.7 }}>
-              No hay solicitudes generales con estos filtros.
-            </div>
-          ) : null}
-        </div>
-      </aside>
-
-      <main className="admin-main" style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
+  const detailContent = (
+    <div className="admin-request-drawer-card" style={{ width: "min(1120px, 100%)", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+      <div style={{ position: "sticky", top: 0, zIndex: 3, background: "rgba(255,255,255,.96)", backdropFilter: "blur(12px)", padding: "22px 24px", borderBottom: "1px solid rgba(37,99,235,.10)", borderRadius: "28px 28px 0 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
               <Badge meta={getServiceStatusMeta(draft.status)}>{getServiceStatusMeta(draft.status).label}</Badge>
@@ -1067,61 +1082,72 @@ function ServiceRequestsModule({
               {draft.dueDate ? <Badge meta={getDueMeta(draft)}>{getDueMeta(draft).label}</Badge> : null}
             </div>
             <h2 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(26px,3vw,38px)", lineHeight: 1.08, color: "#0B1D3A" }}>
-              {draft.reference ? "Editar solicitud" : "Nueva solicitud"}
+              {loadingDetail ? "Cargando solicitud..." : draft.reference ? "Editar solicitud" : "Nueva solicitud"}
             </h2>
             <p style={{ margin: "10px 0 0", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
               {draft.reference || "Se generará una referencia única al guardar por primera vez."}
             </p>
           </div>
-          <div style={{ minWidth: 210, padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
-            <div style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B", marginBottom: 6 }}>SALDO</div>
-            <div style={{ fontFamily: FH, fontSize: 28, color: balance > 0 ? "#C2410C" : "#15803D" }}>{formatMoney(balance)}</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div style={{ minWidth: 190, padding: "12px 15px", borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+              <div style={{ fontFamily: F, fontSize: 10, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B", marginBottom: 4 }}>SALDO</div>
+              <div style={{ fontFamily: FH, fontSize: 24, color: balance > 0 ? "#C2410C" : "#15803D" }}>{formatMoney(balance)}</div>
+            </div>
+            <button type="button" onClick={onClose} style={{ width: 44, height: 44, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: "pointer" }} aria-label="Cerrar solicitud">
+              X
+            </button>
           </div>
         </div>
+      </div>
 
-        <div className="admin-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,420px)", gap: 18, alignItems: "start" }}>
-          <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
-            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 14 }}>DATOS DEL CLIENTE</div>
-            <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
-              <input style={inputStyle} placeholder="Nombre del cliente" value={draft.client.name} onChange={(event) => onClientChange("name", event.target.value)} />
-              <input style={inputStyle} placeholder="Número de documento" value={draft.client.documentNumber} onChange={(event) => onClientChange("documentNumber", event.target.value)} />
-              <select style={inputStyle} value={draft.client.documentType} onChange={(event) => onClientChange("documentType", event.target.value)}>
-                <option value="CC">Cédula de ciudadanía</option>
-                <option value="CE">Cédula de extranjería</option>
-                <option value="NIT">NIT</option>
-                <option value="PAS">Pasaporte</option>
+      <div className="admin-request-drawer-body" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,400px)", gap: 18, padding: 24, alignItems: "start" }}>
+        <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+          <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 14 }}>DATOS DEL CLIENTE</div>
+          {loadingDetail ? (
+            <div style={{ padding: 14, borderRadius: 16, background: "#F8FBFF", color: "#64748B", fontFamily: F, marginBottom: 14 }}>
+              Cargando la información de la solicitud seleccionada...
+            </div>
+          ) : null}
+          <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
+            <input style={inputStyle} placeholder="Nombre del cliente" value={draft.client.name} onChange={(event) => onClientChange("name", event.target.value)} />
+            <input style={inputStyle} placeholder="Número de documento" value={draft.client.documentNumber} onChange={(event) => onClientChange("documentNumber", event.target.value)} />
+            <select style={inputStyle} value={draft.client.documentType} onChange={(event) => onClientChange("documentType", event.target.value)}>
+              <option value="CC">Cédula de ciudadanía</option>
+              <option value="CE">Cédula de extranjería</option>
+              <option value="NIT">NIT</option>
+              <option value="PAS">Pasaporte</option>
+            </select>
+            <input style={inputStyle} placeholder="WhatsApp / teléfono" value={draft.client.phone} onChange={(event) => onClientChange("phone", event.target.value)} />
+            <input style={inputStyle} placeholder="Correo electrónico" value={draft.client.email} onChange={(event) => onClientChange("email", event.target.value)} />
+          </div>
+
+          <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 14 }}>DATOS DEL SERVICIO</div>
+          <div style={{ display: "grid", gap: 10 }}>
+            <input style={inputStyle} placeholder="Título o asunto de la solicitud" value={draft.title} onChange={(event) => onDraftChange("title", event.target.value)} />
+            <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+              <select style={inputStyle} value={draft.serviceType} onChange={(event) => onDraftChange("serviceType", event.target.value)}>
+                {SERVICE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
-              <input style={inputStyle} placeholder="WhatsApp / teléfono" value={draft.client.phone} onChange={(event) => onClientChange("phone", event.target.value)} />
-              <input style={inputStyle} placeholder="Correo electrónico" value={draft.client.email} onChange={(event) => onClientChange("email", event.target.value)} />
+              <input style={inputStyle} type="date" value={draft.dueDate} onChange={(event) => onDraftChange("dueDate", event.target.value)} />
+              <select style={inputStyle} value={draft.status} onChange={(event) => onDraftChange("status", event.target.value)}>
+                {Object.keys(SERVICE_STATUS_META).map((status) => <option key={status} value={status}>{getServiceStatusMeta(status).label}</option>)}
+              </select>
+              <select style={inputStyle} value={draft.paymentStatus} onChange={(event) => onDraftChange("paymentStatus", event.target.value)}>
+                {Object.keys(SERVICE_PAYMENT_META).map((status) => <option key={status} value={status}>{getServicePaymentMeta(status).label}</option>)}
+              </select>
+              <input style={inputStyle} placeholder="Costo pactado" value={draft.agreedPrice} onChange={(event) => onCurrencyChange("agreedPrice", event.target.value)} />
+              <input style={inputStyle} placeholder="Valor pagado" value={draft.amountPaid} onChange={(event) => onCurrencyChange("amountPaid", event.target.value)} />
             </div>
+            <textarea style={{ ...inputStyle, minHeight: 132, resize: "vertical" }} placeholder="Comentarios, acuerdos, pendientes o detalles de negociación" value={draft.comments} onChange={(event) => onDraftChange("comments", event.target.value)} />
+            <button type="button" onClick={onSave} disabled={saving || loadingDetail} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: saving || loadingDetail ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving || loadingDetail ? "not-allowed" : "pointer" }}>
+              {saving ? "Guardando..." : "Guardar solicitud"}
+            </button>
+          </div>
+        </section>
 
-            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 14 }}>DATOS DEL SERVICIO</div>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input style={inputStyle} placeholder="Título o asunto de la solicitud" value={draft.title} onChange={(event) => onDraftChange("title", event.target.value)} />
-              <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                <select style={inputStyle} value={draft.serviceType} onChange={(event) => onDraftChange("serviceType", event.target.value)}>
-                  {SERVICE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-                <input style={inputStyle} type="date" value={draft.dueDate} onChange={(event) => onDraftChange("dueDate", event.target.value)} />
-                <select style={inputStyle} value={draft.status} onChange={(event) => onDraftChange("status", event.target.value)}>
-                  {Object.keys(SERVICE_STATUS_META).map((status) => <option key={status} value={status}>{getServiceStatusMeta(status).label}</option>)}
-                </select>
-                <select style={inputStyle} value={draft.paymentStatus} onChange={(event) => onDraftChange("paymentStatus", event.target.value)}>
-                  {Object.keys(SERVICE_PAYMENT_META).map((status) => <option key={status} value={status}>{getServicePaymentMeta(status).label}</option>)}
-                </select>
-                <input style={inputStyle} placeholder="Costo pactado" value={draft.agreedPrice} onChange={(event) => onCurrencyChange("agreedPrice", event.target.value)} />
-                <input style={inputStyle} placeholder="Valor pagado" value={draft.amountPaid} onChange={(event) => onCurrencyChange("amountPaid", event.target.value)} />
-              </div>
-              <textarea style={{ ...inputStyle, minHeight: 132, resize: "vertical" }} placeholder="Comentarios, acuerdos, pendientes o detalles de negociación" value={draft.comments} onChange={(event) => onDraftChange("comments", event.target.value)} />
-              <button type="button" onClick={onSave} disabled={saving} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: saving ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
-                {saving ? "Guardando..." : "Guardar solicitud"}
-              </button>
-            </div>
-          </section>
-
-          <div style={{ display: "grid", gap: 18 }}>
+        <div style={{ display: "grid", gap: 18 }}>
           <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
-            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>PAGOS DE LA SOLICITUD</div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>PAGOS</div>
             <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
               <button type="button" onClick={onCreatePaymentLink} disabled={!draft.reference || paymentLinkBusy || balance <= 0} style={{ padding: "12px 14px", borderRadius: 14, border: "none", background: !draft.reference || paymentLinkBusy || balance <= 0 ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: !draft.reference || paymentLinkBusy || balance <= 0 ? "not-allowed" : "pointer" }}>
                 {paymentLinkBusy ? "Generando link..." : "Generar link de pago por saldo"}
@@ -1183,9 +1209,9 @@ function ServiceRequestsModule({
           </section>
 
           <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
-            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>CONTACTO CON EL CLIENTE</div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>CONTACTO</div>
             <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7, marginBottom: 14 }}>
-              Envía un resumen claro de la solicitud o abre el chat rápidamente para seguimiento operativo.
+              Envía un resumen claro o abre el chat directo con el cliente.
             </div>
             <div style={{ display: "grid", gap: 10 }}>
               {summaryWhatsappLink ? (
@@ -1218,7 +1244,7 @@ function ServiceRequestsModule({
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>DOCUMENTOS</div>
-                <div style={{ fontFamily: F, fontSize: 13, color: "#64748B" }}>Adjuntos propios de esta solicitud general.</div>
+                <div style={{ fontFamily: F, fontSize: 13, color: "#64748B" }}>Adjuntos propios de esta solicitud.</div>
               </div>
               <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{detail?.documents?.length || 0} archivo(s)</Badge>
             </div>
@@ -1268,10 +1294,101 @@ function ServiceRequestsModule({
               </div>
             )}
           </section>
-          </div>
         </div>
-      </main>
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>LISTADO OPERATIVO</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>Solicitudes generales</h2>
+            <p style={{ margin: "8px 0 0", fontFamily: F, color: "#64748B", fontSize: 14, lineHeight: 1.7 }}>
+              {records.length} solicitud(es) registradas. Abre una solicitud para editar datos, pagos, documentos y contacto.
+            </p>
+          </div>
+          <button type="button" onClick={onNew} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+            Nueva solicitud
+          </button>
+        </div>
+
+        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(280px,1fr) minmax(180px,.28fr) minmax(180px,.28fr)", gap: 10, marginBottom: 16 }}>
+          <input style={inputStyle} placeholder="Buscar por cliente, documento o referencia" value={search} onChange={(event) => onSearchChange(event.target.value)} />
+          <select style={inputStyle} value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+            <option value="all">Todos los estados</option>
+            {Object.keys(SERVICE_STATUS_META).map((status) => (
+              <option key={status} value={status}>{getServiceStatusMeta(status).label}</option>
+            ))}
+          </select>
+          <select style={inputStyle} value={paymentFilter} onChange={(event) => onPaymentFilterChange(event.target.value)}>
+            <option value="all">Todos los pagos</option>
+            {Object.keys(SERVICE_PAYMENT_META).map((status) => (
+              <option key={status} value={status}>{getServicePaymentMeta(status).label}</option>
+            ))}
+          </select>
+        </div>
+
+        {loading && <div style={{ fontFamily: F, color: "#64748B", fontSize: 14, marginBottom: 12 }}>Cargando solicitudes...</div>}
+        {error && <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, marginBottom: 14 }}>{error}</div>}
+
+        <div className="admin-request-list" style={{ display: "grid", gap: 10 }}>
+          {filteredRecords.map((record) => {
+            const selected = selectedReference === record.reference;
+            const dueMeta = getDueMeta(record);
+            return (
+              <button
+                key={record.reference}
+                type="button"
+                onClick={() => onSelect(record.reference)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0,1.4fr) minmax(130px,.45fr) minmax(130px,.45fr) minmax(110px,.35fr)",
+                  gap: 14,
+                  alignItems: "center",
+                  textAlign: "left",
+                  padding: 16,
+                  borderRadius: 18,
+                  border: selected ? "1px solid rgba(37,99,235,.24)" : "1px solid rgba(37,99,235,.10)",
+                  background: selected ? "rgba(37,99,235,.08)" : "#fff",
+                  cursor: "pointer"
+                }}
+              >
+                <div>
+                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{record.clientName || "Cliente sin nombre"}</div>
+                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", marginTop: 4 }}>{record.reference}</div>
+                  <div style={{ fontFamily: F, fontSize: 13, color: "#41556F", lineHeight: 1.55, marginTop: 4 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Badge meta={getServiceStatusMeta(record.status)}>{getServiceStatusMeta(record.status).label}</Badge>
+                  <Badge meta={dueMeta}>{dueMeta.label}</Badge>
+                </div>
+                <div>
+                  <Badge meta={getServicePaymentMeta(record.paymentStatus)}>{getServicePaymentMeta(record.paymentStatus).label}</Badge>
+                </div>
+                <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", fontWeight: 900, textAlign: "right" }}>
+                  <div>Saldo: {record.balance || "$ 0"}</div>
+                  <div>Docs: {record.documentsCount || 0}</div>
+                </div>
+              </button>
+            );
+          })}
+          {!filteredRecords.length && !loading ? (
+            <div style={{ padding: 14, borderRadius: 16, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.7 }}>
+              No hay solicitudes generales con estos filtros.
+            </div>
+          ) : null}
+        </div>
+      </section>
+      {dialogOpen && typeof document !== "undefined" ? createPortal(
+        <div className="admin-request-drawer-overlay" style={{ position: "fixed", inset: 0, zIndex: 15000, background: "rgba(8,15,29,.62)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+          {detailContent}
+        </div>,
+        document.body
+      ) : null}
+    </>
   );
 }
 
@@ -1499,10 +1616,18 @@ export default function AdminPanel() {
       .admin-original-grid,
       .admin-pdf-primary-grid,
       .admin-pdf-income-grid,
-      .admin-module-nav,
       .admin-module-select-card,
-      .admin-dashboard-grid {
+      .admin-dashboard-grid,
+      .admin-request-filter-grid,
+      .admin-request-list button,
+      .admin-request-drawer-body {
         grid-template-columns: 1fr !important;
+      }
+
+      .admin-topbar-actions,
+      .admin-module-nav,
+      .admin-module-nav label {
+        width: 100% !important;
       }
 
       .admin-module-select-card > div:last-child {
@@ -1538,6 +1663,15 @@ export default function AdminPanel() {
         width: 100% !important;
       }
 
+      .admin-calendar-grid {
+        gap: 6px !important;
+      }
+
+      .admin-calendar-grid button {
+        min-height: 62px !important;
+        padding: 8px !important;
+      }
+
       .admin-modal-overlay {
         padding: 12px !important;
         align-items: flex-start !important;
@@ -1549,6 +1683,18 @@ export default function AdminPanel() {
         padding: 18px !important;
         border-radius: 20px !important;
         margin-top: 12px !important;
+      }
+
+      .admin-request-drawer-overlay {
+        padding: 10px !important;
+        align-items: flex-start !important;
+        overflow-y: auto !important;
+      }
+
+      .admin-request-drawer-card {
+        max-height: none !important;
+        border-radius: 20px !important;
+        margin-top: 10px !important;
       }
     }
   `;
@@ -1607,6 +1753,7 @@ export default function AdminPanel() {
   const [serviceStatusFilter, setServiceStatusFilter] = useState("all");
   const [servicePaymentFilter, setServicePaymentFilter] = useState("all");
   const [selectedServiceReference, setSelectedServiceReference] = useState("");
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
   const [serviceDetail, setServiceDetail] = useState(null);
   const [serviceDraft, setServiceDraft] = useState(buildEmptyServiceDraft());
   const [serviceSaving, setServiceSaving] = useState(false);
@@ -2001,6 +2148,7 @@ export default function AdminPanel() {
     setClientLeads([]);
     setSelectedLeadIds(new Set());
     setSelectedServiceReference("");
+    setServiceDialogOpen(false);
     setServiceDetail(null);
     setServiceDraft(buildEmptyServiceDraft());
     setServiceDocFiles([]);
@@ -2181,7 +2329,7 @@ export default function AdminPanel() {
     setServiceDocFiles([]);
     setServiceError("");
     setActiveModule("solicitudes");
-    scrollAdminMainIntoViewOnMobile();
+    setServiceDialogOpen(true);
   };
 
   const handleStartNewServiceRequest = () => {
@@ -2191,7 +2339,19 @@ export default function AdminPanel() {
     setServiceDocFiles([]);
     setServiceError("");
     setActiveModule("solicitudes");
-    scrollAdminMainIntoViewOnMobile();
+    setServiceDialogOpen(true);
+  };
+
+  const handleCloseServiceDialog = () => {
+    if (serviceSaving || serviceUploadingDocs || paymentLinkBusy || manualPaymentBusy) return;
+    setServiceDialogOpen(false);
+  };
+
+  const handleModuleChange = (moduleId) => {
+    setActiveModule(moduleId);
+    if (moduleId !== "solicitudes") {
+      setServiceDialogOpen(false);
+    }
   };
 
   const handleServiceDraftChange = (field, value) => {
@@ -2708,9 +2868,9 @@ export default function AdminPanel() {
         <style>{responsiveCss}</style>
         <div className="admin-login-card" style={{ width: "min(460px, 100%)", padding: 32, borderRadius: 28, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 24px 54px rgba(15,23,42,.10)" }}>
           <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#2563EB", fontWeight: 800, fontFamily: F, marginBottom: 12 }}>PANEL INTERNO CONTARAE</div>
-          <h1 style={{ fontFamily: FH, fontSize: 38, lineHeight: 1.08, margin: "0 0 12px", color: "#0B1D3A" }}>Revision de certificaciones</h1>
+          <h1 style={{ fontFamily: FH, fontSize: 38, lineHeight: 1.08, margin: "0 0 12px", color: "#0B1D3A" }}>Panel operativo CONTARAE</h1>
           <p style={{ fontFamily: F, fontSize: 15, color: "#4B5D79", lineHeight: 1.8, marginBottom: 22 }}>
-            Acceso privado para revisar solicitudes pagadas, registrar observaciones y gestionar el estado de cada certificacion antes del envio final al cliente.
+            Acceso privado para gestionar solicitudes, clientes, pagos, vencimientos, documentos y certificaciones de CONTARAE.
           </p>
 
           {!session.configured && (
@@ -2730,7 +2890,7 @@ export default function AdminPanel() {
             <input
               style={inputStyle}
               type="password"
-              placeholder="Contrasena"
+              placeholder="Contraseña"
               value={credentials.password}
               onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
               disabled={!session.configured || loginBusy}
@@ -2776,29 +2936,28 @@ export default function AdminPanel() {
               {activeModuleMeta.description}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="admin-topbar-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <ModuleNav
+              activeModule={activeModule}
+              onChange={handleModuleChange}
+              counts={{
+                solicitudes: serviceRecords.length,
+                clientes: clientRows.length + clientLeads.length,
+                pagos: servicePayments.length,
+                certificaciones: records.length
+              }}
+            />
             <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 700 }}>
-              Sesion: {session.username}
+              Sesión: {session.username}
             </div>
             <button onClick={handleRefreshPanel} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
               Actualizar
             </button>
             <button onClick={handleLogout} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(220,38,38,.16)", background: "#fff", color: "#DC2626", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
-              Cerrar sesion
+              Cerrar sesión
             </button>
           </div>
         </div>
-
-        <ModuleNav
-          activeModule={activeModule}
-          onChange={setActiveModule}
-          counts={{
-            solicitudes: serviceRecords.length,
-            clientes: clientRows.length + clientLeads.length,
-            pagos: servicePayments.length,
-            certificaciones: records.length
-          }}
-        />
 
         {notice && (
           <div style={{ marginBottom: 16, padding: 14, borderRadius: 16, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 700 }}>
@@ -2810,10 +2969,13 @@ export default function AdminPanel() {
           <OperationsDashboard
             summary={serviceDashboard}
             serviceRecords={serviceRecords}
+            certificationRecords={records}
+            clientLeads={clientLeads}
+            payments={servicePayments}
             loading={serviceLoading}
             error={serviceError}
             onOpenRequest={handleSelectServiceRequest}
-            onOpenModule={setActiveModule}
+            onOpenModule={handleModuleChange}
           />
         ) : null}
 
@@ -2851,6 +3013,8 @@ export default function AdminPanel() {
             onManualPaymentChange={handleManualPaymentDraftChange}
             onRegisterManualPayment={handleRegisterManualServicePayment}
             onCopyPaymentLink={handleCopyPaymentLink}
+            dialogOpen={serviceDialogOpen}
+            onClose={handleCloseServiceDialog}
           />
         ) : null}
 
