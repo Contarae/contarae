@@ -37,7 +37,13 @@ const ADMIN_MODULES = [
     id: "clientes",
     label: "Clientes",
     title: "Clientes",
-    description: "Consulta clientes captados desde la web, autorizaciones de contacto, saldos y servicios activos."
+    description: "Consulta clientes reales sin duplicados por documento, servicios asociados, pagos y cartera."
+  },
+  {
+    id: "potenciales",
+    label: "Clientes potenciales",
+    title: "Clientes potenciales",
+    description: "Gestiona contactos captados desde formularios, herramientas web y campañas antes de convertirlos en solicitudes."
   },
   {
     id: "pagos",
@@ -267,6 +273,15 @@ function buildClientIdentityKey(values = {}) {
   if (phoneKey) return `phone:${phoneKey}`;
 
   return `name:${formatProperName(values.name || values.clientName || "sin-cliente").toLowerCase()}`;
+}
+
+function normalizeDocumentIdentity(value = "") {
+  return String(value || "").replace(/[^\dA-Za-z]/g, "").toUpperCase();
+}
+
+function buildClientDocumentKey(values = {}) {
+  const documentKey = normalizeDocumentIdentity(values.documentNumber || values.clientDocumentNumber);
+  return documentKey ? `doc:${documentKey}` : "";
 }
 
 function hasMeaningfulCurrencyValue(value) {
@@ -518,9 +533,9 @@ function buildServiceDashboard(records = []) {
 function buildClientRows(records = []) {
   const clients = new Map();
 
-  records.forEach((record) => {
+  records.forEach((record, index) => {
     const documentNumber = String(record.clientDocumentNumber || "").trim();
-    const key = buildClientIdentityKey(record);
+    const key = buildClientDocumentKey(record) || `sin-documento:${record.reference || index}`;
     const current = clients.get(key) || {
       key,
       name: formatProperName(record.clientName) || "Cliente sin nombre",
@@ -529,12 +544,16 @@ function buildClientRows(records = []) {
       phone: record.clientPhone || "",
       requests: 0,
       active: 0,
+      totalAgreed: 0,
+      totalPaid: 0,
       receivable: 0,
       lastUpdatedAt: ""
     };
 
     current.requests += 1;
     if (!["finalizado", "cancelado"].includes(record.status)) current.active += 1;
+    current.totalAgreed += parseCurrency(record.agreedPrice);
+    current.totalPaid += parseCurrency(record.amountPaid);
     current.receivable += Math.max(parseCurrency(record.agreedPrice) - parseCurrency(record.amountPaid), 0);
     current.lastUpdatedAt =
       !current.lastUpdatedAt || new Date(record.updatedAt || 0) > new Date(current.lastUpdatedAt || 0)
@@ -549,38 +568,13 @@ function buildClientRows(records = []) {
 }
 
 function buildLeadRows(leads = []) {
-  const rows = new Map();
-
-  leads.forEach((lead) => {
-    const key = buildClientIdentityKey(lead);
-    const normalizedLead = {
-      ...lead,
-      name: formatProperName(lead.name) || "Cliente sin nombre"
-    };
-    const current = rows.get(key);
-
-    if (!current) {
-      rows.set(key, {
-        ...normalizedLead,
-        key,
-        leadIds: lead.id ? [lead.id] : [],
-        recordsCount: 1,
-        marketingConsent: Boolean(lead.marketingConsent)
-      });
-      return;
-    }
-
-    const useIncomingAsBase = new Date(lead.createdAt || 0) > new Date(current.createdAt || 0);
-    rows.set(key, {
-      ...(useIncomingAsBase ? normalizedLead : current),
-      key,
-      leadIds: [...new Set([...(current.leadIds || []), lead.id].filter(Boolean))],
-      recordsCount: (current.recordsCount || 1) + 1,
-      marketingConsent: Boolean(current.marketingConsent || lead.marketingConsent)
-    });
-  });
-
-  return Array.from(rows.values()).sort((left, right) => {
+  return leads.map((lead) => ({
+    ...lead,
+    key: lead.id || `lead:${lead.createdAt || ""}:${lead.email || ""}:${lead.phone || ""}`,
+    leadIds: lead.id ? [lead.id] : [],
+    recordsCount: 1,
+    name: formatProperName(lead.name) || "Cliente sin nombre"
+  })).sort((left, right) => {
     return new Date(right.createdAt || 0) - new Date(left.createdAt || 0);
   });
 }
@@ -603,12 +597,8 @@ function buildLeadWhatsappLink(lead, message = "") {
 function buildLeadMailtoLink(leads = [], subject = "CONTARAE - Información de tu solicitud", body = "") {
   const emails = leads.map((lead) => String(lead.email || "").trim()).filter(Boolean);
   if (!emails.length) return "";
-  const params = new URLSearchParams({
-    bcc: emails.join(","),
-    subject,
-    body: body || "Hola, te saludamos de CONTARAE. Queremos compartirte información relacionada con tu solicitud y quedamos atentos para ayudarte."
-  });
-  return `mailto:?${params.toString()}`;
+  const mailBody = body || "Hola, te saludamos de CONTARAE. Queremos compartirte información relacionada con tu solicitud y quedamos atentos para ayudarte.";
+  return `mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
 }
 
 function buildClientWhatsappLink(client, message = "") {
@@ -635,6 +625,119 @@ function buildLeadsCsv(leads = []) {
     lead.sourcePath || lead.sourceLabel
   ].map(escape).join(","));
   return [headers.join(","), ...rows].join("\n");
+}
+
+function csvEscape(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function buildCsv(headers = [], rows = []) {
+  return [
+    headers.map(csvEscape).join(","),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))
+  ].join("\n");
+}
+
+function downloadCsvFile(filename, csvContent) {
+  if (typeof document === "undefined") return;
+  const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildClientsCsv(clients = []) {
+  const headers = ["nombre", "documento", "whatsapp", "correo", "solicitudes", "activas", "valor_servicios", "valor_pagado", "saldo_pendiente", "ultima_actualizacion"];
+  return buildCsv(headers, clients.map((client) => ({
+    nombre: client.name,
+    documento: client.documentNumber,
+    whatsapp: client.phone,
+    correo: client.email,
+    solicitudes: client.requests,
+    activas: client.active,
+    valor_servicios: formatMoney(client.totalAgreed),
+    valor_pagado: formatMoney(client.totalPaid),
+    saldo_pendiente: formatMoney(client.receivable),
+    ultima_actualizacion: client.lastUpdatedAt
+  })));
+}
+
+function buildServiceRequestsCsv(records = []) {
+  const headers = ["referencia", "cliente", "tipo_documento", "documento", "whatsapp", "correo", "servicio", "tipo", "estado", "estado_pago", "costo_pactado", "valor_pagado", "saldo", "vencimiento", "documentos", "comentarios", "creado", "actualizado"];
+  return buildCsv(headers, records.map((record) => ({
+    referencia: record.reference,
+    cliente: formatProperName(record.clientName),
+    tipo_documento: record.clientDocumentType || "",
+    documento: record.clientDocumentNumber,
+    whatsapp: record.clientPhone,
+    correo: record.clientEmail,
+    servicio: record.title,
+    tipo: getServiceTypeLabel(record.serviceType),
+    estado: getServiceStatusMeta(record.status).label,
+    estado_pago: getServicePaymentMeta(record.paymentStatus).label,
+    costo_pactado: record.agreedPrice,
+    valor_pagado: record.amountPaid,
+    saldo: record.balance,
+    vencimiento: record.dueDate,
+    documentos: record.documentsCount,
+    comentarios: record.comments || "",
+    creado: record.createdAt,
+    actualizado: record.updatedAt
+  })));
+}
+
+function buildPaymentsCsv(payments = [], certificationRecords = []) {
+  const headers = ["tipo", "referencia_pago", "referencia_solicitud", "cliente", "concepto", "estado", "valor", "metodo", "fecha", "link"];
+  const serviceRows = payments.map((payment) => ({
+    tipo: payment.kind === "payment" ? "Pago solicitud" : "Link solicitud",
+    referencia_pago: payment.reference,
+    referencia_solicitud: payment.request?.reference || payment.serviceReference || "",
+    cliente: formatProperName(payment.request?.clientName),
+    concepto: payment.request?.title || getServiceTypeLabel(payment.request?.serviceType),
+    estado: payment.status || "",
+    valor: payment.amountLabel || formatMoney(payment.amount),
+    metodo: payment.method || payment.source || "",
+    fecha: payment.paidAt || payment.createdAt,
+    link: payment.checkoutUrl || ""
+  }));
+  const certificationRows = certificationRecords.map((record) => ({
+    tipo: "Certificación",
+    referencia_pago: record.paymentReference || record.reference,
+    referencia_solicitud: record.reference,
+    cliente: formatProperName(record.customerName),
+    concepto: record.destination || "Certificación de ingresos",
+    estado: record.paymentStatus || record.certificationStatus,
+    valor: record.fee || "$ 0",
+    metodo: record.paymentMethod || "Wompi",
+    fecha: record.approvedAt || record.createdAt || record.updatedAt,
+    link: ""
+  }));
+  return buildCsv(headers, [...serviceRows, ...certificationRows]);
+}
+
+function buildCertificationsCsv(records = []) {
+  const headers = ["referencia", "consecutivo", "cliente", "documento", "correo", "telefono", "destino", "entidad", "estado_certificacion", "estado_pago", "tarifa", "soportes", "creado", "actualizado"];
+  return buildCsv(headers, records.map((record) => ({
+    referencia: record.reference,
+    consecutivo: record.consecutive,
+    cliente: formatProperName(record.customerName),
+    documento: record.customerDocument,
+    correo: record.customerEmail,
+    telefono: record.customerPhone,
+    destino: record.destination,
+    entidad: record.entity,
+    estado_certificacion: getStatusMeta(record.certificationStatus).label,
+    estado_pago: getPaymentMeta(record.paymentStatus).label,
+    tarifa: record.fee,
+    soportes: record.supportFilesCount || record.supportsCount || 0,
+    creado: record.createdAt,
+    actualizado: record.updatedAt
+  })));
 }
 
 function normalizeComparableValue(field, value) {
@@ -1201,6 +1304,8 @@ function ServiceRequestsModule({
   onCopyPaymentLink,
   onRetryDetail,
   onRequestDelete,
+  onExportRequests,
+  onOpenClient,
   dialogOpen,
   onClose
 }) {
@@ -1393,6 +1498,9 @@ function ServiceRequestsModule({
               Envía un resumen claro o abre el chat directo con el cliente.
             </div>
             <div style={{ display: "grid", gap: 10 }}>
+              <button type="button" onClick={() => onOpenClient(draft.client)} disabled={!normalizeDocumentIdentity(draft.client?.documentNumber)} style={{ padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: normalizeDocumentIdentity(draft.client?.documentNumber) ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, cursor: normalizeDocumentIdentity(draft.client?.documentNumber) ? "pointer" : "not-allowed" }}>
+                Consultar cliente
+              </button>
               {summaryWhatsappLink ? (
                 <a href={summaryWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "12px 14px", borderRadius: 14, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none", textAlign: "center" }}>
                   Enviar resumen por WhatsApp
@@ -1489,9 +1597,14 @@ function ServiceRequestsModule({
               {records.length} solicitud(es) registradas. Abre una solicitud para editar datos, pagos, documentos y contacto.
             </p>
           </div>
-          <button type="button" onClick={onNew} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
-            Nueva solicitud
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button type="button" onClick={onExportRequests} disabled={!records.length} style={{ padding: "13px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: records.length ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, cursor: records.length ? "pointer" : "not-allowed" }}>
+              Descargar Excel
+            </button>
+            <button type="button" onClick={onNew} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Nueva solicitud
+            </button>
+          </div>
         </div>
 
         <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(280px,1fr) minmax(180px,.28fr) minmax(180px,.28fr)", gap: 10, marginBottom: 16 }}>
@@ -1572,59 +1685,42 @@ function ServiceRequestsModule({
   );
 }
 
-function ClientsModule({
-  clients = [],
-  records = [],
+function PotentialClientsModule({
   leads = [],
   leadsLoading,
   leadsError,
   selectedLeadIds = new Set(),
   onToggleAllLeads,
   onOpenLeadDetail,
-  onOpenClientDetail,
   onExportLeads,
   onCopyLeadPhones,
   onOpenBulkEmail
 }) {
-  const [clientView, setClientView] = useState("leads");
   const leadRows = useMemo(() => buildLeadRows(leads), [leads]);
   const authorizedLeads = leadRows.filter((lead) => lead.marketingConsent);
   const selectedAuthorizedLeads = leadRows.filter((lead) => (lead.leadIds || [lead.id]).some((id) => selectedLeadIds.has(id)) && lead.marketingConsent);
   const allAuthorizedSelected = authorizedLeads.length > 0 && authorizedLeads.every((lead) => (lead.leadIds || [lead.id]).some((id) => selectedLeadIds.has(id)));
-  const showLeads = clientView === "leads" || clientView === "all";
-  const showServiceClients = clientView === "service" || clientView === "all";
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <section style={{ padding: 18, borderRadius: 24, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 36px rgba(15,23,42,.06)" }}>
-        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr)", gap: 12, alignItems: "end" }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B" }}>VER CLIENTES</span>
-            <select value={clientView} onChange={(event) => setClientView(event.target.value)} style={inputStyle}>
-              <option value="leads">Captados desde la web ({leadRows.length})</option>
-              <option value="service">Clientes de solicitudes ({clients.length})</option>
-              <option value="all">Todos, separados por tipo ({leadRows.length + clients.length})</option>
-            </select>
-          </label>
-          <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.7 }}>
-            Los clientes se muestran por origen para evitar mezclas visuales. Dentro de solicitudes se agrupan por documento, correo o teléfono para reducir duplicados.
-          </div>
+        <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.7 }}>
+          Cada registro representa una solicitud de contacto independiente. Un mismo documento puede aparecer varias veces si el cliente diligenció distintos formularios o herramientas.
         </div>
       </section>
 
-      {showLeads ? (
       <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
           <div>
-            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES CAPTADOS DESDE LA WEB</div>
-            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{leadRows.length} cliente(s)</h2>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CONTACTOS CAPTADOS DESDE LA WEB</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{leadRows.length} registro(s)</h2>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button type="button" onClick={() => onToggleAllLeads(allAuthorizedSelected ? [] : authorizedLeads.flatMap((lead) => lead.leadIds || [lead.id]).filter(Boolean))} disabled={!authorizedLeads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: authorizedLeads.length ? "pointer" : "not-allowed" }}>
               {allAuthorizedSelected ? "Quitar selección" : "Seleccionar autorizados"}
             </button>
             <button type="button" onClick={onExportLeads} disabled={!leads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "none", background: leads.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: leads.length ? "pointer" : "not-allowed" }}>
-              Exportar CSV
+              Descargar Excel
             </button>
             <button type="button" onClick={() => onCopyLeadPhones(selectedAuthorizedLeads)} disabled={!selectedAuthorizedLeads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(21,128,61,.20)", background: "#fff", color: "#15803D", fontFamily: F, fontWeight: 900, cursor: selectedAuthorizedLeads.length ? "pointer" : "not-allowed" }}>
               Copiar WhatsApps
@@ -1635,7 +1731,7 @@ function ClientsModule({
           </div>
         </div>
 
-        {leadsLoading ? <div style={{ fontFamily: F, color: "#64748B" }}>Cargando clientes captados...</div> : null}
+        {leadsLoading ? <div style={{ fontFamily: F, color: "#64748B" }}>Cargando clientes potenciales...</div> : null}
         {leadsError ? <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, marginBottom: 14 }}>{leadsError}</div> : null}
 
         {leadRows.length ? (
@@ -1664,12 +1760,9 @@ function ClientsModule({
                       <Badge meta={lead.marketingConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
                         {lead.marketingConsent ? "Autoriza" : "Gestión"}
                       </Badge>
-                      {lead.recordsCount > 1 ? (
-                        <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{lead.recordsCount} registros</Badge>
-                      ) : null}
                     </div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {lead.serviceInterest || "Servicio pendiente"} · {formatDate(lead.createdAt)}
+                      {lead.serviceInterest || "Servicio pendiente"} · {lead.documentNumber || "Sin documento"} · {formatDate(lead.createdAt)}
                     </div>
                   </button>
                   <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
@@ -1681,38 +1774,74 @@ function ClientsModule({
           </div>
         ) : (
           <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
-            Aún no hay clientes captados desde el formulario web.
+            Aún no hay clientes potenciales captados desde la web.
           </div>
         )}
       </section>
-      ) : null}
+    </div>
+  );
+}
 
-      {showServiceClients ? (
+function ClientsModule({
+  clients = [],
+  records = [],
+  onOpenClientDetail,
+  onExportClients
+}) {
+  const totalSales = clients.reduce((sum, client) => sum + Number(client.totalAgreed || 0), 0);
+  const totalPaid = clients.reduce((sum, client) => sum + Number(client.totalPaid || 0), 0);
+  const totalReceivable = clients.reduce((sum, client) => sum + Number(client.receivable || 0), 0);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+        <StatCard label="CLIENTES ÚNICOS" value={clients.length} note="Agrupados exclusivamente por número de documento." tone="#1D4ED8" />
+        <StatCard label="SOLICITUDES" value={records.length} note="Servicios generales asociados." tone="#7C3AED" />
+        <StatCard label="VALOR SERVICIOS" value={formatMoney(totalSales)} note={`Pagado: ${formatMoney(totalPaid)}`} tone="#0F766E" />
+        <StatCard label="CARTERA" value={formatMoney(totalReceivable)} note="Saldo pendiente por cliente." tone="#C2410C" />
+      </div>
+
+      <section style={{ padding: 18, borderRadius: 24, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 36px rgba(15,23,42,.06)" }}>
+        <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.7 }}>
+          Este módulo consolida clientes reales por número de documento. Si se crea una nueva solicitud con un documento existente, se suma al mismo expediente del cliente.
+        </div>
+      </section>
+
       <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES DE SOLICITUDES GENERALES</div>
             <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{clients.length} cliente(s)</h2>
           </div>
-          <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{records.length} solicitud(es)</Badge>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+            <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{records.length} solicitud(es)</Badge>
+            <button type="button" onClick={onExportClients} disabled={!clients.length} style={{ padding: "10px 13px", borderRadius: 13, border: "none", background: clients.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: clients.length ? "pointer" : "not-allowed" }}>
+              Descargar Excel
+            </button>
+          </div>
         </div>
 
         {clients.length ? (
           <div style={{ display: "grid", gap: 10 }}>
             {clients.map((client) => (
-              <div key={client.key} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+              <div key={client.key} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) repeat(3,minmax(110px,.3fr)) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
                 <button type="button" onClick={() => onOpenClientDetail(client)} style={{ minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
                   <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{formatProperName(client.name)}</div>
                   <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {client.documentNumber || "Sin documento"} · {client.requests} solicitud(es) · {client.active} activa(s)
+                    {client.documentNumber || "Sin documento"} · {client.email || "Sin correo"} · {client.phone || "Sin teléfono"}
                   </div>
                 </button>
-                <Badge meta={client.receivable > 0 ? getServicePaymentMeta("pendiente") : getServicePaymentMeta("pagado_manual")}>
-                  {client.receivable > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(client.receivable)}` : "Sin saldo"}
-                </Badge>
-                <button type="button" onClick={() => onOpenClientDetail(client)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
-                  Ver
-                </button>
+                <InfoTile label="Solicitudes" value={`${client.requests} (${client.active} activa)`} />
+                <InfoTile label="Servicios" value={formatMoney(client.totalAgreed)} />
+                <InfoTile label="Pagado" value={formatMoney(client.totalPaid)} />
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+                  <Badge meta={client.receivable > 0 ? getServicePaymentMeta("pendiente") : getServicePaymentMeta("pagado_manual")}>
+                    {client.receivable > 0 ? formatMoney(client.receivable) : "Sin saldo"}
+                  </Badge>
+                  <button type="button" onClick={() => onOpenClientDetail(client)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Ver
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1722,7 +1851,6 @@ function ClientsModule({
           </div>
         )}
       </section>
-      ) : null}
     </div>
   );
 }
@@ -1749,11 +1877,16 @@ function ClientDetailDialog({
 
   if (!detail || typeof document === "undefined") return null;
 
-  const clientKey = String(client.key || client.documentNumber || client.email || client.phone || client.name || "").trim().toLowerCase();
+  const clientDocumentKey = normalizeDocumentIdentity(client.documentNumber);
   const clientRecords = isLead ? [] : records.filter((record) => {
-    const recordKey = String(record.clientDocumentNumber || record.clientEmail || record.clientPhone || record.clientName || "sin-cliente").trim().toLowerCase();
-    return recordKey === clientKey;
+    return normalizeDocumentIdentity(record.clientDocumentNumber) === clientDocumentKey && Boolean(clientDocumentKey);
   });
+  const clientTotals = clientRecords.reduce((acc, record) => {
+    acc.totalAgreed += parseCurrency(record.agreedPrice);
+    acc.totalPaid += parseCurrency(record.amountPaid);
+    acc.receivable += Math.max(parseCurrency(record.agreedPrice) - parseCurrency(record.amountPaid), 0);
+    return acc;
+  }, { totalAgreed: 0, totalPaid: 0, receivable: 0 });
   const subject = isLead ? lead : client;
   const whatsappLink = isLead ? buildLeadWhatsappLink(lead) : buildClientWhatsappLink(client);
   const email = String(subject.email || "").trim();
@@ -1831,7 +1964,7 @@ function ClientDetailDialog({
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", marginBottom: 18 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#1D4ED8", fontWeight: 900, fontFamily: F, marginBottom: 10 }}>
-              {isLead ? "CLIENTE CAPTADO DESDE LA WEB" : "CLIENTE DE SOLICITUDES"}
+              {isLead ? "CLIENTE POTENCIAL" : "CLIENTE"}
             </div>
             <h3 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(28px,4vw,38px)", lineHeight: 1.08, color: "#0B1D3A" }}>
               {formatProperName(subject.name) || "Cliente sin nombre"}
@@ -1879,8 +2012,8 @@ function ClientDetailDialog({
             ) : (
               <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
                 <InfoTile label="Solicitudes" value={client.requests} />
-                <InfoTile label="Activas" value={client.active} />
-                <InfoTile label="Saldo pendiente" value={client.receivable > 0 ? formatMoney(client.receivable) : "Sin saldo"} />
+                <InfoTile label="Valor servicios" value={formatMoney(clientTotals.totalAgreed || client.totalAgreed)} />
+                <InfoTile label="Saldo pendiente" value={(clientTotals.receivable || client.receivable) > 0 ? formatMoney(clientTotals.receivable || client.receivable) : "Sin saldo"} />
               </div>
             )}
           </>
@@ -2017,7 +2150,7 @@ function ProtectedDeleteDialog({
   );
 }
 
-function PaymentsModule({ payments, certificationRecords = [], loading, error, onOpenRequest, onOpenCertification, onCopyPaymentLink }) {
+function PaymentsModule({ payments, certificationRecords = [], loading, error, onOpenRequest, onOpenCertification, onCopyPaymentLink, onExportPayments }) {
   const [paymentView, setPaymentView] = useState("servicios");
   const pendingLinks = payments.filter((payment) => payment.kind === "link" && payment.status === "pending");
   const approvedPayments = payments.filter((payment) => payment.kind === "payment");
@@ -2033,7 +2166,7 @@ function PaymentsModule({ payments, certificationRecords = [], loading, error, o
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <section style={{ padding: 18, borderRadius: 24, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 36px rgba(15,23,42,.06)" }}>
-        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr)", gap: 12, alignItems: "end" }}>
+        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr) auto", gap: 12, alignItems: "end" }}>
           <label style={{ display: "grid", gap: 6 }}>
             <span style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B" }}>VER PAGOS</span>
             <select value={paymentView} onChange={(event) => setPaymentView(event.target.value)} style={inputStyle}>
@@ -2045,6 +2178,9 @@ function PaymentsModule({ payments, certificationRecords = [], loading, error, o
           <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.7 }}>
             Los movimientos se separan por origen para que no se mezclen links de solicitudes con pagos de certificaciones.
           </div>
+          <button type="button" onClick={onExportPayments} disabled={!payments.length && !certificationRecords.length} style={{ padding: "12px 14px", borderRadius: 14, border: "none", background: payments.length || certificationRecords.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: payments.length || certificationRecords.length ? "pointer" : "not-allowed" }}>
+            Descargar Excel
+          </button>
         </div>
       </section>
 
@@ -2620,26 +2756,6 @@ export default function AdminPanel() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  useEffect(() => {
-    if (!session.authenticated) return undefined;
-
-    const handlePageHide = () => {
-      try {
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon("/api/admin-logout");
-          return;
-        }
-      } catch {
-        // Fall back to fetch keepalive below.
-      }
-
-      fetch("/api/admin-logout", { method: "POST", keepalive: true }).catch(() => {});
-    };
-
-    window.addEventListener("pagehide", handlePageHide);
-    return () => window.removeEventListener("pagehide", handlePageHide);
-  }, [session.authenticated]);
-
   const filteredRecords = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
     const filtered = records.filter((record) => {
@@ -2969,9 +3085,14 @@ export default function AdminPanel() {
     if (preparingOutput || sendBusy || uploadingSupports) return;
     setSelectedReference("");
     setDetail(null);
+    setDetailLoading(false);
     setDetailError("");
     setPendingSupportFiles([]);
     setPdfEditMode(false);
+    setUnlockDialogOpen(false);
+    setSendDialogOpen(false);
+    setUnlockPassword("");
+    setUnlockError("");
   };
 
   const handleModuleChange = (moduleId) => {
@@ -3011,12 +3132,33 @@ export default function AdminPanel() {
     setServiceError("");
 
     try {
-      if (!String(serviceDraft.client?.name || "").trim()) {
-        throw new Error("Ingresa el nombre del cliente antes de guardar.");
+      const clientInput = serviceDraft.client || {};
+      const requiredValidations = [
+        [clientInput.name, "Ingresa el nombre del cliente antes de guardar."],
+        [clientInput.documentType, "Selecciona el tipo de documento del cliente."],
+        [clientInput.documentNumber, "Ingresa el número de documento del cliente."],
+        [clientInput.phone, "Ingresa el WhatsApp o teléfono del cliente."],
+        [clientInput.email, "Ingresa el correo electrónico del cliente."],
+        [serviceDraft.title, "Ingresa un título o asunto para la solicitud."],
+        [serviceDraft.serviceType, "Selecciona el tipo de servicio."],
+        [serviceDraft.status, "Selecciona el estado de la solicitud."],
+        [serviceDraft.paymentStatus, "Selecciona el estado de pago."],
+        [serviceDraft.dueDate, "Selecciona la fecha de vencimiento de la solicitud."]
+      ];
+
+      const missing = requiredValidations.find(([value]) => !String(value || "").trim());
+      if (missing) throw new Error(missing[1]);
+
+      if (!normalizeDocumentIdentity(clientInput.documentNumber)) {
+        throw new Error("El número de documento debe tener caracteres válidos.");
       }
 
-      if (!String(serviceDraft.title || "").trim()) {
-        throw new Error("Ingresa un título o asunto para la solicitud.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(clientInput.email || "").trim())) {
+        throw new Error("Ingresa un correo electrónico válido.");
+      }
+
+      if (parseCurrency(serviceDraft.agreedPrice) <= 0) {
+        throw new Error("Ingresa el costo pactado del servicio.");
       }
 
       const payload = {
@@ -3206,10 +3348,9 @@ export default function AdminPanel() {
     setServiceSearch(client.documentNumber || client.name || "");
     setServiceStatusFilter("all");
     setServicePaymentFilter("all");
-    const clientKey = String(client.key || client.documentNumber || client.email || client.phone || client.name || "").trim().toLowerCase();
+    const clientDocumentKey = normalizeDocumentIdentity(client.documentNumber);
     const matchingRequest = serviceRecords.find((record) => {
-      const recordKey = String(record.clientDocumentNumber || record.clientEmail || record.clientPhone || record.clientName || "sin-cliente").trim().toLowerCase();
-      return recordKey === clientKey;
+      return normalizeDocumentIdentity(record.clientDocumentNumber) === clientDocumentKey && Boolean(clientDocumentKey);
     });
 
     if (matchingRequest?.reference) {
@@ -3223,6 +3364,33 @@ export default function AdminPanel() {
     setServiceDocFiles([]);
     setServiceError("");
     setActiveModule("solicitudes");
+    scrollAdminMainIntoViewOnMobile();
+  };
+
+  const handleOpenClientByDocument = (client = {}) => {
+    const documentKey = normalizeDocumentIdentity(client.documentNumber);
+    if (!documentKey) {
+      setNotice("Registra el número de documento para consultar el expediente del cliente.");
+      return;
+    }
+
+    const existingClient = clientRows.find((row) => normalizeDocumentIdentity(row.documentNumber) === documentKey) || {
+      key: `doc:${documentKey}`,
+      name: formatProperName(client.name || "Cliente sin nombre"),
+      documentNumber: client.documentNumber,
+      email: client.email || "",
+      phone: client.phone || "",
+      requests: 0,
+      active: 0,
+      totalAgreed: 0,
+      totalPaid: 0,
+      receivable: 0,
+      lastUpdatedAt: ""
+    };
+
+    setServiceDialogOpen(false);
+    setClientDetailDialog({ type: "client", client: existingClient });
+    setActiveModule("clientes");
     scrollAdminMainIntoViewOnMobile();
   };
 
@@ -3370,16 +3538,28 @@ export default function AdminPanel() {
 
   const handleExportClientLeads = () => {
     const csv = buildLeadsCsv(clientLeadRows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `clientes-contarae-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(`clientes-potenciales-contarae-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    setNotice("Base de clientes potenciales exportada.");
+  };
+
+  const handleExportClients = () => {
+    downloadCsvFile(`clientes-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildClientsCsv(clientRows));
     setNotice("Base de clientes exportada.");
+  };
+
+  const handleExportServiceRequests = () => {
+    downloadCsvFile(`solicitudes-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildServiceRequestsCsv(serviceRecords));
+    setNotice("Libro de solicitudes exportado.");
+  };
+
+  const handleExportPayments = () => {
+    downloadCsvFile(`pagos-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildPaymentsCsv(servicePayments, records));
+    setNotice("Libro de pagos y cartera exportado.");
+  };
+
+  const handleExportCertifications = () => {
+    downloadCsvFile(`certificaciones-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildCertificationsCsv(records));
+    setNotice("Libro de certificaciones exportado.");
   };
 
   const handleCopyLeadPhones = async (leads = []) => {
@@ -3712,7 +3892,8 @@ export default function AdminPanel() {
               onChange={handleModuleChange}
               counts={{
                 solicitudes: serviceRecords.length,
-                clientes: clientRows.length + clientLeadRows.length,
+                clientes: clientRows.length,
+                potenciales: clientLeadRows.length,
                 pagos: servicePayments.length,
                 certificaciones: records.length
               }}
@@ -3786,6 +3967,8 @@ export default function AdminPanel() {
             onCopyPaymentLink={handleCopyPaymentLink}
             onRetryDetail={() => loadServiceDetail(selectedServiceReference)}
             onRequestDelete={handleRequestServiceDelete}
+            onExportRequests={handleExportServiceRequests}
+            onOpenClient={handleOpenClientByDocument}
             dialogOpen={serviceDialogOpen}
             onClose={handleCloseServiceDialog}
           />
@@ -3795,13 +3978,19 @@ export default function AdminPanel() {
           <ClientsModule
             clients={clientRows}
             records={serviceRecords}
+            onOpenClientDetail={(client) => setClientDetailDialog({ type: "client", client })}
+            onExportClients={handleExportClients}
+          />
+        ) : null}
+
+        {activeModule === "potenciales" ? (
+          <PotentialClientsModule
             leads={clientLeads}
             leadsLoading={clientLeadsLoading}
             leadsError={clientLeadsError}
             selectedLeadIds={selectedLeadIds}
             onToggleAllLeads={handleToggleAllLeads}
             onOpenLeadDetail={(lead) => setClientDetailDialog({ type: "lead", lead })}
-            onOpenClientDetail={(client) => setClientDetailDialog({ type: "client", client })}
             onExportLeads={handleExportClientLeads}
             onCopyLeadPhones={handleCopyLeadPhones}
             onOpenBulkEmail={handleOpenBulkEmail}
@@ -3817,13 +4006,14 @@ export default function AdminPanel() {
             onOpenRequest={handleSelectServiceRequest}
             onOpenCertification={handleOpenCertificationRecord}
             onCopyPaymentLink={handleCopyPaymentLink}
+            onExportPayments={handleExportPayments}
           />
         ) : null}
 
         {activeModule === "certificaciones" ? (
         <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 18, alignItems: "start" }}>
           <aside className="admin-sidebar" style={{ padding: 20, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
-            <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) minmax(220px,320px) minmax(220px,320px)", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
+            <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) minmax(220px,320px) minmax(220px,320px) auto", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
               <input style={inputStyle} placeholder="Buscar por cliente, referencia o entidad" value={search} onChange={(event) => setSearch(event.target.value)} />
               <select style={inputStyle} value={filter} onChange={(event) => setFilter(event.target.value)}>
                 <option value="all">Todas las certificaciones</option>
@@ -3836,6 +4026,9 @@ export default function AdminPanel() {
               <div style={{ padding: "11px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.6 }}>
                 Orden: fecha de registro, de la más antigua a la más reciente.
               </div>
+              <button type="button" onClick={handleExportCertifications} disabled={!records.length} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: records.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: records.length ? "pointer" : "not-allowed" }}>
+                Descargar Excel
+              </button>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -3894,7 +4087,7 @@ export default function AdminPanel() {
                 <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>DETALLE DE CERTIFICACIÓN</div>
                 <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.5 }}>{detail?.summary?.reference || selectedReference}</div>
               </div>
-              <button type="button" onClick={handleCloseCertificationDialog} style={{ width: 44, height: 44, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: preparingOutput || sendBusy || uploadingSupports ? "not-allowed" : "pointer", opacity: preparingOutput || sendBusy || uploadingSupports ? 0.55 : 1 }} aria-label="Cerrar certificación">
+              <button type="button" onClick={(event) => { event.stopPropagation(); handleCloseCertificationDialog(); }} style={{ width: 44, height: 44, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: preparingOutput || sendBusy || uploadingSupports ? "not-allowed" : "pointer", opacity: preparingOutput || sendBusy || uploadingSupports ? 0.55 : 1 }} aria-label="Cerrar certificación">
                 X
               </button>
             </div>

@@ -233,9 +233,11 @@ export function summarizeServiceRequest(record = {}) {
     amountPaid: detail.amountPaid || "",
     balance: detail.financials?.balance || "",
     clientName: detail.client?.name || "",
+    clientDocumentType: detail.client?.documentType || "",
     clientDocumentNumber: detail.client?.documentNumber || "",
     clientEmail: detail.client?.email || "",
     clientPhone: detail.client?.phone || "",
+    comments: detail.comments || "",
     documentsCount: detail.documents?.length || 0,
     paymentsCount: detail.payments?.length || 0,
     paymentLinksCount: detail.paymentLinks?.length || 0,
@@ -372,6 +374,7 @@ export async function upsertServiceRequest(input = {}, actor = "admin") {
     ...sanitizedRecord,
     payments: seedLegacyPaidAmount(sanitizedRecord, actor)
   });
+  validateServiceRequestRecord(record);
   await store.setJSON(`${SERVICE_REQUEST_PREFIX}${record.reference}`, record);
 
   return buildServiceRequestDetail(record);
@@ -529,6 +532,27 @@ function mergePaymentState(record = {}) {
     amountPaid: formatCurrencyValue(state.amountPaid),
     paymentStatus: state.paymentStatus
   };
+}
+
+function validateServiceRequestRecord(record = {}) {
+  const client = record.client || {};
+  const required = [
+    [client.name, "Ingresa el nombre del cliente."],
+    [client.documentType, "Selecciona el tipo de documento del cliente."],
+    [client.documentNumber, "Ingresa el número de documento del cliente."],
+    [client.phone, "Ingresa el WhatsApp o teléfono del cliente."],
+    [client.email, "Ingresa el correo electrónico del cliente."],
+    [record.title, "Ingresa el título de la solicitud."],
+    [record.serviceType, "Selecciona el tipo de servicio."],
+    [record.status, "Selecciona el estado de la solicitud."],
+    [record.paymentStatus, "Selecciona el estado de pago."],
+    [record.dueDate, "Selecciona la fecha de vencimiento de la solicitud."]
+  ];
+  const missing = required.find(([value]) => !cleanText(value));
+  if (missing) throw new Error(missing[1]);
+  if (!canonicalDocumentNumber(client.documentNumber)) throw new Error("Ingresa un número de documento válido.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanText(client.email))) throw new Error("Ingresa un correo electrónico válido.");
+  if (parseCurrency(record.agreedPrice) <= 0) throw new Error("Ingresa el costo pactado del servicio.");
 }
 
 export async function createServicePaymentLink(reference, input = {}, actor = "admin", origin = "") {

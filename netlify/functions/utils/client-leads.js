@@ -48,19 +48,23 @@ function getClientLeadsStore() {
 function sanitizeLeadInput(input = {}, metadata = {}) {
   const now = new Date().toISOString();
   const name = formatProperName(input.name);
+  const documentNumber = cleanText(input.documentNumber).replace(/[^\dA-Za-z.-]/g, "");
   const phone = normalizePhone(input.phone);
   const email = normalizeEmail(input.email);
   const treatmentConsent = input.treatmentConsent === true || input.treatmentConsent === "true";
   const marketingConsent = input.marketingConsent === true || input.marketingConsent === "true";
 
   if (!name) throw new Error("Ingresa tu nombre.");
-  if (!phone && !email) throw new Error("Ingresa un WhatsApp o correo de contacto.");
+  if (!documentNumber) throw new Error("Ingresa tu número de documento.");
+  if (!phone) throw new Error("Ingresa un WhatsApp de contacto.");
+  if (!email) throw new Error("Ingresa un correo de contacto.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Ingresa un correo válido.");
   if (!treatmentConsent) throw new Error("Debes autorizar el tratamiento de datos personales para enviar tus datos.");
 
   return {
     id: createLeadId(),
     name,
-    documentNumber: cleanText(input.documentNumber).replace(/[^\dA-Za-z.-]/g, ""),
+    documentNumber,
     phone,
     email,
     serviceInterest: cleanText(input.serviceInterest) || "Asesoría contable",
