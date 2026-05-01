@@ -10,6 +10,78 @@
   function = "share-meta"
 
 [[redirects]]
+  from = "/certificacion-de-ingresos"
+  to = "/certificacion"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/declarar-renta"
+  to = "/debo-declarar-renta"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/calculadora-retencion"
+  to = "/retencion-en-la-fuente"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/seguridad-social-independientes"
+  to = "/planilla-independientes"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/nomina"
+  to = "/liquidador-de-nomina"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/iva"
+  to = "/liquidador-de-iva"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/precio-sin-iva"
+  to = "/precio-antes-de-iva"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin/certificaciones"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/verificar-certificacion"
+  to = "/verificar-certificado"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/pagar-solicitud"
+  to = "/pago-solicitud"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/pagos"
+  to = "/portal-pagos"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/portal-de-pagos"
+  to = "/portal-pagos"
+  status = 301
+  force = true
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200

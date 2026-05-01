@@ -355,6 +355,21 @@ const upsertLink=(rel,href)=>{
   }
   el.setAttribute("href",href);
 };
+const upsertAlternateLink=(hreflang,href)=>{
+  if(typeof document==="undefined")return;
+  let el=document.querySelector(`link[rel="alternate"][hreflang="${hreflang}"]`);
+  if(!el){
+    el=document.createElement("link");
+    el.setAttribute("rel","alternate");
+    el.setAttribute("hreflang",hreflang);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("href",href);
+};
+const syncAlternateSeoLinks=canonical=>{
+  upsertAlternateLink("es-CO",canonical);
+  upsertAlternateLink("x-default",canonical);
+};
 const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig})=>{
   if(adminRoute)return{title:"Panel interno | CONTARAE",description:"Panel interno de revisión de CONTARAE.",canonical:canonicalUrlForPath("/admin"),noindex:true};
   if(verifyRoute)return{title:"Validación de certificados | CONTARAE",description:"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.",canonical:canonicalUrlForPath(VERIFY_ROUTE),noindex:true};
@@ -366,6 +381,11 @@ const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortal
   return{title:"CONTARAE | Servicios contables, tributarios y financieros",description:"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.",canonical:canonicalUrlForPath("/"),noindex:false};
 };
 const buildBreadcrumbSchema=(items)=>({"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":items.map((item,index)=>({"@type":"ListItem","position":index+1,"name":item.name,"item":new URL(item.path,SITE_URL).href}))});
+const buildFaqSchema=faqs=>{
+  const items=(faqs||[]).filter(item=>item?.q&&item?.a).map(item=>({"@type":"Question","name":item.q,"acceptedAnswer":{"@type":"Answer","text":item.a}}));
+  if(!items.length)return null;
+  return{"@context":"https://schema.org","@type":"FAQPage","mainEntity":items};
+};
 const buildStructuredData=(path,meta,toolConfig,certSupportConfig)=>{
   const normalized=normPath(path);
   const base=[
@@ -376,9 +396,13 @@ const buildStructuredData=(path,meta,toolConfig,certSupportConfig)=>{
     base.push({"@context":"https://schema.org","@type":"Service","name":"Certificación de ingresos por Contador Público","description":meta.description,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":"Certificación de ingresos","url":meta.canonical});
     base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","publisher":{"@id":`${SITE_URL}/#negocio`}});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE}]));
+    const faqSchema=buildFaqSchema((typeof FQ!=="undefined"?FQ:[]).slice(0,6));
+    if(faqSchema)base.push(faqSchema);
   }else if(certSupportConfig){
     base.push({"@context":"https://schema.org","@type":"Article","headline":certSupportConfig.title,"description":certSupportConfig.metaDescription,"inLanguage":"es-CO","author":{"@id":`${SITE_URL}/#negocio`},"publisher":{"@id":`${SITE_URL}/#negocio`},"mainEntityOfPage":meta.canonical});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE},{name:certSupportConfig.title,path:certSupportConfig.path}]));
+    const faqSchema=buildFaqSchema((certSupportConfig.faqs||[]).map(([q,a])=>({q,a})));
+    if(faqSchema)base.push(faqSchema);
   }else if(toolConfig){
     base.push({"@context":"https://schema.org","@type":"WebApplication","name":toolConfig.heroTitle,"description":toolConfig.metaDescription,"url":meta.canonical,"applicationCategory":"FinanceApplication","operatingSystem":"Web","inLanguage":"es-CO","provider":{"@id":`${SITE_URL}/#negocio`}});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Herramientas",path:"/#herramientas"},{name:toolConfig.heroTitle,path:toolConfig.path}]));
@@ -393,6 +417,7 @@ const syncSeoTags=(meta,path,toolConfig,certSupportConfig)=>{
   upsertMeta('meta[name="description"]',{name:"description",content:meta.description});
   upsertMeta('meta[name="robots"]',{name:"robots",content:meta.noindex?"noindex, nofollow":"index, follow"});
   upsertLink("canonical",meta.canonical);
+  syncAlternateSeoLinks(meta.canonical);
   upsertMeta('meta[property="og:type"]',{property:"og:type",content:"website"});
   upsertMeta('meta[property="og:site_name"]',{property:"og:site_name",content:"CONTARAE"});
   upsertMeta('meta[property="og:title"]',{property:"og:title",content:meta.title});
@@ -1795,7 +1820,7 @@ function PaymentsPortalPage(){
               {loading?"Consultando...":"Consultar"}
             </button>
           </form>
-          <style>{`@media(max-width:760px){.payments-portal-form,.payments-summary-grid,.payments-request-card{grid-template-columns:1fr!important;}.payments-request-actions{justify-content:stretch!important;}.payments-request-actions a{width:100%!important;text-align:center!important;}.payments-summary-grid h2,.payments-summary-grid div{overflow-wrap:anywhere;}}`}</style>
+          <style>{`@media(max-width:760px){.payments-portal-form,.payments-summary-grid,.payments-request-card{grid-template-columns:1fr!important;}.payments-request-actions{display:grid!important;grid-template-columns:1fr!important;justify-content:stretch!important;}.payments-request-actions a{display:block!important;width:100%!important;text-align:center!important;}.payments-summary-grid h2,.payments-summary-grid div{overflow-wrap:anywhere;}}`}</style>
           {error?<div style={{marginTop:14,padding:14,borderRadius:16,background:"rgba(220,38,38,.08)",color:"#991B1B",fontFamily:F,fontWeight:800,lineHeight:1.7}}>{error}</div>:null}
         </section>
 
@@ -2411,7 +2436,7 @@ export default function App(){
   },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
-    <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:14px!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:66px!important;font-size:14px!important;opacity:.78!important;}}`}</style>
+    <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:calc(14px + env(safe-area-inset-bottom,0px))!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:calc(66px + env(safe-area-inset-bottom,0px))!important;font-size:14px!important;opacity:.78!important;}}`}</style>
     {adminRoute?<AdminPanel/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <ServicePaymentPage/>

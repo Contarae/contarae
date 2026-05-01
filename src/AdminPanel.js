@@ -1436,7 +1436,7 @@ function PaymentsModule({ payments, loading, error, onOpenRequest, onCopyPayment
                       ? { label: "Link reemplazado", meta: { tone: "#64748B", bg: "rgba(100,116,139,.10)" } }
                       : { label: "Link pendiente", meta: getServicePaymentMeta("pendiente") };
               return (
-                <div key={`${payment.kind}-${payment.reference}-${payment.createdAt || payment.paidAt}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center", padding: 16, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+                <div className="admin-payment-movement-card" key={`${payment.kind}-${payment.reference}-${payment.createdAt || payment.paidAt}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center", padding: 16, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
                   <div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
                       <Badge meta={paymentBadge.meta}>{paymentBadge.label}</Badge>
@@ -1445,7 +1445,7 @@ function PaymentsModule({ payments, loading, error, onOpenRequest, onCopyPayment
                     <div style={{ fontFamily: F, fontSize: 15, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{request.clientName || "Cliente sin nombre"} · {payment.amountLabel || formatMoney(payment.amount)}</div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>{request.title || getServiceTypeLabel(request.serviceType)} · {payment.reference}</div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <div className="admin-payment-movement-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {request.reference ? (
                       <button type="button" onClick={() => onOpenRequest(request.reference)} style={{ padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
                         Ver solicitud
@@ -1524,6 +1524,18 @@ export default function AdminPanel() {
         max-height: min(52vh, 520px) !important;
         overflow-y: auto !important;
         padding-right: 0 !important;
+      }
+
+      .admin-payment-movement-card {
+        grid-template-columns: 1fr !important;
+      }
+
+      .admin-payment-movement-actions {
+        justify-content: stretch !important;
+      }
+
+      .admin-payment-movement-actions button {
+        width: 100% !important;
       }
 
       .admin-modal-overlay {
@@ -1945,6 +1957,12 @@ export default function AdminPanel() {
   const serviceDashboard = useMemo(() => buildServiceDashboard(serviceRecords), [serviceRecords]);
   const clientRows = useMemo(() => buildClientRows(serviceRecords), [serviceRecords]);
 
+  const scrollAdminMainIntoViewOnMobile = () => {
+    if (typeof window !== "undefined" && window.innerWidth <= 768) {
+      window.setTimeout(() => document.querySelector(".admin-main")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    }
+  };
+
   const handleLogin = async (event) => {
     event.preventDefault();
     setLoginBusy(true);
@@ -2163,9 +2181,7 @@ export default function AdminPanel() {
     setServiceDocFiles([]);
     setServiceError("");
     setActiveModule("solicitudes");
-    if (typeof window !== "undefined" && window.innerWidth <= 768) {
-      window.setTimeout(() => document.querySelector(".admin-main")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-    }
+    scrollAdminMainIntoViewOnMobile();
   };
 
   const handleStartNewServiceRequest = () => {
@@ -2175,6 +2191,7 @@ export default function AdminPanel() {
     setServiceDocFiles([]);
     setServiceError("");
     setActiveModule("solicitudes");
+    scrollAdminMainIntoViewOnMobile();
   };
 
   const handleServiceDraftChange = (field, value) => {
@@ -2385,7 +2402,24 @@ export default function AdminPanel() {
     setServiceSearch(client.documentNumber || client.name || "");
     setServiceStatusFilter("all");
     setServicePaymentFilter("all");
+    const clientKey = String(client.key || client.documentNumber || client.email || client.phone || client.name || "").trim().toLowerCase();
+    const matchingRequest = serviceRecords.find((record) => {
+      const recordKey = String(record.clientDocumentNumber || record.clientEmail || record.clientPhone || record.clientName || "sin-cliente").trim().toLowerCase();
+      return recordKey === clientKey;
+    });
+
+    if (matchingRequest?.reference) {
+      handleSelectServiceRequest(matchingRequest.reference);
+      return;
+    }
+
+    setSelectedServiceReference("");
+    setServiceDetail(null);
+    setServiceDraft(buildEmptyServiceDraft());
+    setServiceDocFiles([]);
+    setServiceError("");
     setActiveModule("solicitudes");
+    scrollAdminMainIntoViewOnMobile();
   };
 
   const handleToggleLead = (leadId) => {

@@ -7,6 +7,131 @@ const SAME_AS = [
   "https://www.youtube.com/@CONTARAE_Servicios_contables",
 ];
 
+const CERTIFICATION_FAQS = [
+  {
+    q: "¿Cuánto cuesta la certificación de ingresos?",
+    a: "La tarifa depende del rango de ingresos acreditados y del nivel de soporte requerido. Siempre informamos el valor antes del pago, para que el cliente sepa exactamente qué incluye el servicio y en qué plazo se entrega el documento firmado por contador público.",
+  },
+  {
+    q: "¿Cuánto tarda la entrega del certificado?",
+    a: "Con documentación completa y pago confirmado, normalmente se entrega en pocas horas. Si la información requiere validaciones adicionales o documentos complementarios, el tiempo puede extenderse, pero siempre le informamos el estado del proceso.",
+  },
+  {
+    q: "¿Qué soportes necesito para la certificación?",
+    a: "Depende del tipo de ingreso. Para ingresos laborales suelen usarse desprendibles o certificados; para independientes, facturas, contratos, extractos y reportes; para arriendos o inversiones, los soportes que evidencien el flujo real.",
+  },
+  {
+    q: "¿La certificación tiene vigencia?",
+    a: "Usualmente las entidades receptoras aceptan documentos recientes, por lo que recomendamos usarla dentro de los 30 a 60 días posteriores a su expedición, salvo que la entidad indique algo distinto.",
+  },
+  {
+    q: "¿Puedo solicitar si soy independiente?",
+    a: "Sí. La certificación aplica para trabajadores independientes, contratistas, freelancers, comerciantes, rentistas y otras personas naturales con ingresos demostrables.",
+  },
+  {
+    q: "¿Qué pasa si mis soportes están incompletos?",
+    a: "Podemos orientar sobre qué documentos faltan y qué alternativas existen para complementar la solicitud. La emisión depende de contar con soportes suficientes para certificar responsablemente.",
+  },
+];
+
+const SUPPORT_FAQS = new Map([
+  [
+    "/certificado-de-ingresos-contador-publico",
+    [
+      {
+        q: "¿Certificado de ingresos y certificación de ingresos son lo mismo?",
+        a: "En la práctica suelen usarse como equivalentes. Lo importante es que el documento esté firmado por Contador Público y que los ingresos certificados tengan soporte verificable.",
+      },
+      {
+        q: "¿Sirve si soy empleado?",
+        a: "Sí. Puede soportarse con desprendibles de nómina, certificaciones laborales, certificados de ingresos y retenciones u otros documentos emitidos por el empleador.",
+      },
+      {
+        q: "¿Sirve si soy independiente?",
+        a: "Sí. En ese caso se revisan soportes como contratos, facturas, extractos bancarios, comprobantes de pago y evidencia de la actividad económica.",
+      },
+    ],
+  ],
+  [
+    "/certificado-de-ingresos-para-independientes",
+    [
+      {
+        q: "¿Puedo certificar ingresos si me pagan por transferencia?",
+        a: "Sí, siempre que los movimientos puedan relacionarse razonablemente con la actividad económica o el servicio prestado.",
+      },
+      {
+        q: "¿Puedo incluir ventas ocasionales?",
+        a: "Sí, pero deben presentarse como ingresos eventuales si no son fijos ni periódicos.",
+      },
+      {
+        q: "¿Se puede certificar un promedio mensual?",
+        a: "Sí, siempre que el período y los soportes permitan explicar técnicamente ese promedio.",
+      },
+    ],
+  ],
+  [
+    "/certificado-de-ingresos-para-banco",
+    [
+      {
+        q: "¿El banco está obligado a aceptar el certificado?",
+        a: "La aceptación depende de la política interna de cada entidad, pero una certificación clara y soportada reduce observaciones.",
+      },
+      {
+        q: "¿Sirve para crédito hipotecario?",
+        a: "Puede servir como soporte dentro del estudio, siempre que cumpla los requisitos solicitados por la entidad financiera.",
+      },
+      {
+        q: "¿Puede incluir varios tipos de ingresos?",
+        a: "Sí. Pueden presentarse varias fuentes recurrentes y, si aplica, ingresos eventuales separados.",
+      },
+    ],
+  ],
+  [
+    "/certificado-de-ingresos-para-arrendamiento",
+    [
+      {
+        q: "¿Sirve para aseguradora de arrendamiento?",
+        a: "Sí, puede usarse como soporte, aunque la aprobación final depende de la aseguradora.",
+      },
+      {
+        q: "¿Puedo solicitarla si soy codeudor?",
+        a: "Sí, si necesita acreditar ingresos propios dentro del estudio del arrendamiento.",
+      },
+      {
+        q: "¿Qué pasa si tengo varios ingresos pequeños?",
+        a: "Se pueden presentar por separado o en lista, según la cantidad y naturaleza de las fuentes.",
+      },
+    ],
+  ],
+  [
+    "/comprar-certificado-de-ingresos",
+    [
+      {
+        q: "¿Puedo pagar en línea?",
+        a: "Sí. La página permite pagar por Wompi con los medios habilitados en la pasarela.",
+      },
+      {
+        q: "¿Qué pasa después del pago?",
+        a: "La solicitud entra a revisión profesional y el equipo puede pedir soportes o aclaraciones si son necesarios.",
+      },
+      {
+        q: "¿Puedo iniciar si todavía no tengo todos los soportes?",
+        a: "Sí, pero la emisión depende de que finalmente existan soportes suficientes para certificar responsablemente.",
+      },
+    ],
+  ],
+]);
+
+const CERTIFICATION_SUPPORT_PATHS = new Set([...SUPPORT_FAQS.keys()]);
+const TOOL_PATHS = new Set([
+  "/debo-declarar-renta",
+  "/retencion-en-la-fuente",
+  "/planilla-independientes",
+  "/liquidador-de-nomina",
+  "/liquidador-de-iva",
+  "/precio-antes-de-iva",
+]);
+
 const route = (path, title, description, canonicalPath = path, extra = {}) => [
   path,
   { title, description, canonicalPath, ...extra },
@@ -166,8 +291,113 @@ const replaceCanonical = (html, canonicalUrl) => {
   return html.replace("</head>", `  ${replacement}\n  </head>`);
 };
 
+const replaceAlternate = (html, hreflang, href) => {
+  const replacement = `<link rel="alternate" hreflang="${hreflang}" href="${href}" />`;
+  const escapedHreflang = escapeRegex(hreflang);
+  const patterns = [
+    new RegExp(`<link[^>]*rel=["']alternate["'][^>]*hreflang=["']${escapedHreflang}["'][^>]*>`, "i"),
+    new RegExp(`<link[^>]*hreflang=["']${escapedHreflang}["'][^>]*rel=["']alternate["'][^>]*>`, "i"),
+  ];
+  const pattern = patterns.find((item) => item.test(html));
+  if (pattern) return html.replace(pattern, replacement);
+  return html.replace("</head>", `  ${replacement}\n  </head>`);
+};
+
+const cleanTitle = (title) => String(title || "").replace(/\s*\|\s*CONTARAE\s*$/i, "");
+
+const buildBreadcrumbSchema = (items) => ({
+  "@type": "BreadcrumbList",
+  itemListElement: items.map((item, index) => ({
+    "@type": "ListItem",
+    position: index + 1,
+    name: item.name,
+    item: new URL(item.path, SITE_URL).href,
+  })),
+});
+
+const buildFaqSchema = (faqs = []) => {
+  const items = faqs
+    .filter((item) => item?.q && item?.a)
+    .map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.a,
+      },
+    }));
+
+  if (!items.length) return null;
+  return {
+    "@type": "FAQPage",
+    mainEntity: items,
+  };
+};
+
 const injectSchema = (html, meta, canonicalUrl) => {
   if (meta.noindex) return html;
+  const canonicalPath = new URL(canonicalUrl).pathname.replace(/\/+$/, "") || "/";
+  const extraGraph = [];
+
+  if (canonicalPath === "/certificacion") {
+    extraGraph.push({
+      "@type": "Service",
+      name: "Certificación de ingresos por Contador Público",
+      description: meta.description,
+      provider: { "@id": `${SITE_URL}/#negocio` },
+      areaServed: "CO",
+      serviceType: "Certificación de ingresos",
+      url: canonicalUrl,
+    });
+    extraGraph.push({
+      "@type": "VideoObject",
+      name: "Paso a paso certificación de ingresos CONTARAE",
+      description: "Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.",
+      thumbnailUrl: ["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],
+      embedUrl: "https://www.youtube.com/embed/yHF1p9T9kgU",
+      contentUrl: "https://www.youtube.com/watch?v=yHF1p9T9kgU",
+      publisher: { "@id": `${SITE_URL}/#negocio` },
+    });
+    extraGraph.push(buildBreadcrumbSchema([{ name: "Inicio", path: "/" }, { name: "Certificación de ingresos", path: "/certificacion" }]));
+    const faqSchema = buildFaqSchema(CERTIFICATION_FAQS);
+    if (faqSchema) extraGraph.push(faqSchema);
+  } else if (CERTIFICATION_SUPPORT_PATHS.has(canonicalPath)) {
+    extraGraph.push({
+      "@type": "Article",
+      headline: cleanTitle(meta.title),
+      description: meta.description,
+      inLanguage: "es-CO",
+      author: { "@id": `${SITE_URL}/#negocio` },
+      publisher: { "@id": `${SITE_URL}/#negocio` },
+      mainEntityOfPage: canonicalUrl,
+    });
+    extraGraph.push(buildBreadcrumbSchema([
+      { name: "Inicio", path: "/" },
+      { name: "Certificación de ingresos", path: "/certificacion" },
+      { name: cleanTitle(meta.title), path: canonicalPath },
+    ]));
+    const faqSchema = buildFaqSchema(SUPPORT_FAQS.get(canonicalPath));
+    if (faqSchema) extraGraph.push(faqSchema);
+  } else if (TOOL_PATHS.has(canonicalPath)) {
+    extraGraph.push({
+      "@type": "WebApplication",
+      name: cleanTitle(meta.title),
+      description: meta.description,
+      url: canonicalUrl,
+      applicationCategory: "FinanceApplication",
+      operatingSystem: "Web",
+      inLanguage: "es-CO",
+      provider: { "@id": `${SITE_URL}/#negocio` },
+    });
+    extraGraph.push(buildBreadcrumbSchema([
+      { name: "Inicio", path: "/" },
+      { name: "Herramientas", path: "/#herramientas" },
+      { name: cleanTitle(meta.title), path: canonicalPath },
+    ]));
+  } else if (canonicalPath === "/") {
+    extraGraph.push(buildBreadcrumbSchema([{ name: "Inicio", path: "/" }]));
+  }
+
   const schema = {
     "@context": "https://schema.org",
     "@graph": [
@@ -191,6 +421,16 @@ const injectSchema = (html, meta, canonicalUrl) => {
         sameAs: SAME_AS,
       },
       {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        name: "CONTARAE",
+        url: SITE_URL,
+        inLanguage: "es-CO",
+        publisher: {
+          "@id": `${SITE_URL}/#negocio`,
+        },
+      },
+      {
         "@type": "WebPage",
         "@id": `${canonicalUrl}#webpage`,
         name: meta.title,
@@ -204,6 +444,7 @@ const injectSchema = (html, meta, canonicalUrl) => {
           url: SITE_URL,
         },
       },
+      ...extraGraph,
     ],
   };
   const json = JSON.stringify(schema).replace(/</g, "\\u003c");
@@ -239,6 +480,8 @@ const injectMeta = (html, requestUrl, meta) => {
   nextHtml = replaceMetaTag(nextHtml, "name", "description", description);
   nextHtml = replaceMetaTag(nextHtml, "name", "robots", robots);
   nextHtml = replaceCanonical(nextHtml, canonicalUrl);
+  nextHtml = replaceAlternate(nextHtml, "es-CO", canonicalUrl);
+  nextHtml = replaceAlternate(nextHtml, "x-default", canonicalUrl);
   nextHtml = replaceMetaTag(nextHtml, "property", "og:type", "website");
   nextHtml = replaceMetaTag(nextHtml, "property", "og:site_name", "CONTARAE");
   nextHtml = replaceMetaTag(nextHtml, "property", "og:title", title);
