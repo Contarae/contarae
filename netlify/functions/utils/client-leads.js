@@ -8,6 +8,21 @@ function cleanText(value = "") {
   return String(value || "").trim();
 }
 
+function formatProperName(value = "") {
+  return cleanText(value)
+    .toLocaleLowerCase("es-CO")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((part) => {
+      if (!part) return "";
+      return part
+        .split("-")
+        .map((segment) => segment ? `${segment.charAt(0).toLocaleUpperCase("es-CO")}${segment.slice(1)}` : "")
+        .join("-");
+    })
+    .join(" ");
+}
+
 function normalizeEmail(value = "") {
   return cleanText(value).toLowerCase();
 }
@@ -32,7 +47,7 @@ function getClientLeadsStore() {
 
 function sanitizeLeadInput(input = {}, metadata = {}) {
   const now = new Date().toISOString();
-  const name = cleanText(input.name);
+  const name = formatProperName(input.name);
   const phone = normalizePhone(input.phone);
   const email = normalizeEmail(input.email);
   const treatmentConsent = input.treatmentConsent === true || input.treatmentConsent === "true";

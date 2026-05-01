@@ -74,8 +74,8 @@ const SERVICE_STATUS_META = {
 };
 
 const SERVICE_PAYMENT_META = {
-  pendiente: { label: "Pago pendiente", tone: "#C2410C", bg: "rgba(249,115,22,.12)" },
-  parcial: { label: "Pago parcial", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
+  pendiente: { label: "Saldo pendiente", tone: "#C2410C", bg: "rgba(249,115,22,.12)" },
+  parcial: { label: "Abono parcial", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
   pagado: { label: "Pagado por Wompi", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
   pagado_manual: { label: "Pagado manual", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
   no_requiere: { label: "No requiere pago", tone: "#475569", bg: "rgba(100,116,139,.10)" }
@@ -238,6 +238,37 @@ function parseCurrency(value) {
   return Number(normalized) || 0;
 }
 
+function formatProperName(value = "") {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("es-CO")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((part) => {
+      if (!part) return "";
+      return part
+        .split("-")
+        .map((segment) => segment ? `${segment.charAt(0).toLocaleUpperCase("es-CO")}${segment.slice(1)}` : "")
+        .join("-");
+    })
+    .join(" ");
+}
+
+function buildClientIdentityKey(values = {}) {
+  const documentKey = String(values.documentNumber || values.clientDocumentNumber || "")
+    .replace(/[^\dA-Za-z]/g, "")
+    .toUpperCase();
+  if (documentKey) return `doc:${documentKey}`;
+
+  const emailKey = String(values.email || values.clientEmail || "").trim().toLowerCase();
+  if (emailKey) return `email:${emailKey}`;
+
+  const phoneKey = String(values.phone || values.clientPhone || "").replace(/\D/g, "");
+  if (phoneKey) return `phone:${phoneKey}`;
+
+  return `name:${formatProperName(values.name || values.clientName || "sin-cliente").toLowerCase()}`;
+}
+
 function hasMeaningfulCurrencyValue(value) {
   const raw = String(value || "").trim();
   if (!raw) return false;
@@ -265,6 +296,22 @@ function getServiceStatusMeta(status) {
 
 function getServicePaymentMeta(status) {
   return SERVICE_PAYMENT_META[status] || SERVICE_PAYMENT_META.pendiente;
+}
+
+function getVisibleServiceStatusBadge(record = {}) {
+  const status = record.status || "nuevo";
+  const paymentStatus = record.paymentStatus || "pendiente";
+  if (status === "pendiente_pago" && ["pendiente", "parcial"].includes(paymentStatus)) {
+    return null;
+  }
+  const meta = getServiceStatusMeta(status);
+  return { label: meta.label, meta };
+}
+
+function getServiceStateSummary(record = {}) {
+  const statusBadge = getVisibleServiceStatusBadge(record);
+  const paymentLabel = getServicePaymentMeta(record.paymentStatus).label;
+  return statusBadge ? `${statusBadge.label} · ${paymentLabel}` : paymentLabel;
 }
 
 function formatMoney(value) {
@@ -422,7 +469,7 @@ function buildServiceDraftFromDetail(detail = null) {
     dueDate: detail.dueDate || "",
     comments: detail.comments || "",
     client: {
-      name: detail.client?.name || "",
+      name: formatProperName(detail.client?.name || ""),
       documentType: detail.client?.documentType || "CC",
       documentNumber: detail.client?.documentNumber || "",
       phone: detail.client?.phone || "",
@@ -473,10 +520,10 @@ function buildClientRows(records = []) {
 
   records.forEach((record) => {
     const documentNumber = String(record.clientDocumentNumber || "").trim();
-    const key = documentNumber || String(record.clientEmail || record.clientPhone || record.clientName || "sin-cliente").toLowerCase();
+    const key = buildClientIdentityKey(record);
     const current = clients.get(key) || {
       key,
-      name: record.clientName || "Cliente sin nombre",
+      name: formatProperName(record.clientName) || "Cliente sin nombre",
       documentNumber,
       email: record.clientEmail || "",
       phone: record.clientPhone || "",
@@ -498,6 +545,43 @@ function buildClientRows(records = []) {
 
   return Array.from(clients.values()).sort((left, right) => {
     return new Date(right.lastUpdatedAt || 0) - new Date(left.lastUpdatedAt || 0);
+  });
+}
+
+function buildLeadRows(leads = []) {
+  const rows = new Map();
+
+  leads.forEach((lead) => {
+    const key = buildClientIdentityKey(lead);
+    const normalizedLead = {
+      ...lead,
+      name: formatProperName(lead.name) || "Cliente sin nombre"
+    };
+    const current = rows.get(key);
+
+    if (!current) {
+      rows.set(key, {
+        ...normalizedLead,
+        key,
+        leadIds: lead.id ? [lead.id] : [],
+        recordsCount: 1,
+        marketingConsent: Boolean(lead.marketingConsent)
+      });
+      return;
+    }
+
+    const useIncomingAsBase = new Date(lead.createdAt || 0) > new Date(current.createdAt || 0);
+    rows.set(key, {
+      ...(useIncomingAsBase ? normalizedLead : current),
+      key,
+      leadIds: [...new Set([...(current.leadIds || []), lead.id].filter(Boolean))],
+      recordsCount: (current.recordsCount || 1) + 1,
+      marketingConsent: Boolean(current.marketingConsent || lead.marketingConsent)
+    });
+  });
+
+  return Array.from(rows.values()).sort((left, right) => {
+    return new Date(right.createdAt || 0) - new Date(left.createdAt || 0);
   });
 }
 
@@ -872,24 +956,23 @@ function ClientTimeline({ items = [] }) {
 }
 
 function ModuleNav({ activeModule, counts, onChange }) {
-  const activeModuleMeta = ADMIN_MODULES.find((module) => module.id === activeModule) || ADMIN_MODULES[0];
   return (
     <div className="admin-module-nav" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      <label style={{ display: "grid", gap: 4, minWidth: 230 }}>
-        <span style={{ fontSize: 10, letterSpacing: "1.4px", fontWeight: 900, color: "#64748B", fontFamily: F }}>MÓDULOS</span>
+      <label style={{ display: "grid", gap: 4, minWidth: 220 }}>
+        <span style={{ fontSize: 10, letterSpacing: "1.4px", fontWeight: 900, color: "#64748B", fontFamily: F }}>IR A MÓDULO</span>
         <select
           value={activeModule}
           onChange={(event) => onChange(event.target.value)}
           style={{
             width: "100%",
-            padding: "11px 36px 11px 13px",
+            padding: "10px 34px 10px 13px",
             borderRadius: 999,
             border: "1px solid rgba(37,99,235,.16)",
             background: "#fff",
             color: "#0B1D3A",
             fontFamily: F,
             fontWeight: 900,
-            fontSize: 14,
+            fontSize: 13,
             cursor: "pointer",
             boxShadow: "0 10px 26px rgba(15,23,42,.06)"
           }}
@@ -905,9 +988,6 @@ function ModuleNav({ activeModule, counts, onChange }) {
           })}
         </select>
       </label>
-      <div style={{ padding: "10px 13px", borderRadius: 999, background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" }}>
-        {activeModuleMeta.label}
-      </div>
     </div>
   );
 }
@@ -1036,7 +1116,7 @@ function OperationsDashboard({
                     <button key={request.reference} type="button" onClick={() => onOpenRequest(request.reference)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", textAlign: "left", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff", cursor: "pointer" }}>
                       <div>
                         <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 900 }}>{request.title || getServiceTypeLabel(request.serviceType)}</div>
-                        <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.6 }}>{request.clientName || "Cliente sin nombre"} · {request.reference}</div>
+                        <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.6 }}>{formatProperName(request.clientName) || "Cliente sin nombre"} · {request.reference}</div>
                       </div>
                       <Badge meta={dueMeta}>{dueMeta.label}</Badge>
                     </button>
@@ -1125,6 +1205,7 @@ function ServiceRequestsModule({
   onClose
 }) {
   const balance = Math.max(parseCurrency(draft.agreedPrice) - parseCurrency(draft.amountPaid), 0);
+  const visibleStatusBadge = getVisibleServiceStatusBadge(draft);
   const summaryWhatsappLink = buildServiceWhatsappLink(draft, detail, "summary");
   const chatWhatsappLink = buildServiceWhatsappLink(draft, detail, "chat");
   const paymentLinks = Array.isArray(detail?.paymentLinks) ? detail.paymentLinks : [];
@@ -1147,7 +1228,7 @@ function ServiceRequestsModule({
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-              <Badge meta={getServiceStatusMeta(draft.status)}>{getServiceStatusMeta(draft.status).label}</Badge>
+              {visibleStatusBadge ? <Badge meta={visibleStatusBadge.meta}>{visibleStatusBadge.label}</Badge> : null}
               <Badge meta={getServicePaymentMeta(draft.paymentStatus)}>{getServicePaymentMeta(draft.paymentStatus).label}</Badge>
               {draft.dueDate ? <Badge meta={getDueMeta(draft)}>{getDueMeta(draft).label}</Badge> : null}
             </div>
@@ -1436,6 +1517,7 @@ function ServiceRequestsModule({
           {filteredRecords.map((record) => {
             const selected = selectedReference === record.reference;
             const dueMeta = getDueMeta(record);
+            const statusBadge = getVisibleServiceStatusBadge(record);
             return (
               <button
                 key={record.reference}
@@ -1455,12 +1537,12 @@ function ServiceRequestsModule({
                 }}
               >
                 <div>
-                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{record.clientName || "Cliente sin nombre"}</div>
+                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{formatProperName(record.clientName) || "Cliente sin nombre"}</div>
                   <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", marginTop: 4 }}>{record.reference}</div>
                   <div style={{ fontFamily: F, fontSize: 13, color: "#41556F", lineHeight: 1.55, marginTop: 4 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Badge meta={getServiceStatusMeta(record.status)}>{getServiceStatusMeta(record.status).label}</Badge>
+                  {statusBadge ? <Badge meta={statusBadge.meta}>{statusBadge.label}</Badge> : null}
                   <Badge meta={dueMeta}>{dueMeta.label}</Badge>
                 </div>
                 <div>
@@ -1497,7 +1579,6 @@ function ClientsModule({
   leadsLoading,
   leadsError,
   selectedLeadIds = new Set(),
-  onToggleLead,
   onToggleAllLeads,
   onOpenLeadDetail,
   onOpenClientDetail,
@@ -1505,20 +1586,41 @@ function ClientsModule({
   onCopyLeadPhones,
   onOpenBulkEmail
 }) {
-  const authorizedLeads = leads.filter((lead) => lead.marketingConsent);
-  const selectedAuthorizedLeads = leads.filter((lead) => selectedLeadIds.has(lead.id) && lead.marketingConsent);
-  const allAuthorizedSelected = authorizedLeads.length > 0 && authorizedLeads.every((lead) => selectedLeadIds.has(lead.id));
+  const [clientView, setClientView] = useState("leads");
+  const leadRows = useMemo(() => buildLeadRows(leads), [leads]);
+  const authorizedLeads = leadRows.filter((lead) => lead.marketingConsent);
+  const selectedAuthorizedLeads = leadRows.filter((lead) => (lead.leadIds || [lead.id]).some((id) => selectedLeadIds.has(id)) && lead.marketingConsent);
+  const allAuthorizedSelected = authorizedLeads.length > 0 && authorizedLeads.every((lead) => (lead.leadIds || [lead.id]).some((id) => selectedLeadIds.has(id)));
+  const showLeads = clientView === "leads" || clientView === "all";
+  const showServiceClients = clientView === "service" || clientView === "all";
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
+      <section style={{ padding: 18, borderRadius: 24, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 36px rgba(15,23,42,.06)" }}>
+        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr)", gap: 12, alignItems: "end" }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B" }}>VER CLIENTES</span>
+            <select value={clientView} onChange={(event) => setClientView(event.target.value)} style={inputStyle}>
+              <option value="leads">Captados desde la web ({leadRows.length})</option>
+              <option value="service">Clientes de solicitudes ({clients.length})</option>
+              <option value="all">Todos, separados por tipo ({leadRows.length + clients.length})</option>
+            </select>
+          </label>
+          <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.7 }}>
+            Los clientes se muestran por origen para evitar mezclas visuales. Dentro de solicitudes se agrupan por documento, correo o teléfono para reducir duplicados.
+          </div>
+        </div>
+      </section>
+
+      {showLeads ? (
       <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CLIENTES CAPTADOS DESDE LA WEB</div>
-            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{leads.length} registro(s)</h2>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{leadRows.length} cliente(s)</h2>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => onToggleAllLeads(allAuthorizedSelected ? [] : authorizedLeads.map((lead) => lead.id))} disabled={!authorizedLeads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: authorizedLeads.length ? "pointer" : "not-allowed" }}>
+            <button type="button" onClick={() => onToggleAllLeads(allAuthorizedSelected ? [] : authorizedLeads.flatMap((lead) => lead.leadIds || [lead.id]).filter(Boolean))} disabled={!authorizedLeads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: authorizedLeads.length ? "pointer" : "not-allowed" }}>
               {allAuthorizedSelected ? "Quitar selección" : "Seleccionar autorizados"}
             </button>
             <button type="button" onClick={onExportLeads} disabled={!leads.length} style={{ padding: "10px 13px", borderRadius: 13, border: "none", background: leads.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: leads.length ? "pointer" : "not-allowed" }}>
@@ -1536,19 +1638,35 @@ function ClientsModule({
         {leadsLoading ? <div style={{ fontFamily: F, color: "#64748B" }}>Cargando clientes captados...</div> : null}
         {leadsError ? <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, marginBottom: 14 }}>{leadsError}</div> : null}
 
-        {leads.length ? (
+        {leadRows.length ? (
           <div style={{ display: "grid", gap: 10 }}>
-            {leads.map((lead) => {
-              const selected = selectedLeadIds.has(lead.id);
+            {leadRows.map((lead) => {
+              const leadIds = lead.leadIds || [lead.id];
+              const selected = leadIds.some((id) => selectedLeadIds.has(id));
               return (
-                <div key={lead.id} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
-                  <input type="checkbox" checked={selected} disabled={!lead.marketingConsent} onChange={() => onToggleLead(lead.id)} title={lead.marketingConsent ? "Seleccionar para comunicaciones" : "No autorizó comunicaciones comerciales"} />
+                <div key={lead.key || lead.id} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={!lead.marketingConsent}
+                    onChange={() => {
+                      const currentSelection = Array.from(selectedLeadIds);
+                      const nextSelection = selected
+                        ? currentSelection.filter((id) => !leadIds.includes(id))
+                        : Array.from(new Set([...currentSelection, ...leadIds]));
+                      onToggleAllLeads(nextSelection);
+                    }}
+                    title={lead.marketingConsent ? "Seleccionar para comunicaciones" : "No autorizó comunicaciones comerciales"}
+                  />
                   <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}>
-                      <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{lead.name}</div>
+                      <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{formatProperName(lead.name)}</div>
                       <Badge meta={lead.marketingConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
                         {lead.marketingConsent ? "Autoriza" : "Gestión"}
                       </Badge>
+                      {lead.recordsCount > 1 ? (
+                        <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{lead.recordsCount} registros</Badge>
+                      ) : null}
                     </div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {lead.serviceInterest || "Servicio pendiente"} · {formatDate(lead.createdAt)}
@@ -1567,7 +1685,9 @@ function ClientsModule({
           </div>
         )}
       </section>
+      ) : null}
 
+      {showServiceClients ? (
       <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
           <div>
@@ -1582,7 +1702,7 @@ function ClientsModule({
             {clients.map((client) => (
               <div key={client.key} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
                 <button type="button" onClick={() => onOpenClientDetail(client)} style={{ minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
-                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{client.name}</div>
+                  <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{formatProperName(client.name)}</div>
                   <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {client.documentNumber || "Sin documento"} · {client.requests} solicitud(es) · {client.active} activa(s)
                   </div>
@@ -1602,6 +1722,7 @@ function ClientsModule({
           </div>
         )}
       </section>
+      ) : null}
     </div>
   );
 }
@@ -1681,7 +1802,7 @@ function ClientDetailDialog({
         },
         {
           title: "Última actualización",
-          note: `${getServiceStatusMeta(record.status).label} · ${getServicePaymentMeta(record.paymentStatus).label}`,
+          note: getServiceStateSummary(record),
           date: record.updatedAt,
           tone: "#0F766E",
           bg: "rgba(13,148,136,.10)"
@@ -1713,7 +1834,7 @@ function ClientDetailDialog({
               {isLead ? "CLIENTE CAPTADO DESDE LA WEB" : "CLIENTE DE SOLICITUDES"}
             </div>
             <h3 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(28px,4vw,38px)", lineHeight: 1.08, color: "#0B1D3A" }}>
-              {subject.name || "Cliente sin nombre"}
+              {formatProperName(subject.name) || "Cliente sin nombre"}
             </h3>
           </div>
           <button type="button" onClick={onClose} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: "pointer" }} aria-label="Cerrar detalle de cliente">
@@ -1785,7 +1906,7 @@ function ClientDetailDialog({
                   <div key={record.reference} className="admin-client-request-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
                     <div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                        <Badge meta={getServiceStatusMeta(record.status)}>{getServiceStatusMeta(record.status).label}</Badge>
+                        {getVisibleServiceStatusBadge(record) ? <Badge meta={getVisibleServiceStatusBadge(record).meta}>{getVisibleServiceStatusBadge(record).label}</Badge> : null}
                         <Badge meta={getDueMeta(record)}>{getDueMeta(record).label}</Badge>
                       </div>
                       <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 900, lineHeight: 1.4 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
@@ -1896,25 +2017,50 @@ function ProtectedDeleteDialog({
   );
 }
 
-function PaymentsModule({ payments, loading, error, onOpenRequest, onCopyPaymentLink }) {
+function PaymentsModule({ payments, certificationRecords = [], loading, error, onOpenRequest, onOpenCertification, onCopyPaymentLink }) {
+  const [paymentView, setPaymentView] = useState("servicios");
   const pendingLinks = payments.filter((payment) => payment.kind === "link" && payment.status === "pending");
   const approvedPayments = payments.filter((payment) => payment.kind === "payment");
   const pendingAmount = pendingLinks.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
   const paidAmount = approvedPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
+  const certificationPaid = certificationRecords.filter((record) => record.paymentStatus === "approved" || record.source === "paid");
+  const certificationPending = certificationRecords.filter((record) => record.paymentStatus !== "approved" && record.source !== "paid");
+  const certificationPaidAmount = certificationPaid.reduce((sum, record) => sum + parseCurrency(record.fee), 0);
+  const certificationPendingAmount = certificationPending.reduce((sum, record) => sum + parseCurrency(record.fee), 0);
+  const showServices = paymentView === "servicios" || paymentView === "todos";
+  const showCertifications = paymentView === "certificaciones" || paymentView === "todos";
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
-        <StatCard label="LINKS PENDIENTES" value={loading ? "..." : pendingLinks.length} note={`Valor pendiente: ${formatMoney(pendingAmount)}`} tone="#C2410C" />
-        <StatCard label="PAGOS REGISTRADOS" value={loading ? "..." : approvedPayments.length} note={`Recaudado: ${formatMoney(paidAmount)}`} tone="#15803D" />
-        <StatCard label="MOVIMIENTOS" value={loading ? "..." : payments.length} note="Links generados y pagos aplicados a solicitudes." />
+      <section style={{ padding: 18, borderRadius: 24, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 36px rgba(15,23,42,.06)" }}>
+        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,320px) minmax(0,1fr)", gap: 12, alignItems: "end" }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontFamily: F, fontSize: 11, letterSpacing: "1.2px", fontWeight: 900, color: "#64748B" }}>VER PAGOS</span>
+            <select value={paymentView} onChange={(event) => setPaymentView(event.target.value)} style={inputStyle}>
+              <option value="servicios">Solicitudes generales</option>
+              <option value="certificaciones">Certificaciones</option>
+              <option value="todos">Todo separado por tipo</option>
+            </select>
+          </label>
+          <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.7 }}>
+            Los movimientos se separan por origen para que no se mezclen links de solicitudes con pagos de certificaciones.
+          </div>
+        </div>
+      </section>
+
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+        <StatCard label="LINKS SOLICITUDES" value={loading ? "..." : pendingLinks.length} note={`Saldo por cobrar: ${formatMoney(pendingAmount)}`} tone="#C2410C" />
+        <StatCard label="PAGOS SOLICITUDES" value={loading ? "..." : approvedPayments.length} note={`Recaudado: ${formatMoney(paidAmount)}`} tone="#15803D" />
+        <StatCard label="CERTIFICACIONES PAGADAS" value={certificationPaid.length} note={`Recaudado: ${formatMoney(certificationPaidAmount)}`} tone="#1D4ED8" />
+        <StatCard label="CERTIFICACIONES PENDIENTES" value={certificationPending.length} note={`Valor asociado: ${formatMoney(certificationPendingAmount)}`} tone="#B45309" />
       </div>
 
+      {showServices ? (
       <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
           <div>
-            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>MOVIMIENTOS DE PAGO</div>
-            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>Control de cartera</h2>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>SOLICITUDES GENERALES</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>Links y pagos de solicitudes</h2>
           </div>
           <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{payments.length} movimiento(s)</Badge>
         </div>
@@ -1946,7 +2092,7 @@ function PaymentsModule({ payments, loading, error, onOpenRequest, onCopyPayment
                       <Badge meta={paymentBadge.meta}>{paymentBadge.label}</Badge>
                       <span style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{formatDate(payment.paidAt || payment.createdAt)}</span>
                     </div>
-                    <div style={{ fontFamily: F, fontSize: 15, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{request.clientName || "Cliente sin nombre"} · {payment.amountLabel || formatMoney(payment.amount)}</div>
+                    <div style={{ fontFamily: F, fontSize: 15, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{formatProperName(request.clientName) || "Cliente sin nombre"} · {payment.amountLabel || formatMoney(payment.amount)}</div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>{request.title || getServiceTypeLabel(request.serviceType)} · {payment.reference}</div>
                   </div>
                   <div className="admin-payment-movement-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1971,6 +2117,47 @@ function PaymentsModule({ payments, loading, error, onOpenRequest, onCopyPayment
           </div>
         )}
       </section>
+      ) : null}
+
+      {showCertifications ? (
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>CERTIFICACIONES</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>Pagos de certificaciones</h2>
+          </div>
+          <Badge meta={{ tone: "#475569", bg: "rgba(100,116,139,.10)" }}>{certificationRecords.length} registro(s)</Badge>
+        </div>
+
+        {certificationRecords.length ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {certificationRecords.map((record) => {
+              const paid = record.paymentStatus === "approved" || record.source === "paid";
+              return (
+                <div className="admin-payment-movement-card" key={`cert-${record.reference}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center", padding: 16, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+                  <div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                      <Badge meta={getPaymentMeta(record.paymentStatus)}>{paid ? "Pago confirmado" : getPaymentMeta(record.paymentStatus).label}</Badge>
+                      <Badge meta={getStatusMeta(record.certificationStatus)}>{getStatusMeta(record.certificationStatus).label}</Badge>
+                      <span style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{formatDate(record.approvedAt || record.createdAt || record.updatedAt)}</span>
+                    </div>
+                    <div style={{ fontFamily: F, fontSize: 15, color: "#0F172A", fontWeight: 900, lineHeight: 1.4 }}>{formatProperName(record.customerName) || "Cliente sin nombre"} · {record.fee || "$ 0"}</div>
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>{record.consecutive ? `N° ${record.consecutive}` : record.reference} · {record.destination || "Destino pendiente"}</div>
+                  </div>
+                  <button type="button" onClick={() => onOpenCertification(record.reference)} style={{ padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Ver certificación
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+            Aún no hay certificaciones visibles en el panel.
+          </div>
+        )}
+      </section>
+      ) : null}
     </div>
   );
 }
@@ -1993,7 +2180,7 @@ export default function AdminPanel() {
 
     @media (max-width: 768px) {
       .admin-topbar {
-        flex-direction: column !important;
+        grid-template-columns: 1fr !important;
         align-items: stretch !important;
       }
 
@@ -2254,9 +2441,6 @@ export default function AdminPanel() {
 
       startTransition(() => {
         setRecords(data.records || []);
-        if (!selectedReference && data.records?.length) {
-          setSelectedReference(data.records[0].reference);
-        }
       });
     } catch (error) {
       setListError(error.message);
@@ -2514,6 +2698,7 @@ export default function AdminPanel() {
 
   const serviceDashboard = useMemo(() => buildServiceDashboard(serviceRecords), [serviceRecords]);
   const clientRows = useMemo(() => buildClientRows(serviceRecords), [serviceRecords]);
+  const clientLeadRows = useMemo(() => buildLeadRows(clientLeads), [clientLeads]);
 
   const scrollAdminMainIntoViewOnMobile = () => {
     if (typeof window !== "undefined" && window.innerWidth <= 768) {
@@ -2740,6 +2925,7 @@ export default function AdminPanel() {
   };
 
   const handleSelectServiceRequest = (reference) => {
+    const sameReference = reference && reference === selectedServiceReference;
     setSelectedServiceReference(reference);
     setServiceDetail(null);
     setServiceDetailLoading(Boolean(reference));
@@ -2749,6 +2935,9 @@ export default function AdminPanel() {
     setServiceError("");
     setActiveModule("solicitudes");
     setServiceDialogOpen(true);
+    if (sameReference) {
+      loadServiceDetail(reference);
+    }
   };
 
   const handleStartNewServiceRequest = () => {
@@ -2767,6 +2956,22 @@ export default function AdminPanel() {
     if (serviceSaving || serviceUploadingDocs || paymentLinkBusy || manualPaymentBusy) return;
     setServiceDialogOpen(false);
     setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
+  };
+
+  const handleOpenCertificationRecord = (reference) => {
+    setSelectedReference(reference);
+    setDetail(null);
+    setDetailError("");
+    setActiveModule("certificaciones");
+  };
+
+  const handleCloseCertificationDialog = () => {
+    if (preparingOutput || sendBusy || uploadingSupports) return;
+    setSelectedReference("");
+    setDetail(null);
+    setDetailError("");
+    setPendingSupportFiles([]);
+    setPdfEditMode(false);
   };
 
   const handleModuleChange = (moduleId) => {
@@ -2814,10 +3019,20 @@ export default function AdminPanel() {
         throw new Error("Ingresa un título o asunto para la solicitud.");
       }
 
+      const payload = {
+        ...serviceDraft,
+        client: {
+          ...serviceDraft.client,
+          name: formatProperName(serviceDraft.client?.name || "")
+        }
+      };
+
+      setServiceDraft(payload);
+
       const response = await fetch("/api/admin-upsert-service-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(serviceDraft)
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
 
@@ -3035,7 +3250,7 @@ export default function AdminPanel() {
       serviceType: inferServiceTypeFromText(serviceInterest || sourceClient.comment || ""),
       comments,
       client: {
-        name: sourceClient.name || "",
+        name: formatProperName(sourceClient.name || ""),
         documentType: "CC",
         documentNumber: sourceClient.documentNumber || "",
         phone: sourceClient.phone || "",
@@ -3149,24 +3364,12 @@ export default function AdminPanel() {
     }
   };
 
-  const handleToggleLead = (leadId) => {
-    setSelectedLeadIds((current) => {
-      const next = new Set(current);
-      if (next.has(leadId)) {
-        next.delete(leadId);
-      } else {
-        next.add(leadId);
-      }
-      return next;
-    });
-  };
-
   const handleToggleAllLeads = (leadIds = []) => {
     setSelectedLeadIds(new Set(leadIds));
   };
 
   const handleExportClientLeads = () => {
-    const csv = buildLeadsCsv(clientLeads);
+    const csv = buildLeadsCsv(clientLeadRows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -3494,33 +3697,33 @@ export default function AdminPanel() {
   return (
     <div style={shell}>
       <style>{responsiveCss}</style>
-      <div style={{ maxWidth: 1380, margin: "0 auto", padding: "30px 20px 40px" }}>
-        <div className="admin-topbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
+      <div style={{ maxWidth: 1380, margin: "0 auto", padding: "16px 20px 36px" }}>
+        <div className="admin-topbar" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 14, marginBottom: 18, padding: "14px 16px", borderRadius: 24, background: "rgba(255,255,255,.72)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 38px rgba(15,23,42,.06)", backdropFilter: "blur(12px)" }}>
           <div>
-            <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#2563EB", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>PANEL INTERNO</div>
-            <h1 style={{ fontFamily: FH, fontSize: "clamp(30px,4vw,48px)", margin: 0, lineHeight: 1.05, color: "#0B1D3A" }}>{activeModuleMeta.title}</h1>
-            <p style={{ margin: "10px 0 0", fontFamily: F, fontSize: 15, color: "#52647F", lineHeight: 1.8 }}>
+            <div style={{ fontSize: 11, letterSpacing: "1.7px", color: "#2563EB", fontWeight: 900, fontFamily: F, marginBottom: 5 }}>PANEL INTERNO</div>
+            <h1 style={{ fontFamily: FH, fontSize: "clamp(26px,3vw,38px)", margin: 0, lineHeight: 1.05, color: "#0B1D3A" }}>{activeModuleMeta.title}</h1>
+            <p style={{ margin: "6px 0 0", fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.55 }}>
               {activeModuleMeta.description}
             </p>
           </div>
-          <div className="admin-topbar-actions" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div className="admin-topbar-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <ModuleNav
               activeModule={activeModule}
               onChange={handleModuleChange}
               counts={{
                 solicitudes: serviceRecords.length,
-                clientes: clientRows.length + clientLeads.length,
+                clientes: clientRows.length + clientLeadRows.length,
                 pagos: servicePayments.length,
                 certificaciones: records.length
               }}
             />
-            <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 700 }}>
+            <div style={{ padding: "9px 12px", borderRadius: 999, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 800, fontSize: 13 }}>
               Sesión: {session.username}
             </div>
-            <button onClick={handleRefreshPanel} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={handleRefreshPanel} style={{ padding: "9px 13px", borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, fontSize: 13, cursor: "pointer" }}>
               Actualizar
             </button>
-            <button onClick={handleLogout} style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(220,38,38,.16)", background: "#fff", color: "#DC2626", fontFamily: F, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={handleLogout} style={{ padding: "9px 13px", borderRadius: 999, border: "1px solid rgba(220,38,38,.16)", background: "#fff", color: "#DC2626", fontFamily: F, fontWeight: 800, fontSize: 13, cursor: "pointer" }}>
               Cerrar sesión
             </button>
           </div>
@@ -3596,7 +3799,6 @@ export default function AdminPanel() {
             leadsLoading={clientLeadsLoading}
             leadsError={clientLeadsError}
             selectedLeadIds={selectedLeadIds}
-            onToggleLead={handleToggleLead}
             onToggleAllLeads={handleToggleAllLeads}
             onOpenLeadDetail={(lead) => setClientDetailDialog({ type: "lead", lead })}
             onOpenClientDetail={(client) => setClientDetailDialog({ type: "client", client })}
@@ -3609,20 +3811,22 @@ export default function AdminPanel() {
         {activeModule === "pagos" ? (
           <PaymentsModule
             payments={servicePayments}
+            certificationRecords={records}
             loading={servicePaymentsLoading}
             error={servicePaymentsError}
             onOpenRequest={handleSelectServiceRequest}
+            onOpenCertification={handleOpenCertificationRecord}
             onCopyPaymentLink={handleCopyPaymentLink}
           />
         ) : null}
 
         {activeModule === "certificaciones" ? (
-        <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 360px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
-          <aside className="admin-sidebar" style={{ padding: 18, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)", position: "sticky", top: 20 }}>
-            <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+        <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 18, alignItems: "start" }}>
+          <aside className="admin-sidebar" style={{ padding: 20, borderRadius: 26, background: "rgba(255,255,255,.92)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+            <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) minmax(220px,320px) minmax(220px,320px)", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
               <input style={inputStyle} placeholder="Buscar por cliente, referencia o entidad" value={search} onChange={(event) => setSearch(event.target.value)} />
               <select style={inputStyle} value={filter} onChange={(event) => setFilter(event.target.value)}>
-                <option value="all">Todas las solicitudes</option>
+                <option value="all">Todas las certificaciones</option>
                 {["pago_no_confirmado", "en_revision", "documentos_solicitados", "enviada", "rechazada"].map((status) => (
                   <option key={status} value={status}>
                     {getStatusMeta(status).label}
@@ -3635,14 +3839,14 @@ export default function AdminPanel() {
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#1D4ED8", letterSpacing: "1.2px", fontFamily: F }}>SOLICITUDES</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#1D4ED8", letterSpacing: "1.2px", fontFamily: F }}>CERTIFICACIONES</div>
               <div style={{ fontSize: 12, color: "#64748B", fontFamily: F }}>{filteredRecords.length}</div>
             </div>
 
-            {listLoading && <div style={{ fontFamily: F, color: "#64748B", fontSize: 14 }}>Cargando solicitudes...</div>}
+            {listLoading && <div style={{ fontFamily: F, color: "#64748B", fontSize: 14 }}>Cargando certificaciones...</div>}
             {listError && <div style={{ fontFamily: F, color: "#991B1B", fontSize: 14 }}>{listError}</div>}
 
-            <div className="admin-sidebar-list" style={{ display: "grid", gap: 10, maxHeight: "calc(100vh - 260px)", overflowY: "auto", paddingRight: 4 }}>
+            <div className="admin-sidebar-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10 }}>
               {filteredRecords.map((record) => {
                 const selected = selectedReference === record.reference;
                 const statusMeta = getStatusMeta(record.certificationStatus);
@@ -3650,12 +3854,7 @@ export default function AdminPanel() {
                   <button
                     key={record.reference}
                     type="button"
-                    onClick={() => {
-                      setSelectedReference(record.reference);
-                      if (typeof window !== "undefined" && window.innerWidth <= 768) {
-                        window.setTimeout(() => document.querySelector(".admin-main")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-                      }
-                    }}
+                    onClick={() => handleOpenCertificationRecord(record.reference)}
                     style={{
                       textAlign: "left",
                       padding: 16,
@@ -3666,7 +3865,7 @@ export default function AdminPanel() {
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                      <div style={{ fontFamily: F, fontSize: 15, fontWeight: 800, color: "#0F172A", lineHeight: 1.4 }}>{record.customerName || "Solicitud sin nombre"}</div>
+                      <div style={{ fontFamily: F, fontSize: 15, fontWeight: 800, color: "#0F172A", lineHeight: 1.4 }}>{formatProperName(record.customerName) || "Solicitud sin nombre"}</div>
                       <Badge meta={statusMeta}>{statusMeta.label}</Badge>
                     </div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", marginBottom: 6 }}>
@@ -3687,8 +3886,18 @@ export default function AdminPanel() {
             </div>
           </aside>
 
-          <main className="admin-main" style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
-            {!selectedReference && <div style={{ fontFamily: F, color: "#64748B" }}>Selecciona una solicitud para verla.</div>}
+          {selectedReference && typeof document !== "undefined" ? createPortal(
+          <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={handleCloseCertificationDialog}>
+          <main className="admin-main admin-modal-card" style={{ width: "min(1180px,100%)", maxHeight: "92vh", overflowY: "auto", padding: 22, borderRadius: 28, background: "rgba(255,255,255,.98)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid rgba(37,99,235,.10)" }}>
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>DETALLE DE CERTIFICACIÓN</div>
+                <div style={{ fontFamily: F, fontSize: 13, color: "#64748B", lineHeight: 1.5 }}>{detail?.summary?.reference || selectedReference}</div>
+              </div>
+              <button type="button" onClick={handleCloseCertificationDialog} style={{ width: 44, height: 44, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: preparingOutput || sendBusy || uploadingSupports ? "not-allowed" : "pointer", opacity: preparingOutput || sendBusy || uploadingSupports ? 0.55 : 1 }} aria-label="Cerrar certificación">
+                X
+              </button>
+            </div>
             {detailLoading && <div style={{ fontFamily: F, color: "#64748B" }}>Cargando detalle...</div>}
             {detailError && <div style={{ marginBottom: 12, fontFamily: F, color: "#991B1B" }}>{detailError}</div>}
 
@@ -3701,7 +3910,7 @@ export default function AdminPanel() {
                       <Badge meta={getPaymentMeta(detail.summary.paymentStatus)}>{getPaymentMeta(detail.summary.paymentStatus).label}</Badge>
                     </div>
                     <h2 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(26px,3vw,38px)", lineHeight: 1.08, color: "#0B1D3A" }}>
-                      {detail.summary.customerName || "Solicitud sin nombre"}
+                      {formatProperName(detail.summary.customerName) || "Solicitud sin nombre"}
                     </h2>
                     <p style={{ margin: "10px 0 0", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
                       {detail.summary.consecutive ? `Solicitud N° ${detail.summary.consecutive}` : detail.summary.reference} · {detail.summary.destination || "Destino no registrado"}
@@ -4446,6 +4655,9 @@ export default function AdminPanel() {
               </>
             )}
           </main>
+          </div>,
+          document.body
+          ) : null}
         </div>
         ) : null}
       </div>

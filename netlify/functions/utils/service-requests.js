@@ -41,6 +41,21 @@ function cleanText(value = "") {
   return String(value || "").trim();
 }
 
+function formatProperName(value = "") {
+  return cleanText(value)
+    .toLocaleLowerCase("es-CO")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((part) => {
+      if (!part) return "";
+      return part
+        .split("-")
+        .map((segment) => segment ? `${segment.charAt(0).toLocaleUpperCase("es-CO")}${segment.slice(1)}` : "")
+        .join("-");
+    })
+    .join(" ");
+}
+
 export function normalizeDocumentNumber(value = "") {
   return String(value || "").replace(/[^\dA-Za-z.-]/g, "").trim();
 }
@@ -249,7 +264,7 @@ export function sanitizeServiceRequestInput(input = {}, existing = {}) {
     dueDate: normalizeDate(input.dueDate ?? existing.dueDate),
     comments: cleanText(input.comments ?? existing.comments),
     client: {
-      name: cleanText(clientInput.name ?? existingClient.name),
+      name: formatProperName(clientInput.name ?? existingClient.name),
       documentType: cleanText(clientInput.documentType ?? existingClient.documentType) || "CC",
       documentNumber: normalizeDocumentNumber(clientInput.documentNumber ?? existingClient.documentNumber),
       phone: cleanText(clientInput.phone ?? existingClient.phone),
