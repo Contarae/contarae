@@ -81,6 +81,8 @@ const SERVICE_PAYMENT_META = {
   no_requiere: { label: "No requiere pago", tone: "#475569", bg: "rgba(100,116,139,.10)" }
 };
 
+const EMPTY_MANUAL_PAYMENT_DRAFT = { amount: "", method: "Nequi", note: "" };
+
 const CERTIFICATE_CURRENCY_FIELDS = [
   "ingresos_laborales",
   "pensiones",
@@ -1039,6 +1041,7 @@ function ServiceRequestsModule({
   paymentFilter,
   loading,
   error,
+  detailLoading,
   saving,
   docFiles,
   uploadingDocs,
@@ -1061,15 +1064,26 @@ function ServiceRequestsModule({
   onManualPaymentChange,
   onRegisterManualPayment,
   onCopyPaymentLink,
+  onRetryDetail,
   dialogOpen,
   onClose
 }) {
   const balance = Math.max(parseCurrency(draft.agreedPrice) - parseCurrency(draft.amountPaid), 0);
   const summaryWhatsappLink = buildServiceWhatsappLink(draft, detail, "summary");
   const chatWhatsappLink = buildServiceWhatsappLink(draft, detail, "chat");
-  const latestPaymentLink = detail?.paymentLinks?.[0] || null;
-  const paymentWhatsappLink = buildServicePaymentWhatsappLink(draft, latestPaymentLink);
-  const loadingDetail = Boolean(selectedReference && !detail && !draft.reference);
+  const paymentLinks = Array.isArray(detail?.paymentLinks) ? detail.paymentLinks : [];
+  const activePaymentLink = paymentLinks.find((link) => link.status === "pending" && link.checkoutUrl) || null;
+  const latestPaymentLink = activePaymentLink || paymentLinks[0] || null;
+  const latestPaymentLinkActive = latestPaymentLink?.status === "pending";
+  const paymentWhatsappLink = latestPaymentLinkActive ? buildServicePaymentWhatsappLink(draft, latestPaymentLink) : "";
+  const paymentLinkStatusLabel = {
+    pending: "Link vigente",
+    approved: "Link pagado",
+    failed: "Link fallido",
+    superseded: "Link reemplazado"
+  }[latestPaymentLink?.status] || "Link generado";
+  const detailError = dialogOpen && selectedReference ? error : "";
+  const loadingDetail = Boolean(detailLoading || (selectedReference && !detail && !draft.reference && !detailError));
 
   const detailContent = (
     <div className="admin-request-drawer-card" style={{ width: "min(1120px, 100%)", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
@@ -1106,6 +1120,16 @@ function ServiceRequestsModule({
           {loadingDetail ? (
             <div style={{ padding: 14, borderRadius: 16, background: "#F8FBFF", color: "#64748B", fontFamily: F, marginBottom: 14 }}>
               Cargando la información de la solicitud seleccionada...
+            </div>
+          ) : null}
+          {detailError ? (
+            <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, lineHeight: 1.6, marginBottom: 14 }}>
+              <div>{detailError}</div>
+              {selectedReference ? (
+                <button type="button" onClick={onRetryDetail} style={{ marginTop: 10, padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(220,38,38,.18)", background: "#fff", color: "#DC2626", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                  Reintentar carga
+                </button>
+              ) : null}
             </div>
           ) : null}
           <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
@@ -1154,21 +1178,34 @@ function ServiceRequestsModule({
               </button>
               {latestPaymentLink?.checkoutUrl ? (
                 <div style={{ padding: 12, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
-                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, marginBottom: 8 }}>Último link generado</div>
-                  <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 800, lineHeight: 1.5, wordBreak: "break-word", marginBottom: 10 }}>{latestPaymentLink.checkoutUrl}</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => onCopyPaymentLink(latestPaymentLink.checkoutUrl)} style={{ padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
-                      Copiar link
-                    </button>
-                    <a href={latestPaymentLink.checkoutUrl} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>
-                      Abrir
-                    </a>
-                    {paymentWhatsappLink ? (
-                      <a href={paymentWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>
-                        Enviar link
-                      </a>
-                    ) : null}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6 }}>{paymentLinkStatusLabel}</div>
+                    <Badge meta={latestPaymentLinkActive ? getServicePaymentMeta("pendiente") : { tone: "#64748B", bg: "rgba(100,116,139,.10)" }}>
+                      {latestPaymentLink.amountLabel || formatMoney(latestPaymentLink.amount)}
+                    </Badge>
                   </div>
+                  {latestPaymentLinkActive ? (
+                    <>
+                      <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 800, lineHeight: 1.5, wordBreak: "break-word", marginBottom: 10 }}>{latestPaymentLink.checkoutUrl}</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => onCopyPaymentLink(latestPaymentLink.checkoutUrl)} style={{ padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                          Copiar link
+                        </button>
+                        <a href={latestPaymentLink.checkoutUrl} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>
+                          Abrir
+                        </a>
+                        {paymentWhatsappLink ? (
+                          <a href={paymentWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>
+                            Enviar link
+                          </a>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#B45309", lineHeight: 1.7 }}>
+                      Este link ya no está vigente. Genera un nuevo link para cobrar el saldo actual.
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -1756,6 +1793,7 @@ export default function AdminPanel() {
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
   const [serviceDetail, setServiceDetail] = useState(null);
   const [serviceDraft, setServiceDraft] = useState(buildEmptyServiceDraft());
+  const [serviceDetailLoading, setServiceDetailLoading] = useState(false);
   const [serviceSaving, setServiceSaving] = useState(false);
   const [serviceDocFiles, setServiceDocFiles] = useState([]);
   const [serviceUploadingDocs, setServiceUploadingDocs] = useState(false);
@@ -1768,7 +1806,7 @@ export default function AdminPanel() {
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
   const [paymentLinkBusy, setPaymentLinkBusy] = useState(false);
   const [manualPaymentBusy, setManualPaymentBusy] = useState(false);
-  const [manualPaymentDraft, setManualPaymentDraft] = useState({ amount: "", method: "Nequi", note: "" });
+  const [manualPaymentDraft, setManualPaymentDraft] = useState(EMPTY_MANUAL_PAYMENT_DRAFT);
   const draftRef = useRef(draft);
   const certificateDraftRef = useRef(certificateDraft);
 
@@ -1877,14 +1915,19 @@ export default function AdminPanel() {
       const nextRecords = data.records || [];
       setServiceRecords(nextRecords);
 
-      const nextReference =
-        preferredReference ||
+      const nextReference = preferredReference ||
         (selectedServiceReference && nextRecords.some((record) => record.reference === selectedServiceReference)
           ? selectedServiceReference
-          : nextRecords[0]?.reference || "");
+          : "");
 
       if (nextReference && nextReference !== selectedServiceReference) {
         setSelectedServiceReference(nextReference);
+      } else if (selectedServiceReference && !nextReference) {
+        setSelectedServiceReference("");
+        setServiceDetail(null);
+        setServiceDraft(buildEmptyServiceDraft());
+        setServiceDocFiles([]);
+        setServiceDialogOpen(false);
       }
     } catch (error) {
       setServiceError(error.message);
@@ -1896,6 +1939,7 @@ export default function AdminPanel() {
   const loadServiceDetail = async (reference) => {
     if (!reference) return null;
 
+    setServiceDetailLoading(true);
     setServiceError("");
 
     try {
@@ -1913,6 +1957,8 @@ export default function AdminPanel() {
     } catch (error) {
       setServiceError(error.message);
       return null;
+    } finally {
+      setServiceDetailLoading(false);
     }
   };
 
@@ -2014,10 +2060,10 @@ export default function AdminPanel() {
   }, [session.authenticated, selectedReference]);
 
   useEffect(() => {
-    if (session.authenticated && selectedServiceReference) {
+    if (session.authenticated && serviceDialogOpen && selectedServiceReference) {
       loadServiceDetail(selectedServiceReference);
     }
-  }, [session.authenticated, selectedServiceReference]);
+  }, [session.authenticated, serviceDialogOpen, selectedServiceReference]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -2150,8 +2196,10 @@ export default function AdminPanel() {
     setSelectedServiceReference("");
     setServiceDialogOpen(false);
     setServiceDetail(null);
+    setServiceDetailLoading(false);
     setServiceDraft(buildEmptyServiceDraft());
     setServiceDocFiles([]);
+    setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
     setEditOverridePassword("");
     setUnlockPassword("");
     setUnlockError("");
@@ -2325,8 +2373,10 @@ export default function AdminPanel() {
   const handleSelectServiceRequest = (reference) => {
     setSelectedServiceReference(reference);
     setServiceDetail(null);
+    setServiceDetailLoading(Boolean(reference));
     setServiceDraft(buildEmptyServiceDraft());
     setServiceDocFiles([]);
+    setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
     setServiceError("");
     setActiveModule("solicitudes");
     setServiceDialogOpen(true);
@@ -2335,8 +2385,10 @@ export default function AdminPanel() {
   const handleStartNewServiceRequest = () => {
     setSelectedServiceReference("");
     setServiceDetail(null);
+    setServiceDetailLoading(false);
     setServiceDraft(buildEmptyServiceDraft());
     setServiceDocFiles([]);
+    setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
     setServiceError("");
     setActiveModule("solicitudes");
     setServiceDialogOpen(true);
@@ -2345,12 +2397,14 @@ export default function AdminPanel() {
   const handleCloseServiceDialog = () => {
     if (serviceSaving || serviceUploadingDocs || paymentLinkBusy || manualPaymentBusy) return;
     setServiceDialogOpen(false);
+    setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
   };
 
   const handleModuleChange = (moduleId) => {
     setActiveModule(moduleId);
     if (moduleId !== "solicitudes") {
       setServiceDialogOpen(false);
+      setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
     }
   };
 
@@ -2513,10 +2567,15 @@ export default function AdminPanel() {
 
       setServiceDetail(data.detail);
       setServiceDraft(buildServiceDraftFromDetail(data.detail));
-      setManualPaymentDraft({ amount: "", method: "Nequi", note: "" });
+      setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
       await loadServiceRecords(data.detail.reference);
       await loadServicePayments();
-      setNotice("Pago manual registrado y saldo actualizado.");
+      const nextBalance = Number(data.detail?.financials?.balanceAmount || 0);
+      setNotice(
+        nextBalance > 0
+          ? `Pago manual registrado. El saldo quedó en ${formatMoney(nextBalance)}; genera un nuevo link si deseas cobrar el saldo restante.`
+          : "Pago manual registrado. La solicitud quedó sin saldo pendiente."
+      );
     } catch (error) {
       setServiceError(error.message);
     } finally {
@@ -2991,6 +3050,7 @@ export default function AdminPanel() {
             paymentFilter={servicePaymentFilter}
             loading={serviceLoading}
             error={serviceError}
+            detailLoading={serviceDetailLoading}
             saving={serviceSaving}
             docFiles={serviceDocFiles}
             uploadingDocs={serviceUploadingDocs}
@@ -3013,6 +3073,7 @@ export default function AdminPanel() {
             onManualPaymentChange={handleManualPaymentDraftChange}
             onRegisterManualPayment={handleRegisterManualServicePayment}
             onCopyPaymentLink={handleCopyPaymentLink}
+            onRetryDetail={() => loadServiceDetail(selectedServiceReference)}
             dialogOpen={serviceDialogOpen}
             onClose={handleCloseServiceDialog}
           />

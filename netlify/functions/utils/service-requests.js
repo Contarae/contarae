@@ -291,6 +291,32 @@ export async function getServiceRequestByReference(reference) {
   return record ? buildServiceRequestDetail(record) : null;
 }
 
+function seedLegacyPaidAmount(record = {}, actor = "admin", now = new Date().toISOString()) {
+  const payments = Array.isArray(record.payments) ? record.payments : [];
+  if (payments.length) return payments;
+
+  const legacyAmount = parseCurrency(record.amountPaid);
+  if (legacyAmount <= 0) return payments;
+
+  return [
+    {
+      id: randomId(),
+      reference: `MANUAL-${createPaymentId()}`,
+      serviceReference: normalizeReference(record.reference),
+      amount: legacyAmount,
+      amountLabel: formatCurrencyValue(legacyAmount),
+      currency: DEFAULT_CURRENCY,
+      status: "manual",
+      source: "manual",
+      method: "Pago registrado",
+      note: "Valor pagado registrado en la solicitud antes de crear el historial de pagos.",
+      paidAt: cleanText(record.updatedAt || record.createdAt) || now,
+      createdAt: now,
+      createdBy: actor
+    }
+  ];
+}
+
 export async function upsertServiceRequest(input = {}, actor = "admin") {
   const store = getServiceRequestStore();
   const reference = normalizeReference(input.reference);
@@ -298,7 +324,11 @@ export async function upsertServiceRequest(input = {}, actor = "admin") {
     ? await store.get(`${SERVICE_REQUEST_PREFIX}${reference}`, { type: "json" })
     : null;
 
-  const record = mergePaymentState(sanitizeServiceRequestInput({ ...input, actor }, existing || {}));
+  const sanitizedRecord = sanitizeServiceRequestInput({ ...input, actor }, existing || {});
+  const record = mergePaymentState({
+    ...sanitizedRecord,
+    payments: seedLegacyPaidAmount(sanitizedRecord, actor)
+  });
   await store.setJSON(`${SERVICE_REQUEST_PREFIX}${record.reference}`, record);
 
   return buildServiceRequestDetail(record);
@@ -333,14 +363,34 @@ function calculatePaymentState(record = {}) {
   };
 }
 
+function supersedePendingPaymentLinks(paymentLinks = [], actor = "admin", reason = "balance_changed", now = new Date().toISOString()) {
+  const supersededLinks = [];
+  const nextLinks = (Array.isArray(paymentLinks) ? paymentLinks : []).map((link) => {
+    if (link.status !== "pending") return link;
+    const nextLink = {
+      ...link,
+      status: "superseded",
+      supersededAt: now,
+      supersededBy: actor,
+      supersededReason: reason
+    };
+    supersededLinks.push(nextLink);
+    return nextLink;
+  });
+
+  return {
+    paymentLinks: nextLinks,
+    supersededLinks
+  };
+}
+
 async function createPaymentLinkForRecord(store, record = {}, input = {}, actor = "admin", origin = "", options = {}) {
   const normalizedReference = normalizeReference(record.reference);
   if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
 
   const detail = buildServiceRequestDetail(record);
-  const requestedAmount = normalizePaymentAmount(input.amount);
   const defaultAmount = Math.round(detail.financials?.balanceAmount || 0);
-  const amount = requestedAmount || defaultAmount;
+  const amount = defaultAmount;
 
   if (amount <= 0) {
     return {
@@ -368,18 +418,12 @@ async function createPaymentLinkForRecord(store, record = {}, input = {}, actor 
   }
 
   const now = new Date().toISOString();
-  const supersededLinks = [];
-  const paymentLinks = existingLinks.map((link) => {
-    if (link.status !== "pending") return link;
-    const nextLink = {
-      ...link,
-      status: "superseded",
-      supersededAt: now,
-      supersededBy: actor
-    };
-    supersededLinks.push(nextLink);
-    return nextLink;
-  });
+  const { paymentLinks, supersededLinks } = supersedePendingPaymentLinks(
+    existingLinks,
+    actor,
+    "new_balance_link",
+    now
+  );
 
   const paymentReference = buildPaymentReference();
   const amountInCents = amount * 100;
@@ -488,6 +532,19 @@ export async function registerManualServicePayment(reference, input = {}, actor 
   }
 
   const now = new Date().toISOString();
+  const existingPayments = seedLegacyPaidAmount(record, actor, now);
+  const currentRecord = {
+    ...record,
+    payments: existingPayments
+  };
+  const currentState = calculatePaymentState(currentRecord);
+  if (currentState.balance <= 0) {
+    throw new Error("La solicitud no tiene saldo pendiente para registrar un pago.");
+  }
+  if (amount > currentState.balance) {
+    throw new Error(`El pago manual no puede superar el saldo pendiente de ${formatCurrencyValue(currentState.balance)}.`);
+  }
+
   const payment = {
     id: randomId(),
     reference: `MANUAL-${createPaymentId()}`,
@@ -503,14 +560,26 @@ export async function registerManualServicePayment(reference, input = {}, actor 
     createdAt: now,
     createdBy: actor
   };
+  const { paymentLinks, supersededLinks } = supersedePendingPaymentLinks(
+    currentRecord.paymentLinks,
+    actor,
+    "manual_payment",
+    now
+  );
 
   const nextRecord = mergePaymentState({
-    ...record,
-    payments: [...(Array.isArray(record.payments) ? record.payments : []), payment],
+    ...currentRecord,
+    paymentLinks,
+    payments: [...existingPayments, payment],
     updatedAt: now,
     updatedBy: actor
   });
 
+  await Promise.all(
+    supersededLinks
+      .filter((link) => link.reference)
+      .map((link) => store.setJSON(`${SERVICE_PAYMENT_PREFIX}${link.reference}`, link))
+  );
   await store.setJSON(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, nextRecord);
 
   return {
@@ -674,6 +743,7 @@ export async function processServicePaymentEvent(paymentReference, transaction =
   const approved = status === "APPROVED";
   const failed = finalFailedStatuses.has(status);
   const amount = Math.round(Number(transaction.amount_in_cents || paymentLink.amountInCents || 0) / 100);
+  const paidAt = cleanText(transaction.finalized_at || transaction.created_at) || now;
 
   const nextPaymentLink = {
     ...paymentLink,
@@ -683,14 +753,17 @@ export async function processServicePaymentEvent(paymentReference, transaction =
     wompiTransaction: {
       id: transaction.id,
       status: transaction.status,
+      reference: transaction.reference || normalizedReference,
       amount_in_cents: transaction.amount_in_cents,
       currency: transaction.currency,
       payment_method_type: transaction.payment_method_type,
-      customer_email: transaction.customer_email
+      customer_email: transaction.customer_email,
+      finalized_at: transaction.finalized_at || "",
+      created_at: transaction.created_at || ""
     }
   };
 
-  let payments = Array.isArray(request.payments) ? request.payments : [];
+  let payments = seedLegacyPaidAmount(request, "wompi-webhook", now);
 
   if (approved && !payments.some((payment) => payment.reference === normalizedReference)) {
     payments = [
@@ -705,16 +778,19 @@ export async function processServicePaymentEvent(paymentReference, transaction =
         status: "approved",
         source: "wompi",
         method: transaction.payment_method_type || "Wompi",
-        paidAt: now,
+        paidAt,
         createdAt: now,
         wompiTransaction: nextPaymentLink.wompiTransaction
       }
     ];
   }
 
-  const paymentLinks = (Array.isArray(request.paymentLinks) ? request.paymentLinks : []).map((link) =>
+  const mappedPaymentLinks = (Array.isArray(request.paymentLinks) ? request.paymentLinks : []).map((link) =>
     link.reference === normalizedReference ? nextPaymentLink : link
   );
+  const { paymentLinks, supersededLinks } = approved
+    ? supersedePendingPaymentLinks(mappedPaymentLinks, "wompi-webhook", "wompi_payment_approved", now)
+    : { paymentLinks: mappedPaymentLinks, supersededLinks: [] };
 
   const nextRequest = mergePaymentState({
     ...request,
@@ -725,6 +801,11 @@ export async function processServicePaymentEvent(paymentReference, transaction =
   });
 
   await store.setJSON(`${SERVICE_PAYMENT_PREFIX}${normalizedReference}`, nextPaymentLink);
+  await Promise.all(
+    supersededLinks
+      .filter((link) => link.reference && link.reference !== normalizedReference)
+      .map((link) => store.setJSON(`${SERVICE_PAYMENT_PREFIX}${link.reference}`, link))
+  );
   await store.setJSON(`${SERVICE_REQUEST_PREFIX}${paymentLink.serviceReference}`, nextRequest);
 
   return {
