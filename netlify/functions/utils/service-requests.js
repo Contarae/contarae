@@ -291,6 +291,34 @@ export async function getServiceRequestByReference(reference) {
   return record ? buildServiceRequestDetail(record) : null;
 }
 
+export async function deleteServiceRequest(reference, actor = "admin") {
+  const normalizedReference = normalizeReference(reference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+
+  const store = getServiceRequestStore();
+  const requestKey = `${SERVICE_REQUEST_PREFIX}${normalizedReference}`;
+  const record = await store.get(requestKey, { type: "json" });
+  if (!record) throw new Error("La solicitud no existe o ya fue eliminada.");
+
+  const paymentLinks = Array.isArray(record.paymentLinks) ? record.paymentLinks : [];
+  const documents = Array.isArray(record.documents) ? record.documents : [];
+  await Promise.all([
+    store.delete(requestKey),
+    ...paymentLinks
+      .filter((link) => link.reference)
+      .map((link) => store.delete(`${SERVICE_PAYMENT_PREFIX}${normalizeReference(link.reference)}`)),
+    ...documents
+      .filter((document) => document.blobKey)
+      .map((document) => store.delete(document.blobKey))
+  ]);
+
+  return {
+    ...record,
+    deletedAt: new Date().toISOString(),
+    deletedBy: cleanText(actor) || "admin"
+  };
+}
+
 function seedLegacyPaidAmount(record = {}, actor = "admin", now = new Date().toISOString()) {
   const payments = Array.isArray(record.payments) ? record.payments : [];
   if (payments.length) return payments;

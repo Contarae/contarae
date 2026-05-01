@@ -167,6 +167,18 @@ const inputStyle = {
   boxSizing: "border-box"
 };
 
+const subtleDangerButtonStyle = {
+  padding: "8px 10px",
+  borderRadius: 12,
+  border: "1px solid rgba(220,38,38,.14)",
+  background: "rgba(220,38,38,.04)",
+  color: "#B91C1C",
+  fontFamily: F,
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer"
+};
+
 function formatDate(value) {
   if (!value) return "Sin fecha";
 
@@ -234,6 +246,17 @@ function hasMeaningfulCurrencyValue(value) {
 
 function getServiceTypeLabel(type) {
   return SERVICE_TYPES.find(([value]) => value === type)?.[1] || "Otros servicios";
+}
+
+function inferServiceTypeFromText(value = "") {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("renta") || text.includes("declar")) return "declaracion_renta";
+  if (text.includes("rut") || text.includes("cámara") || text.includes("camara") || text.includes("comercio")) return "constitucion_rut";
+  if (text.includes("requerimiento") || text.includes("dian")) return "respuesta_requerimiento";
+  if (text.includes("tribut")) return "tramite_tributario";
+  if (text.includes("plane")) return "planeacion_financiera";
+  if (text.includes("asesor")) return "asesoria_contable";
+  return "otros";
 }
 
 function getServiceStatusMeta(status) {
@@ -502,6 +525,13 @@ function buildLeadMailtoLink(leads = [], subject = "CONTARAE - Información de t
     body: body || "Hola, te saludamos de CONTARAE. Queremos compartirte información relacionada con tu solicitud y quedamos atentos para ayudarte."
   });
   return `mailto:?${params.toString()}`;
+}
+
+function buildClientWhatsappLink(client, message = "") {
+  const phone = normalizeWhatsappPhone(client?.phone);
+  if (!phone) return "";
+  const text = message || `Hola ${client?.name || ""}, te saludamos de CONTARAE. Queremos hacer seguimiento a tus servicios activos y resolver cualquier inquietud.`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
 function buildLeadsCsv(leads = []) {
@@ -816,6 +846,31 @@ function InfoTile({ label, value }) {
   );
 }
 
+function ClientTimeline({ items = [] }) {
+  if (!items.length) {
+    return (
+      <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.7 }}>
+        Aún no hay actividad registrada para mostrar.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {items.map((item, index) => (
+        <div key={`${item.date}-${item.title}-${index}`} style={{ display: "grid", gridTemplateColumns: "18px minmax(0,1fr)", gap: 10, alignItems: "start" }}>
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: item.tone || "#2563EB", marginTop: 7, boxShadow: `0 0 0 4px ${item.bg || "rgba(37,99,235,.10)"}` }} />
+          <div style={{ paddingBottom: 10, borderBottom: "1px solid rgba(37,99,235,.08)" }}>
+            <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 900, lineHeight: 1.4 }}>{item.title}</div>
+            {item.note ? <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.6, marginTop: 3 }}>{item.note}</div> : null}
+            <div style={{ fontFamily: F, color: "#94A3B8", fontSize: 12, marginTop: 5 }}>{formatDate(item.date)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ModuleNav({ activeModule, counts, onChange }) {
   const activeModuleMeta = ADMIN_MODULES.find((module) => module.id === activeModule) || ADMIN_MODULES[0];
   return (
@@ -1065,6 +1120,7 @@ function ServiceRequestsModule({
   onRegisterManualPayment,
   onCopyPaymentLink,
   onRetryDetail,
+  onRequestDelete,
   dialogOpen,
   onClose
 }) {
@@ -1166,6 +1222,11 @@ function ServiceRequestsModule({
             <button type="button" onClick={onSave} disabled={saving || loadingDetail} style={{ padding: "13px 16px", borderRadius: 16, border: "none", background: saving || loadingDetail ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving || loadingDetail ? "not-allowed" : "pointer" }}>
               {saving ? "Guardando..." : "Guardar solicitud"}
             </button>
+            {draft.reference ? (
+              <button type="button" onClick={() => onRequestDelete(draft.reference, draft.title || draft.client?.name || "solicitud")} disabled={saving || loadingDetail} style={{ ...subtleDangerButtonStyle, justifySelf: "start", opacity: saving || loadingDetail ? 0.55 : 1, cursor: saving || loadingDetail ? "not-allowed" : "pointer" }}>
+                Eliminar registro
+              </button>
+            ) : null}
           </div>
         </section>
 
@@ -1438,7 +1499,8 @@ function ClientsModule({
   selectedLeadIds = new Set(),
   onToggleLead,
   onToggleAllLeads,
-  onOpenClient,
+  onOpenLeadDetail,
+  onOpenClientDetail,
   onExportLeads,
   onCopyLeadPhones,
   onOpenBulkEmail
@@ -1477,27 +1539,24 @@ function ClientsModule({
         {leads.length ? (
           <div style={{ display: "grid", gap: 10 }}>
             {leads.map((lead) => {
-              const whatsappLink = buildLeadWhatsappLink(lead);
               const selected = selectedLeadIds.has(lead.id);
               return (
-                <div key={lead.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 14, alignItems: "center", padding: 16, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
+                <div key={lead.id} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
                   <input type="checkbox" checked={selected} disabled={!lead.marketingConsent} onChange={() => onToggleLead(lead.id)} title={lead.marketingConsent ? "Seleccionar para comunicaciones" : "No autorizó comunicaciones comerciales"} />
-                  <div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                  <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}>
                       <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{lead.name}</div>
                       <Badge meta={lead.marketingConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
-                        {lead.marketingConsent ? "Autoriza comunicaciones" : "Solo gestión de solicitud"}
+                        {lead.marketingConsent ? "Autoriza" : "Gestión"}
                       </Badge>
                     </div>
-                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
-                      {lead.serviceInterest || "Servicio pendiente"} · {lead.phone || "Sin WhatsApp"} · {lead.email || "Sin correo"} · {formatDate(lead.createdAt)}
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {lead.serviceInterest || "Servicio pendiente"} · {formatDate(lead.createdAt)}
                     </div>
-                    {lead.comment ? <div style={{ marginTop: 6, fontFamily: F, fontSize: 13, color: "#334155", lineHeight: 1.6 }}>{lead.comment}</div> : null}
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {whatsappLink ? <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 11px", borderRadius: 12, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>WhatsApp</a> : null}
-                    {lead.email ? <a href={`mailto:${lead.email}`} style={{ padding: "9px 11px", borderRadius: 12, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>Correo</a> : null}
-                  </div>
+                  </button>
+                  <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Ver
+                  </button>
                 </div>
               );
             })}
@@ -1521,19 +1580,20 @@ function ClientsModule({
         {clients.length ? (
           <div style={{ display: "grid", gap: 10 }}>
             {clients.map((client) => (
-              <button key={client.key} type="button" onClick={() => onOpenClient(client)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px 140px auto", gap: 14, alignItems: "center", textAlign: "left", padding: 16, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff", cursor: "pointer" }}>
-                <div>
+              <div key={client.key} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+                <button type="button" onClick={() => onOpenClientDetail(client)} style={{ minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
                   <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A", lineHeight: 1.4 }}>{client.name}</div>
-                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.7 }}>
-                    {client.documentNumber || "Sin documento"} · {client.email || "Sin correo"} · {client.phone || "Sin teléfono"}
+                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {client.documentNumber || "Sin documento"} · {client.requests} solicitud(es) · {client.active} activa(s)
                   </div>
-                </div>
-                <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.requests} solicitud(es)</div>
-                <div style={{ fontFamily: F, color: "#334155", fontWeight: 800 }}>{client.active} activa(s)</div>
+                </button>
                 <Badge meta={client.receivable > 0 ? getServicePaymentMeta("pendiente") : getServicePaymentMeta("pagado_manual")}>
                   {client.receivable > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(client.receivable)}` : "Sin saldo"}
                 </Badge>
-              </button>
+                <button type="button" onClick={() => onOpenClientDetail(client)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                  Ver
+                </button>
+              </div>
             ))}
           </div>
         ) : (
@@ -1543,6 +1603,296 @@ function ClientsModule({
         )}
       </section>
     </div>
+  );
+}
+
+function ClientDetailDialog({
+  detail,
+  records = [],
+  onClose,
+  onOpenRequest,
+  onCreateRequest,
+  onDeleteLead,
+  onDeleteServiceRequest
+}) {
+  const [activeTab, setActiveTab] = useState("resumen");
+  const safeDetail = detail || {};
+  const isLead = safeDetail.type === "lead";
+  const lead = safeDetail.lead || {};
+  const client = safeDetail.client || {};
+  const detailKey = isLead ? lead.id : client.key;
+
+  useEffect(() => {
+    setActiveTab("resumen");
+  }, [detailKey, isLead]);
+
+  if (!detail || typeof document === "undefined") return null;
+
+  const clientKey = String(client.key || client.documentNumber || client.email || client.phone || client.name || "").trim().toLowerCase();
+  const clientRecords = isLead ? [] : records.filter((record) => {
+    const recordKey = String(record.clientDocumentNumber || record.clientEmail || record.clientPhone || record.clientName || "sin-cliente").trim().toLowerCase();
+    return recordKey === clientKey;
+  });
+  const subject = isLead ? lead : client;
+  const whatsappLink = isLead ? buildLeadWhatsappLink(lead) : buildClientWhatsappLink(client);
+  const email = String(subject.email || "").trim();
+  const tabs = isLead
+    ? [
+        ["resumen", "Resumen"],
+        ["comunicaciones", "Comunicaciones"],
+        ["actividad", "Historial"]
+      ]
+    : [
+        ["resumen", "Resumen"],
+        ["solicitudes", "Solicitudes"],
+        ["pagos", "Pagos"],
+        ["actividad", "Historial"]
+      ];
+  const activityItems = isLead
+    ? [
+        {
+          title: "Cliente captado desde la web",
+          note: lead.serviceInterest || "Registro creado desde formulario de contacto.",
+          date: lead.createdAt,
+          tone: "#2563EB",
+          bg: "rgba(37,99,235,.10)"
+        },
+        lead.marketingConsent ? {
+          title: "Autorizó comunicaciones comerciales",
+          note: "Puede incluirse en acciones de WhatsApp o correo masivo.",
+          date: lead.createdAt,
+          tone: "#15803D",
+          bg: "rgba(34,197,94,.12)"
+        } : {
+          title: "Uso limitado a gestión de solicitud",
+          note: "No autorizó comunicaciones comerciales masivas.",
+          date: lead.createdAt,
+          tone: "#B45309",
+          bg: "rgba(245,158,11,.14)"
+        }
+      ].filter((item) => item.date)
+    : clientRecords.flatMap((record) => [
+        {
+          title: "Solicitud creada",
+          note: `${record.title || getServiceTypeLabel(record.serviceType)} · ${record.reference}`,
+          date: record.createdAt,
+          tone: "#2563EB",
+          bg: "rgba(37,99,235,.10)"
+        },
+        {
+          title: "Última actualización",
+          note: `${getServiceStatusMeta(record.status).label} · ${getServicePaymentMeta(record.paymentStatus).label}`,
+          date: record.updatedAt,
+          tone: "#0F766E",
+          bg: "rgba(13,148,136,.10)"
+        },
+        Number(record.documentsCount || 0) > 0 ? {
+          title: "Documentos cargados",
+          note: `${record.documentsCount} documento(s) adjunto(s) en la solicitud.`,
+          date: record.updatedAt,
+          tone: "#7C3AED",
+          bg: "rgba(124,58,237,.10)"
+        } : null,
+        Number(record.paymentsCount || 0) > 0 ? {
+          title: "Pagos registrados",
+          note: `${record.paymentsCount} pago(s) aplicado(s). Saldo actual: ${record.balance || "$ 0"}.`,
+          date: record.updatedAt,
+          tone: "#15803D",
+          bg: "rgba(34,197,94,.12)"
+        } : null
+      ].filter(Boolean))
+      .filter((item) => item.date)
+      .sort((left, right) => new Date(right.date || 0) - new Date(left.date || 0));
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <div className="admin-modal-card" style={{ width: "min(820px, 100%)", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#1D4ED8", fontWeight: 900, fontFamily: F, marginBottom: 10 }}>
+              {isLead ? "CLIENTE CAPTADO DESDE LA WEB" : "CLIENTE DE SOLICITUDES"}
+            </div>
+            <h3 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(28px,4vw,38px)", lineHeight: 1.08, color: "#0B1D3A" }}>
+              {subject.name || "Cliente sin nombre"}
+            </h3>
+          </div>
+          <button type="button" onClick={onClose} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: "pointer" }} aria-label="Cerrar detalle de cliente">
+            X
+          </button>
+        </div>
+
+        <div className="admin-client-tabbar" style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: 6, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 16 }}>
+          {tabs.map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setActiveTab(id)} style={{ padding: "9px 12px", borderRadius: 13, border: "none", background: activeTab === id ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "transparent", color: activeTab === id ? "#fff" : "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "resumen" ? (
+          <>
+            <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+              <InfoTile label="Documento" value={subject.documentNumber || client.documentNumber} />
+              <InfoTile label="WhatsApp" value={subject.phone} />
+              <InfoTile label="Correo" value={subject.email} />
+            </div>
+            {isLead ? (
+              <>
+                <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+                  <InfoTile label="Servicio de interés" value={lead.serviceInterest || "Servicio pendiente"} />
+                  <InfoTile label="Fecha de registro" value={formatDate(lead.createdAt)} />
+                  <InfoTile label="Origen" value={lead.sourceLabel || lead.sourcePath || "Formulario web"} />
+                </div>
+                <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F, color: "#334155", lineHeight: 1.7, marginBottom: 16 }}>
+                  {lead.comment || "Sin comentario registrado."}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+                  <Badge meta={lead.treatmentConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
+                    {lead.treatmentConsent ? "Autoriza tratamiento" : "Sin autorización de tratamiento"}
+                  </Badge>
+                  <Badge meta={lead.marketingConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
+                    {lead.marketingConsent ? "Autoriza comunicaciones" : "Solo gestión de solicitud"}
+                  </Badge>
+                </div>
+              </>
+            ) : (
+              <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+                <InfoTile label="Solicitudes" value={client.requests} />
+                <InfoTile label="Activas" value={client.active} />
+                <InfoTile label="Saldo pendiente" value={client.receivable > 0 ? formatMoney(client.receivable) : "Sin saldo"} />
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {activeTab === "comunicaciones" ? (
+          <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 16 }}>
+            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.2px", fontWeight: 900, color: "#1D4ED8", marginBottom: 10 }}>PERMISOS Y CONTACTO</div>
+            <div style={{ display: "grid", gap: 10 }}>
+              <InfoTile label="Tratamiento de datos" value={lead.treatmentConsent ? "Autorizado" : "No autorizado"} />
+              <InfoTile label="Comunicaciones comerciales" value={lead.marketingConsent ? "Autorizadas" : "No autorizadas"} />
+              <InfoTile label="Canal recomendado" value={lead.phone ? "WhatsApp" : lead.email ? "Correo" : "Sin canal registrado"} />
+            </div>
+          </section>
+        ) : null}
+
+        {activeTab === "solicitudes" ? (
+          <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 16 }}>
+            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.2px", fontWeight: 900, color: "#1D4ED8", marginBottom: 10 }}>SOLICITUDES DEL CLIENTE</div>
+            {clientRecords.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {clientRecords.map((record) => (
+                  <div key={record.reference} className="admin-client-request-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                    <div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                        <Badge meta={getServiceStatusMeta(record.status)}>{getServiceStatusMeta(record.status).label}</Badge>
+                        <Badge meta={getDueMeta(record)}>{getDueMeta(record).label}</Badge>
+                      </div>
+                      <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 900, lineHeight: 1.4 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
+                      <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.6 }}>{record.reference} · Saldo {record.balance || "$ 0"}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button type="button" onClick={() => onOpenRequest(record.reference)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                        Abrir
+                      </button>
+                      <button type="button" onClick={() => onDeleteServiceRequest(record.reference, record.title || record.clientName || "solicitud")} style={subtleDangerButtonStyle}>
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontFamily: F, color: "#64748B", lineHeight: 1.7 }}>No se encontraron solicitudes asociadas.</div>
+            )}
+          </section>
+        ) : null}
+
+        {activeTab === "pagos" ? (
+          <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 16 }}>
+            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.2px", fontWeight: 900, color: "#1D4ED8", marginBottom: 10 }}>PAGOS Y CARTERA</div>
+            {clientRecords.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {clientRecords.map((record) => (
+                  <div key={record.reference} className="admin-client-request-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                    <div>
+                      <div style={{ fontFamily: F, color: "#0F172A", fontSize: 14, fontWeight: 900, lineHeight: 1.4 }}>{record.title || getServiceTypeLabel(record.serviceType)}</div>
+                      <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.6 }}>Pactado: {record.agreedPrice || "$ 0"} · Pagado: {record.amountPaid || "$ 0"}</div>
+                    </div>
+                    <Badge meta={getServicePaymentMeta(record.paymentStatus)}>{record.balance || "$ 0"}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontFamily: F, color: "#64748B", lineHeight: 1.7 }}>No hay pagos o cartera asociados.</div>
+            )}
+          </section>
+        ) : null}
+
+        {activeTab === "actividad" ? (
+          <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", marginBottom: 16 }}>
+            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.2px", fontWeight: 900, color: "#1D4ED8", marginBottom: 12 }}>HISTORIAL</div>
+            <ClientTimeline items={activityItems} />
+          </section>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" onClick={() => isLead ? onDeleteLead(lead) : onClose()} style={isLead ? subtleDangerButtonStyle : { ...subtleDangerButtonStyle, visibility: "hidden" }}>
+            Eliminar registro
+          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => onCreateRequest(isLead ? { type: "lead", lead } : { type: "client", client })} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Crear solicitud
+            </button>
+            {whatsappLink ? <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "11px 14px", borderRadius: 14, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>WhatsApp</a> : null}
+            {email ? <a href={`mailto:${email}`} style={{ padding: "11px 14px", borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>Correo</a> : null}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function ProtectedDeleteDialog({
+  dialog,
+  credentials,
+  busy,
+  error,
+  onChange,
+  onCancel,
+  onConfirm
+}) {
+  if (!dialog?.open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.68)", zIndex: 16000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !busy && onCancel()}>
+      <div className="admin-modal-card" style={{ width: "min(540px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(220,38,38,.18)", boxShadow: "0 28px 72px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#B91C1C", fontWeight: 900, fontFamily: F, marginBottom: 10 }}>ELIMINACIÓN PROTEGIDA</div>
+        <h3 style={{ margin: 0, fontFamily: FH, fontSize: 30, lineHeight: 1.1, color: "#0B1D3A" }}>{dialog.title || "Eliminar registro"}</h3>
+        <p style={{ margin: "12px 0 18px", fontFamily: F, color: "#52647F", lineHeight: 1.8 }}>
+          {dialog.description || "Esta acción eliminará el registro seleccionado. Confirma el usuario y la contraseña del panel para continuar."}
+        </p>
+        <div style={{ display: "grid", gap: 10 }}>
+          <input style={inputStyle} placeholder="Usuario del panel" value={credentials.username} onChange={(event) => onChange("username", event.target.value)} disabled={busy} />
+          <input style={inputStyle} type="password" placeholder="Contraseña del panel" value={credentials.password} onChange={(event) => onChange("password", event.target.value)} disabled={busy} />
+        </div>
+        {error ? (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700 }}>
+            {error}
+          </div>
+        ) : null}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 18 }}>
+          <button type="button" onClick={onCancel} disabled={busy} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: busy ? "not-allowed" : "pointer" }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy || !credentials.username.trim() || !credentials.password.trim()} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: busy || !credentials.username.trim() || !credentials.password.trim() ? "#CBD5E1" : "linear-gradient(135deg,#991B1B,#DC2626)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: busy || !credentials.username.trim() || !credentials.password.trim() ? "not-allowed" : "pointer" }}>
+            {busy ? "Eliminando..." : "Confirmar eliminación"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1692,6 +2042,16 @@ export default function AdminPanel() {
         grid-template-columns: 1fr !important;
       }
 
+      .admin-client-row,
+      .admin-client-request-row {
+        grid-template-columns: 1fr !important;
+      }
+
+      .admin-client-row > button,
+      .admin-client-request-row button {
+        width: 100% !important;
+      }
+
       .admin-payment-movement-actions {
         justify-content: stretch !important;
       }
@@ -1804,6 +2164,11 @@ export default function AdminPanel() {
   const [clientLeadsLoading, setClientLeadsLoading] = useState(false);
   const [clientLeadsError, setClientLeadsError] = useState("");
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
+  const [clientDetailDialog, setClientDetailDialog] = useState(null);
+  const [deleteDialog, setDeleteDialog] = useState(null);
+  const [deleteCredentials, setDeleteCredentials] = useState({ username: "", password: "" });
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [paymentLinkBusy, setPaymentLinkBusy] = useState(false);
   const [manualPaymentBusy, setManualPaymentBusy] = useState(false);
   const [manualPaymentDraft, setManualPaymentDraft] = useState(EMPTY_MANUAL_PAYMENT_DRAFT);
@@ -2193,6 +2558,10 @@ export default function AdminPanel() {
     setServicePayments([]);
     setClientLeads([]);
     setSelectedLeadIds(new Set());
+    setClientDetailDialog(null);
+    setDeleteDialog(null);
+    setDeleteCredentials({ username: "", password: "" });
+    setDeleteError("");
     setSelectedServiceReference("");
     setServiceDialogOpen(false);
     setServiceDetail(null);
@@ -2618,6 +2987,7 @@ export default function AdminPanel() {
   };
 
   const handleOpenClientRequests = (client) => {
+    setClientDetailDialog(null);
     setServiceSearch(client.documentNumber || client.name || "");
     setServiceStatusFilter("all");
     setServicePaymentFilter("all");
@@ -2639,6 +3009,144 @@ export default function AdminPanel() {
     setServiceError("");
     setActiveModule("solicitudes");
     scrollAdminMainIntoViewOnMobile();
+  };
+
+  const handleCreateRequestFromClient = (source = {}) => {
+    const isLeadSource = source.type === "lead";
+    const sourceClient = isLeadSource ? source.lead || {} : source.client || {};
+    const serviceInterest = String(sourceClient.serviceInterest || "").trim();
+    const comments = isLeadSource
+      ? [
+          sourceClient.createdAt ? `Cliente captado desde la web el ${formatDate(sourceClient.createdAt)}.` : "Cliente captado desde la web.",
+          serviceInterest ? `Servicio de interés: ${serviceInterest}.` : "",
+          sourceClient.comment ? `Comentario inicial: ${sourceClient.comment}` : ""
+        ].filter(Boolean).join("\n")
+      : "Solicitud creada desde el expediente del cliente.";
+
+    setClientDetailDialog(null);
+    setSelectedServiceReference("");
+    setServiceDetail(null);
+    setServiceDetailLoading(false);
+    setServiceDraft({
+      ...buildEmptyServiceDraft(),
+      title: isLeadSource
+        ? `Solicitud - ${serviceInterest || "Asesoría contable"}`
+        : `Nueva solicitud - ${sourceClient.name || "Cliente"}`,
+      serviceType: inferServiceTypeFromText(serviceInterest || sourceClient.comment || ""),
+      comments,
+      client: {
+        name: sourceClient.name || "",
+        documentType: "CC",
+        documentNumber: sourceClient.documentNumber || "",
+        phone: sourceClient.phone || "",
+        email: sourceClient.email || ""
+      }
+    });
+    setServiceDocFiles([]);
+    setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
+    setServiceError("");
+    setActiveModule("solicitudes");
+    setServiceDialogOpen(true);
+    setNotice("Solicitud nueva preparada con los datos del cliente.");
+    scrollAdminMainIntoViewOnMobile();
+  };
+
+  const openDeleteDialog = (dialog) => {
+    setDeleteDialog({ open: true, ...dialog });
+    setDeleteCredentials({ username: session.username || "", password: "" });
+    setDeleteError("");
+  };
+
+  const handleRequestLeadDelete = (lead) => {
+    openDeleteDialog({
+      type: "lead",
+      id: lead.id,
+      title: "Eliminar cliente captado",
+      description: `Se eliminará el registro de ${lead.name || "este cliente"} captado desde la web. Esta acción no elimina solicitudes generales.`
+    });
+  };
+
+  const handleRequestServiceDelete = (reference, label = "solicitud") => {
+    openDeleteDialog({
+      type: "service-request",
+      reference,
+      title: "Eliminar solicitud",
+      description: `Se eliminará la solicitud ${label} junto con sus documentos y links de pago asociados.`
+    });
+  };
+
+  const handleDeleteCredentialChange = (field, value) => {
+    setDeleteCredentials((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const handleCancelDelete = () => {
+    if (deleteBusy) return;
+    setDeleteDialog(null);
+    setDeleteCredentials({ username: "", password: "" });
+    setDeleteError("");
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteDialog?.type) return;
+
+    setDeleteBusy(true);
+    setDeleteError("");
+
+    try {
+      const endpoint = deleteDialog.type === "lead"
+        ? "/api/admin-delete-client-lead"
+        : "/api/admin-delete-service-request";
+      const payload = deleteDialog.type === "lead"
+        ? { id: deleteDialog.id }
+        : { reference: deleteDialog.reference };
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          username: deleteCredentials.username,
+          password: deleteCredentials.password
+        })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible eliminar el registro.");
+      }
+
+      if (deleteDialog.type === "lead") {
+        setClientLeads((current) => current.filter((lead) => lead.id !== deleteDialog.id));
+        setSelectedLeadIds((current) => {
+          const next = new Set(current);
+          next.delete(deleteDialog.id);
+          return next;
+        });
+      } else {
+        setServiceRecords((current) => current.filter((record) => record.reference !== deleteDialog.reference));
+        setServicePayments((current) => current.filter((payment) => payment.request?.reference !== deleteDialog.reference && payment.serviceReference !== deleteDialog.reference));
+        if (selectedServiceReference === deleteDialog.reference) {
+          setSelectedServiceReference("");
+          setServiceDialogOpen(false);
+          setServiceDetail(null);
+          setServiceDraft(buildEmptyServiceDraft());
+          setServiceDocFiles([]);
+          setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
+        }
+      }
+
+      setClientDetailDialog(null);
+      setDeleteDialog(null);
+      setDeleteCredentials({ username: "", password: "" });
+      setNotice(deleteDialog.type === "lead" ? "Cliente captado eliminado." : "Solicitud eliminada.");
+      await Promise.all([loadClientLeads(), loadServiceRecords(), loadServicePayments()]);
+    } catch (error) {
+      setDeleteError(error.message);
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const handleToggleLead = (leadId) => {
@@ -3074,6 +3582,7 @@ export default function AdminPanel() {
             onRegisterManualPayment={handleRegisterManualServicePayment}
             onCopyPaymentLink={handleCopyPaymentLink}
             onRetryDetail={() => loadServiceDetail(selectedServiceReference)}
+            onRequestDelete={handleRequestServiceDelete}
             dialogOpen={serviceDialogOpen}
             onClose={handleCloseServiceDialog}
           />
@@ -3089,7 +3598,8 @@ export default function AdminPanel() {
             selectedLeadIds={selectedLeadIds}
             onToggleLead={handleToggleLead}
             onToggleAllLeads={handleToggleAllLeads}
-            onOpenClient={handleOpenClientRequests}
+            onOpenLeadDetail={(lead) => setClientDetailDialog({ type: "lead", lead })}
+            onOpenClientDetail={(client) => setClientDetailDialog({ type: "client", client })}
             onExportLeads={handleExportClientLeads}
             onCopyLeadPhones={handleCopyLeadPhones}
             onOpenBulkEmail={handleOpenBulkEmail}
@@ -3939,6 +4449,27 @@ export default function AdminPanel() {
         </div>
         ) : null}
       </div>
+      <ClientDetailDialog
+        detail={clientDetailDialog}
+        records={serviceRecords}
+        onClose={() => setClientDetailDialog(null)}
+        onOpenRequest={(reference) => {
+          setClientDetailDialog(null);
+          handleSelectServiceRequest(reference);
+        }}
+        onCreateRequest={handleCreateRequestFromClient}
+        onDeleteLead={handleRequestLeadDelete}
+        onDeleteServiceRequest={handleRequestServiceDelete}
+      />
+      <ProtectedDeleteDialog
+        dialog={deleteDialog}
+        credentials={deleteCredentials}
+        busy={deleteBusy}
+        error={deleteError}
+        onChange={handleDeleteCredentialChange}
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+      />
       {sendDialogOpen && createPortal(
         <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !sendBusy && setSendDialogOpen(false)}>
           <div className="admin-modal-card" style={{ width: "min(720px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>

@@ -80,3 +80,16 @@ export async function listClientLeads() {
     .filter(Boolean)
     .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
 }
+
+export async function deleteClientLead(id = "") {
+  const leadId = cleanText(id);
+  if (!leadId) throw new Error("Falta el identificador del cliente captado.");
+
+  const store = getClientLeadsStore();
+  const key = `${CLIENT_LEAD_PREFIX}${leadId}`;
+  const existing = await store.get(key, { type: "json" });
+  if (!existing) throw new Error("El cliente captado no existe o ya fue eliminado.");
+
+  await store.delete(key);
+  return existing;
+}
