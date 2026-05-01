@@ -1,8 +1,18 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+beforeAll(() => {
+  class IntersectionObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  window.IntersectionObserver = IntersectionObserverMock;
+  window.scrollTo = jest.fn();
+});
+
+test('renders CONTARAE landing content', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getAllByText(/CONTARAE/i).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Servicios contables, tributarios y financieros/i).length).toBeGreaterThan(0);
 });

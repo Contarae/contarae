@@ -131,6 +131,18 @@ const TOOL_PATHS = new Set([
   "/liquidador-de-iva",
   "/precio-antes-de-iva",
 ]);
+const SERVICE_PATHS = new Map([
+  ["/servicios-contables", "Servicios contables"],
+  ["/planes-contables", "Planes contables"],
+  ["/contabilidad-para-pymes", "Contabilidad para pymes"],
+  ["/asesoria-tributaria", "Asesoría tributaria"],
+  ["/declaracion-de-renta-personas-naturales", "Declaración de renta personas naturales"],
+  ["/nomina-y-seguridad-social", "Nómina y seguridad social"],
+  ["/facturacion-electronica", "Facturación electrónica"],
+  ["/creacion-de-empresa", "Creación de empresa"],
+  ["/contador-publico-bogota", "Contador público Bogotá"],
+  ["/contador-publico-online", "Contador público online"],
+]);
 
 const route = (path, title, description, canonicalPath = path, extra = {}) => [
   path,
@@ -155,6 +167,56 @@ const ROUTE_META = new Map([
     "Certificación de ingresos por Contador Público | CONTARAE",
     "Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.",
     "/certificacion"
+  ),
+  route(
+    "/servicios-contables",
+    "Servicios contables en Colombia | CONTARAE",
+    "Servicios contables, tributarios y financieros para personas naturales, independientes, emprendedores y pymes en Colombia, con atención virtual y soporte personalizado."
+  ),
+  route(
+    "/planes-contables",
+    "Planes contables mensuales para empresas | CONTARAE",
+    "Planes contables mensuales para independientes, microempresas y pymes: contabilidad, impuestos, nómina, estados financieros y soporte permanente."
+  ),
+  route(
+    "/contabilidad-para-pymes",
+    "Contabilidad para pymes en Colombia | CONTARAE",
+    "Contabilidad para pymes y microempresas en Colombia: registros, conciliaciones, impuestos, estados financieros, nómina y acompañamiento gerencial."
+  ),
+  route(
+    "/asesoria-tributaria",
+    "Asesoría tributaria en Colombia | CONTARAE",
+    "Asesoría tributaria para personas naturales, independientes y empresas: DIAN, renta, IVA, retención en la fuente, ICA, información exógena y planeación."
+  ),
+  route(
+    "/declaracion-de-renta-personas-naturales",
+    "Declaración de renta personas naturales | CONTARAE",
+    "Preparación y revisión de declaración de renta para personas naturales en Colombia, con análisis de soportes, topes, deducciones y presentación ante la DIAN."
+  ),
+  route(
+    "/nomina-y-seguridad-social",
+    "Nómina y seguridad social para empresas | CONTARAE",
+    "Servicio de nómina y seguridad social para empresas: liquidación de salarios, prestaciones, aportes, planilla PILA, contratos y reportes laborales."
+  ),
+  route(
+    "/facturacion-electronica",
+    "Facturación electrónica DIAN | CONTARAE",
+    "Acompañamiento en facturación electrónica: habilitación DIAN, numeración, proveedor tecnológico, notas crédito, soporte operativo y revisión contable."
+  ),
+  route(
+    "/creacion-de-empresa",
+    "Creación de empresa en Colombia | CONTARAE",
+    "Acompañamiento para crear empresa en Colombia: elección de tipo societario, Cámara de Comercio, RUT, obligaciones tributarias y puesta en marcha contable."
+  ),
+  route(
+    "/contador-publico-bogota",
+    "Contador público en Bogotá | CONTARAE",
+    "Contador público en Bogotá para certificaciones, contabilidad, impuestos, nómina, declaración de renta y asesoría tributaria con atención virtual."
+  ),
+  route(
+    "/contador-publico-online",
+    "Contador público online en Colombia | CONTARAE",
+    "Contador público online en Colombia para certificaciones, declaración de renta, asesoría tributaria, contabilidad mensual, nómina y trámites digitales."
   ),
   route(
     "/certificado-de-ingresos-contador-publico",
@@ -392,6 +454,21 @@ const injectSchema = (html, meta, canonicalUrl) => {
     extraGraph.push(buildBreadcrumbSchema([
       { name: "Inicio", path: "/" },
       { name: "Herramientas", path: "/#herramientas" },
+      { name: cleanTitle(meta.title), path: canonicalPath },
+    ]));
+  } else if (SERVICE_PATHS.has(canonicalPath)) {
+    extraGraph.push({
+      "@type": "Service",
+      name: cleanTitle(meta.title),
+      description: meta.description,
+      provider: { "@id": `${SITE_URL}/#negocio` },
+      areaServed: "CO",
+      serviceType: SERVICE_PATHS.get(canonicalPath),
+      url: canonicalUrl,
+    });
+    extraGraph.push(buildBreadcrumbSchema([
+      { name: "Inicio", path: "/" },
+      { name: "Servicios", path: "/#servicios" },
       { name: cleanTitle(meta.title), path: canonicalPath },
     ]));
   } else if (canonicalPath === "/") {

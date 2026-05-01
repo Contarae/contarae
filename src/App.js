@@ -298,6 +298,258 @@ const TOOL_ROUTES=[
     supportText:"Si quiere revisar estructura de precios o impacto tributario en sus ventas, CONTARAE puede acompañarle."
   }
 ];
+const SERVICE_SEO_ROUTES=[
+  {
+    path:"/servicios-contables",
+    sectionId:"servicios-contables",
+    metaTitle:"Servicios contables en Colombia | CONTARAE",
+    metaDescription:"Servicios contables, tributarios y financieros para personas naturales, independientes, emprendedores y pymes en Colombia, con atención virtual y soporte personalizado.",
+    badge:"SERVICIOS CONTABLES",
+    title:"Servicios contables, tributarios y financieros para personas y empresas",
+    intro:"CONTARAE acompaña a personas naturales, independientes, emprendedores y pymes con soluciones contables claras, digitales y orientadas al cumplimiento.",
+    intent:"Esta ruta reúne los servicios principales: contabilidad mensual, asesoría tributaria, nómina, certificaciones contables, facturación electrónica, creación de empresa y gestión financiera.",
+    serviceType:"Servicios contables",
+    ctaLabel:"Solicitar asesoría contable",
+    whatsapp:"Hola CONTARAE, quiero recibir asesoría sobre sus servicios contables.",
+    highlights:[["Atención","Virtual para Colombia, con foco en Bogotá y procesos digitales"],["Enfoque","Cumplimiento contable, tributario, laboral y financiero"],["Ideal para","Personas naturales, independientes, emprendedores y pymes"]],
+    cards:[
+      ["Contabilidad integral","Registro y organización de operaciones, conciliaciones, estados financieros y acompañamiento para mantener la información contable al día."],
+      ["Gestión tributaria","Revisión de obligaciones ante la DIAN, declaraciones, retenciones, IVA, renta, información exógena y planeación tributaria."],
+      ["Soporte operativo","Acompañamiento por WhatsApp y correo para resolver inquietudes, recibir documentos y hacer seguimiento a solicitudes."]
+    ],
+    checklist:["Defina el tipo de servicio que necesita.","Reúna documentos básicos de identificación, RUT, soportes o información financiera.","Cuéntenos si necesita atención puntual o acompañamiento mensual.","Reciba una propuesta según alcance, volumen de operaciones y urgencia."],
+    faqs:[
+      ["¿Puedo contratar un servicio puntual?","Sí. Puede contratar certificaciones, declaraciones, trámites, revisiones o asesorías sin tomar un plan mensual."],
+      ["¿Atienden fuera de Bogotá?","Sí. La atención es virtual para Colombia y permite gestionar documentos, pagos y seguimiento por canales digitales."],
+      ["¿El costo es fijo para todos los servicios?","No. En servicios personalizados el valor depende del alcance, complejidad, urgencia y volumen de información."]
+    ]
+  },
+  {
+    path:"/planes-contables",
+    sectionId:"planes-contables",
+    metaTitle:"Planes contables mensuales para empresas | CONTARAE",
+    metaDescription:"Planes contables mensuales para independientes, microempresas y pymes: contabilidad, impuestos, nómina, estados financieros y soporte permanente.",
+    badge:"PLANES MENSUALES",
+    title:"Planes contables mensuales para organizar y controlar su empresa",
+    intro:"Los planes contables de CONTARAE están pensados para negocios que necesitan acompañamiento permanente, información ordenada y control sobre sus obligaciones.",
+    intent:"Los valores son de referencia y pueden ajustarse según volumen de documentos, número de empleados, obligaciones tributarias, periodicidad de reportes y nivel de acompañamiento requerido.",
+    serviceType:"Planes contables",
+    ctaLabel:"Consultar plan contable",
+    whatsapp:"Hola CONTARAE, quiero recibir información sobre los planes contables mensuales.",
+    highlights:[["Desde","Plan Emprendedor desde $500.000/mes"],["Escalable","Emprendedor, Empresarial y Premium"],["Incluye","Contabilidad, impuestos, reportes y soporte según alcance"]],
+    cards:[
+      ["Plan Emprendedor","Pensado para independientes y microempresas que requieren declaraciones básicas, conciliación bancaria, estados financieros trimestrales y soporte permanente."],
+      ["Plan Empresarial","Diseñado para pymes que necesitan registro contable mensual, nómina, seguridad social, información exógena, KPIs y planeación tributaria."],
+      ["Plan Premium","Orientado a empresas en crecimiento que requieren control de gestión, dashboard financiero, análisis de costos y reuniones gerenciales periódicas."]
+    ],
+    checklist:["Comparta el tipo de empresa y actividad económica.","Indique número aproximado de documentos mensuales.","Informe si tiene empleados, IVA, retención o información exógena.","Reciba una propuesta ajustada al alcance real del negocio."],
+    faqs:[
+      ["¿Los precios son definitivos?","Son valores de referencia. El valor final se define después de conocer el volumen de información y las obligaciones de la empresa."],
+      ["¿Puedo cambiar de plan después?","Sí. El plan puede ajustarse si crece la operación, aumentan documentos o cambian las obligaciones."],
+      ["¿Incluye declaraciones tributarias?","Depende del plan y del alcance pactado. En la propuesta se deja claro qué declaraciones y reportes quedan incluidos."]
+    ]
+  },
+  {
+    path:"/contabilidad-para-pymes",
+    sectionId:"contabilidad-pymes",
+    metaTitle:"Contabilidad para pymes en Colombia | CONTARAE",
+    metaDescription:"Contabilidad para pymes y microempresas en Colombia: registros, conciliaciones, impuestos, estados financieros, nómina y acompañamiento gerencial.",
+    badge:"PYMES Y MICROEMPRESAS",
+    title:"Contabilidad para pymes que necesitan claridad, control y cumplimiento",
+    intro:"Una pyme necesita información contable útil, no solo registros para cumplir. CONTARAE estructura la contabilidad para que el negocio pueda tomar mejores decisiones.",
+    intent:"Acompañamos empresas pequeñas y en crecimiento con registro contable, conciliaciones, impuestos, nómina, reportes e indicadores que permitan entender la operación.",
+    serviceType:"Contabilidad para pymes",
+    ctaLabel:"Solicitar contabilidad para mi pyme",
+    whatsapp:"Hola CONTARAE, quiero organizar la contabilidad de mi pyme.",
+    highlights:[["Control","Conciliaciones y registros mensuales"],["Decisión","Estados financieros e indicadores claros"],["Cumplimiento","Soporte tributario, laboral y contable"]],
+    cards:[
+      ["Información al día","Organización de documentos, registros contables, conciliaciones bancarias y revisión de soportes para evitar atrasos."],
+      ["Cumplimiento tributario","Acompañamiento en IVA, retención en la fuente, renta, ICA e información exógena según las obligaciones del negocio."],
+      ["Lectura gerencial","Reportes financieros, indicadores, análisis de costos y recomendaciones para mejorar control y rentabilidad."]
+    ],
+    checklist:["Indique la actividad económica y tamaño de la empresa.","Comparta RUT, Cámara de Comercio y obligaciones actuales.","Informe volumen de facturas, bancos, empleados y documentos mensuales.","Definamos una propuesta mensual según la operación real."],
+    faqs:[
+      ["¿Pueden recibir documentos digitales?","Sí. El proceso puede manejarse virtualmente mediante archivos digitales y canales de seguimiento."],
+      ["¿Sirve para empresas recién creadas?","Sí. Es ideal iniciar ordenado desde el comienzo para evitar reprocesos tributarios y contables."],
+      ["¿Incluye estados financieros?","Sí, según el alcance contratado pueden prepararse estados financieros periódicos y reportes gerenciales."]
+    ]
+  },
+  {
+    path:"/asesoria-tributaria",
+    sectionId:"asesoria-tributaria",
+    metaTitle:"Asesoría tributaria en Colombia | CONTARAE",
+    metaDescription:"Asesoría tributaria para personas naturales, independientes y empresas: DIAN, renta, IVA, retención en la fuente, ICA, información exógena y planeación.",
+    badge:"ASESORÍA TRIBUTARIA",
+    title:"Asesoría tributaria para cumplir mejor y tomar decisiones con criterio",
+    intro:"La asesoría tributaria ayuda a entender obligaciones, riesgos, plazos y alternativas antes de presentar declaraciones o tomar decisiones que impacten impuestos.",
+    intent:"Revisamos casos de personas naturales, independientes, emprendedores y empresas frente a DIAN, renta, IVA, retenciones, ICA, información exógena y planeación tributaria.",
+    serviceType:"Asesoría tributaria",
+    ctaLabel:"Solicitar asesoría tributaria",
+    whatsapp:"Hola CONTARAE, necesito asesoría tributaria.",
+    highlights:[["Temas","Renta, IVA, retefuente, ICA e información exógena"],["Uso","Revisión preventiva o solución de casos puntuales"],["Resultado","Recomendaciones claras según soportes y normatividad"]],
+    cards:[
+      ["Diagnóstico tributario","Revisión de obligaciones, topes, declaraciones, soportes y posibles inconsistencias antes de presentar o corregir."],
+      ["Planeación y prevención","Orientación para anticipar efectos tributarios, organizar soportes y reducir riesgos por errores u omisiones."],
+      ["Acompañamiento DIAN","Apoyo en requerimientos, correcciones, consultas y revisión de información reportada o por reportar."]
+    ],
+    checklist:["Describa el caso tributario que desea revisar.","Comparta RUT, declaraciones, certificados o soportes relevantes.","Indique fechas, vencimientos o comunicaciones recibidas.","Reciba una orientación técnica y un plan de acción."],
+    faqs:[
+      ["¿Atienden personas naturales?","Sí. Revisamos declaración de renta, topes, patrimonio, soportes, deducciones y obligaciones ante la DIAN."],
+      ["¿Pueden revisar una declaración ya presentada?","Sí. Podemos revisar consistencia, riesgos y posibles correcciones dentro de los términos legales."],
+      ["¿La asesoría reemplaza una declaración?","No necesariamente. La asesoría puede ser una revisión puntual o derivar en la preparación formal de una declaración."]
+    ]
+  },
+  {
+    path:"/declaracion-de-renta-personas-naturales",
+    sectionId:"declaracion-renta-personas-naturales",
+    metaTitle:"Declaración de renta personas naturales | CONTARAE",
+    metaDescription:"Preparación y revisión de declaración de renta para personas naturales en Colombia, con análisis de soportes, topes, deducciones y presentación ante la DIAN.",
+    badge:"RENTA PERSONAS NATURALES",
+    title:"Declaración de renta para personas naturales con revisión profesional",
+    intro:"La declaración de renta requiere revisar ingresos, patrimonio, consumos, movimientos bancarios, deducciones, rentas exentas y soportes antes de presentar.",
+    intent:"CONTARAE acompaña a asalariados, independientes, rentistas y personas naturales que necesitan determinar obligación, preparar información y presentar ante la DIAN.",
+    serviceType:"Declaración de renta personas naturales",
+    ctaLabel:"Consultar declaración de renta",
+    whatsapp:"Hola CONTARAE, necesito ayuda con mi declaración de renta.",
+    highlights:[["Revisión","Topes, patrimonio, ingresos, deducciones y soportes"],["Proceso","Preparación y presentación ante la DIAN"],["Complemento","Herramienta orientativa disponible en la web"]],
+    cards:[
+      ["Análisis previo","Validación de obligación de declarar, documentos necesarios, topes y situación fiscal del contribuyente."],
+      ["Preparación de declaración","Depuración de información, revisión de soportes, cálculo del impuesto o saldo y preparación para presentación."],
+      ["Acompañamiento","Explicación del resultado, soporte sobre pagos, vencimientos y conservación de documentos."]
+    ],
+    checklist:["Reúna certificados laborales, extractos, inversiones, deudas y soportes de deducciones.","Indique si tuvo ingresos como independiente, arriendos, dividendos o ventas de activos.","Comparta información de patrimonio y movimientos relevantes.","Revise el resultado antes de presentar."],
+    faqs:[
+      ["¿Cómo sé si debo declarar renta?","Puede usar la herramienta orientativa y luego solicitar revisión profesional si supera topes o tiene dudas."],
+      ["¿Qué pasa si declaro tarde?","Puede generarse sanción por extemporaneidad e intereses según el caso."],
+      ["¿Puedo corregir una declaración?","Sí, en muchos casos es posible corregir dentro de los términos legales, evaluando el efecto tributario."]
+    ]
+  },
+  {
+    path:"/nomina-y-seguridad-social",
+    sectionId:"nomina-seguridad-social",
+    metaTitle:"Nómina y seguridad social para empresas | CONTARAE",
+    metaDescription:"Servicio de nómina y seguridad social para empresas: liquidación de salarios, prestaciones, aportes, planilla PILA, contratos y reportes laborales.",
+    badge:"NÓMINA Y SEGURIDAD SOCIAL",
+    title:"Nómina y seguridad social para empresas que necesitan control laboral",
+    intro:"La nómina no es solo pagar salarios. También exige controlar prestaciones, aportes, novedades, planilla PILA, contratos y reportes laborales.",
+    intent:"CONTARAE apoya a empresas y empleadores con liquidaciones periódicas, seguridad social, prestaciones sociales y revisión de obligaciones laborales.",
+    serviceType:"Nómina y seguridad social",
+    ctaLabel:"Solicitar apoyo en nómina",
+    whatsapp:"Hola CONTARAE, necesito apoyo con nómina y seguridad social.",
+    highlights:[["Incluye","Salarios, prestaciones, deducciones y aportes"],["Apoya","Planilla PILA, novedades y reportes laborales"],["Útil para","Empresas con empleados o contratistas"]],
+    cards:[
+      ["Liquidación de nómina","Cálculo de devengados, deducciones, auxilios, prestaciones, aportes y costo total del trabajador."],
+      ["Seguridad social","Revisión de salud, pensión, ARL, cajas de compensación, parafiscales y planilla PILA según cada caso."],
+      ["Control documental","Apoyo en contratos, certificados laborales, formulario 220, liquidaciones y soportes relacionados."]
+    ],
+    checklist:["Indique número de trabajadores y tipo de vinculación.","Comparta salario, novedades, incapacidades, licencias o variables del mes.","Informe operador PILA y fechas de pago.","Reciba liquidación y soporte según el alcance contratado."],
+    faqs:[
+      ["¿También revisan contratistas?","Sí. Podemos revisar seguridad social de independientes y bases de cotización según el caso."],
+      ["¿La herramienta de nómina reemplaza el servicio?","No. La herramienta orienta cálculos; el servicio revisa datos reales, novedades y obligaciones."],
+      ["¿Pueden emitir certificados laborales?","Sí, si se cuenta con la información laboral necesaria y el alcance queda pactado."]
+    ]
+  },
+  {
+    path:"/facturacion-electronica",
+    sectionId:"facturacion-electronica",
+    metaTitle:"Facturación electrónica DIAN | CONTARAE",
+    metaDescription:"Acompañamiento en facturación electrónica: habilitación DIAN, numeración, proveedor tecnológico, notas crédito, soporte operativo y revisión contable.",
+    badge:"FACTURACIÓN ELECTRÓNICA",
+    title:"Facturación electrónica DIAN con implementación y soporte contable",
+    intro:"La facturación electrónica impacta ventas, impuestos, cartera y trazabilidad contable. Una configuración correcta evita rechazos, errores y reprocesos.",
+    intent:"Acompañamos habilitación, numeración, proveedor tecnológico, emisión, notas crédito, revisión de inconsistencias y organización del proceso de facturación.",
+    serviceType:"Facturación electrónica",
+    ctaLabel:"Solicitar apoyo en facturación",
+    whatsapp:"Hola CONTARAE, necesito implementar o revisar facturación electrónica.",
+    highlights:[["Incluye","Habilitación, numeración y proveedor tecnológico"],["Control","Facturas, notas crédito y consistencia contable"],["Ideal para","Emprendedores, comercios, pymes y prestadores de servicios"]],
+    cards:[
+      ["Implementación","Apoyo en pasos de habilitación ante DIAN, resolución de numeración y configuración operativa del sistema."],
+      ["Revisión de proceso","Validación de emisión, notas crédito, conceptos, impuestos, datos de clientes y consistencia con la contabilidad."],
+      ["Soporte posterior","Orientación para manejar errores frecuentes, cambios de numeración y dudas operativas."]
+    ],
+    checklist:["Informe si ya tiene RUT y obligación de facturar.","Indique proveedor tecnológico actual o si necesita elegir uno.","Comparta errores o mensajes de rechazo si existen.","Definamos si requiere implementación o revisión puntual."],
+    faqs:[
+      ["¿Todos deben facturar electrónicamente?","Depende de la actividad, régimen y obligaciones. Conviene revisar el RUT y la situación tributaria."],
+      ["¿Pueden ayudarme si ya tengo proveedor?","Sí. Podemos revisar configuración, numeración, errores y consistencia del proceso."],
+      ["¿Incluye manejo mensual?","Puede incluirse dentro de un plan contable o contratarse como apoyo puntual."]
+    ]
+  },
+  {
+    path:"/creacion-de-empresa",
+    sectionId:"creacion-empresa",
+    metaTitle:"Creación de empresa en Colombia | CONTARAE",
+    metaDescription:"Acompañamiento para crear empresa en Colombia: elección de tipo societario, Cámara de Comercio, RUT, obligaciones tributarias y puesta en marcha contable.",
+    badge:"CREACIÓN DE EMPRESA",
+    title:"Creación de empresa en Colombia con acompañamiento contable y tributario",
+    intro:"Crear empresa implica tomar decisiones sobre tipo societario, actividad económica, responsabilidades tributarias, capital, socios, RUT y operación inicial.",
+    intent:"CONTARAE orienta a emprendedores en la formalización de negocios y en los pasos posteriores para iniciar con obligaciones claras y contabilidad organizada.",
+    serviceType:"Creación de empresa",
+    ctaLabel:"Solicitar creación de empresa",
+    whatsapp:"Hola CONTARAE, quiero crear mi empresa en Colombia.",
+    highlights:[["Incluye","Orientación societaria, Cámara de Comercio y RUT"],["Después","Obligaciones, facturación y contabilidad inicial"],["Ideal para","Emprendedores que quieren formalizar su negocio"]],
+    cards:[
+      ["Planeación inicial","Definición de actividad económica, tipo societario, capital, socios, responsabilidades y necesidades tributarias."],
+      ["Formalización","Acompañamiento en documentos, Cámara de Comercio, RUT y primeros pasos para operar formalmente."],
+      ["Puesta en marcha","Orientación sobre facturación electrónica, cuenta bancaria, obligaciones fiscales y plan contable inicial."]
+    ],
+    checklist:["Defina nombre, socios, actividad y ciudad de operación.","Comparta documentos de identificación y datos básicos.","Revise si requiere facturación electrónica o inscripción de responsabilidades.","Inicie con un esquema contable ordenado desde el primer mes."],
+    faqs:[
+      ["¿Qué tipo de empresa conviene crear?","Depende del número de socios, riesgo, actividad, tamaño proyectado y necesidades tributarias."],
+      ["¿Después de crearla debo llevar contabilidad?","Sí, una empresa formal debe mantener información contable y cumplir obligaciones según su actividad."],
+      ["¿Pueden acompañar después de creada?","Sí. Puede continuar con un plan contable mensual o asesorías puntuales."]
+    ]
+  },
+  {
+    path:"/contador-publico-bogota",
+    sectionId:"contador-publico-bogota",
+    metaTitle:"Contador público en Bogotá | CONTARAE",
+    metaDescription:"Contador público en Bogotá para certificaciones, contabilidad, impuestos, nómina, declaración de renta y asesoría tributaria con atención virtual.",
+    badge:"CONTADOR PÚBLICO EN BOGOTÁ",
+    title:"Contador Público en Bogotá con atención virtual y procesos claros",
+    intro:"Si necesita un contador público en Bogotá para certificaciones, impuestos, contabilidad o trámites, CONTARAE ofrece atención digital con enfoque profesional.",
+    intent:"Servicio dirigido a personas naturales, independientes, emprendedores y empresas ubicadas en Bogotá o que requieren soporte contable desde la ciudad.",
+    serviceType:"Contador público Bogotá",
+    ctaLabel:"Contactar contador público",
+    whatsapp:"Hola CONTARAE, necesito hablar con un contador público en Bogotá.",
+    highlights:[["Ubicación","Bogotá D.C. con atención virtual"],["Servicios","Certificaciones, renta, contabilidad, nómina e impuestos"],["Canales","WhatsApp, correo y formularios digitales"]],
+    cards:[
+      ["Certificaciones y trámites","Emisión de certificaciones contables, certificación de ingresos y documentos firmados por Contador Público cuando aplique."],
+      ["Impuestos y contabilidad","Acompañamiento en declaración de renta, IVA, retención, información exógena y contabilidad mensual."],
+      ["Atención flexible","Recepción de documentos digitales, seguimiento por canales remotos y orientación según necesidad."]
+    ],
+    checklist:["Indique si requiere servicio personal o empresarial.","Cuéntenos el trámite o problema contable que necesita resolver.","Comparta documentos o soportes relevantes.","Reciba una ruta de atención y cotización según alcance."],
+    faqs:[
+      ["¿Atienden presencialmente?","La operación principal es virtual, lo que permite atender con agilidad y trazabilidad documental."],
+      ["¿Sirve para trámites en entidades de Bogotá?","Sí. Se preparan documentos y soportes según el trámite y requisitos de la entidad receptora."],
+      ["¿Puedo contratar solo una certificación?","Sí. La certificación de ingresos y otros documentos pueden contratarse de forma puntual."]
+    ]
+  },
+  {
+    path:"/contador-publico-online",
+    sectionId:"contador-publico-online",
+    metaTitle:"Contador público online en Colombia | CONTARAE",
+    metaDescription:"Contador público online en Colombia para certificaciones, declaración de renta, asesoría tributaria, contabilidad mensual, nómina y trámites digitales.",
+    badge:"CONTADOR ONLINE",
+    title:"Contador Público online para gestionar trámites contables desde cualquier lugar",
+    intro:"La atención contable online permite enviar información, resolver dudas, pagar servicios y recibir documentos sin desplazamientos, manteniendo orden y trazabilidad.",
+    intent:"CONTARAE atiende personas y empresas en Colombia con procesos digitales para certificaciones, impuestos, contabilidad, nómina, facturación y asesoría.",
+    serviceType:"Contador público online",
+    ctaLabel:"Solicitar atención online",
+    whatsapp:"Hola CONTARAE, necesito atención de contador público online.",
+    highlights:[["Modalidad","100% digital para Colombia"],["Entrega","Documentos y seguimiento por canales electrónicos"],["Servicios","Certificaciones, impuestos, contabilidad y trámites"]],
+    cards:[
+      ["Proceso digital","Formulario, WhatsApp, correo, pagos en línea y seguimiento permiten gestionar solicitudes con claridad."],
+      ["Soportes organizados","Se reciben documentos digitales legibles y se revisan según el alcance del servicio solicitado."],
+      ["Acompañamiento humano","Aunque el proceso sea online, la atención mantiene revisión profesional y comunicación directa."]
+    ],
+    checklist:["Explique el servicio que necesita.","Envíe datos y soportes por los canales indicados.","Reciba cotización o enlace de pago cuando aplique.","Haga seguimiento hasta la entrega o cierre del servicio."],
+    faqs:[
+      ["¿Es válido un servicio contable online?","Sí, siempre que el servicio se preste con soporte documental, responsabilidad profesional y canales verificables."],
+      ["¿Cómo envío documentos?","Puede enviarlos por formulario, WhatsApp o correo según el tipo de solicitud."],
+      ["¿Puedo pagar en línea?","Sí. Los servicios que lo requieran pueden gestionarse mediante enlaces de pago o alternativas acordadas."]
+    ]
+  }
+];
 const TOOL_ROUTE_BY_PATH=new Map();
 const TOOL_ROUTE_BY_ID=new Map();
 TOOL_ROUTES.forEach(cfg=>{
@@ -305,6 +557,7 @@ TOOL_ROUTES.forEach(cfg=>{
   cfg.aliases.forEach(alias=>TOOL_ROUTE_BY_PATH.set(normPath(alias),cfg));
 });
 const CERTIFICATION_SUPPORT_ROUTE_BY_PATH=new Map(CERTIFICATION_SUPPORT_ROUTES.map(cfg=>[normPath(cfg.path),cfg]));
+const SERVICE_SEO_ROUTE_BY_PATH=new Map(SERVICE_SEO_ROUTES.map(cfg=>[normPath(cfg.path),cfg]));
 const isCertificationPath=p=>CERT_ROUTE_ALIASES.has(normPath(p));
 const isAdminPath=p=>ADMIN_ROUTE_ALIASES.has(normPath(p));
 const isVerifyPath=p=>VERIFY_ROUTE_ALIASES.has(normPath(p));
@@ -312,18 +565,20 @@ const isPaymentPath=p=>PAYMENT_ROUTE_ALIASES.has(normPath(p));
 const isPaymentsPortalPath=p=>PAYMENTS_PORTAL_ROUTE_ALIASES.has(normPath(p));
 const getToolRouteConfig=p=>TOOL_ROUTE_BY_PATH.get(normPath(p))||null;
 const getCertificationSupportRouteConfig=p=>CERTIFICATION_SUPPORT_ROUTE_BY_PATH.get(normPath(p))||null;
+const getServiceSeoRouteConfig=p=>SERVICE_SEO_ROUTE_BY_PATH.get(normPath(p))||null;
 const isToolPath=p=>!!getToolRouteConfig(p);
 const getCurrentPath=()=>typeof window==="undefined"?"/":normPath(window.location.pathname);
-const getStandaloneLocalSectionId=path=>isCertificationPath(path)?"certificacion":getToolRouteConfig(path)?.sectionId||getCertificationSupportRouteConfig(path)?.sectionId||null;
+const getStandaloneLocalSectionId=path=>isCertificationPath(path)?"certificacion":getToolRouteConfig(path)?.sectionId||getCertificationSupportRouteConfig(path)?.sectionId||getServiceSeoRouteConfig(path)?.sectionId||null;
 const getSectionHref=(id,path)=>{
   const currentTool=getToolRouteConfig(path);
   const currentSupport=getCertificationSupportRouteConfig(path);
+  const currentService=getServiceSeoRouteConfig(path);
   const targetTool=TOOL_ROUTE_BY_ID.get(id);
   if(targetTool){
     if(currentTool?.toolId===id)return `#${id}`;
-    if(currentTool||isCertificationPath(path)||currentSupport)return targetTool.path;
+    if(currentTool||isCertificationPath(path)||currentSupport||currentService)return targetTool.path;
   }
-  if(id==="certificacion"&&currentSupport)return CERT_ROUTE;
+  if(id==="certificacion"&&(currentSupport||currentService))return CERT_ROUTE;
   const localId=getStandaloneLocalSectionId(path);
   return localId&&id!==localId?`/#${id}`:`#${id}`;
 };
@@ -333,7 +588,8 @@ const canonicalUrlForPath=path=>{
   const normalized=normPath(path);
   const tool=getToolRouteConfig(normalized);
   const support=getCertificationSupportRouteConfig(normalized);
-  const canonicalPath=isCertificationPath(normalized)?CERT_ROUTE:tool?.path||support?.path||normalized;
+  const service=getServiceSeoRouteConfig(normalized);
+  const canonicalPath=isCertificationPath(normalized)?CERT_ROUTE:tool?.path||support?.path||service?.path||normalized;
   return new URL(canonicalPath, SITE_URL).href;
 };
 const upsertMeta=(selector,attrs)=>{
@@ -370,13 +626,14 @@ const syncAlternateSeoLinks=canonical=>{
   upsertAlternateLink("es-CO",canonical);
   upsertAlternateLink("x-default",canonical);
 };
-const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig})=>{
+const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig})=>{
   if(adminRoute)return{title:"Panel interno | CONTARAE",description:"Panel interno de revisión de CONTARAE.",canonical:canonicalUrlForPath("/admin"),noindex:true};
   if(verifyRoute)return{title:"Validación de certificados | CONTARAE",description:"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.",canonical:canonicalUrlForPath(VERIFY_ROUTE),noindex:true};
   if(paymentRoute)return{title:"Pago de solicitud | CONTARAE",description:"Portal de pago seguro para solicitudes de servicios CONTARAE.",canonical:canonicalUrlForPath(PAYMENT_ROUTE),noindex:true};
   if(paymentsPortalRoute)return{title:"Portal de pagos | CONTARAE",description:"Consulte y pague saldos pendientes de solicitudes CONTARAE con su número de documento.",canonical:canonicalUrlForPath(PAYMENTS_PORTAL_ROUTE),noindex:true};
   if(toolRoute)return{title:toolConfig.metaTitle,description:toolConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
   if(certSupportConfig)return{title:certSupportConfig.metaTitle,description:certSupportConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
+  if(serviceSeoConfig)return{title:serviceSeoConfig.metaTitle,description:serviceSeoConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
   if(certRoute)return{title:"Certificación de ingresos por Contador Público | CONTARAE",description:"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.",canonical:canonicalUrlForPath(CERT_ROUTE),noindex:false};
   return{title:"CONTARAE | Servicios contables, tributarios y financieros",description:"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.",canonical:canonicalUrlForPath("/"),noindex:false};
 };
@@ -386,7 +643,7 @@ const buildFaqSchema=faqs=>{
   if(!items.length)return null;
   return{"@context":"https://schema.org","@type":"FAQPage","mainEntity":items};
 };
-const buildStructuredData=(path,meta,toolConfig,certSupportConfig)=>{
+const buildStructuredData=(path,meta,toolConfig,certSupportConfig,serviceSeoConfig)=>{
   const normalized=normPath(path);
   const base=[
     {"@context":"https://schema.org","@type":"ProfessionalService","@id":`${SITE_URL}/#negocio`,"name":"CONTARAE","description":"Servicios contables, tributarios y financieros en Colombia, con certificación de ingresos por Contador Público y herramientas de cálculo tributario y laboral.","url":SITE_URL,"telephone":"+573001432008","email":EM,"address":{"@type":"PostalAddress","addressLocality":"Bogotá D.C.","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00","sameAs":SOCIAL_LINKS.map(([,url])=>url)},
@@ -406,12 +663,17 @@ const buildStructuredData=(path,meta,toolConfig,certSupportConfig)=>{
   }else if(toolConfig){
     base.push({"@context":"https://schema.org","@type":"WebApplication","name":toolConfig.heroTitle,"description":toolConfig.metaDescription,"url":meta.canonical,"applicationCategory":"FinanceApplication","operatingSystem":"Web","inLanguage":"es-CO","provider":{"@id":`${SITE_URL}/#negocio`}});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Herramientas",path:"/#herramientas"},{name:toolConfig.heroTitle,path:toolConfig.path}]));
+  }else if(serviceSeoConfig){
+    base.push({"@context":"https://schema.org","@type":"Service","name":serviceSeoConfig.title,"description":serviceSeoConfig.metaDescription,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":serviceSeoConfig.serviceType,"url":meta.canonical});
+    base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Servicios",path:"/#servicios"},{name:serviceSeoConfig.title,path:serviceSeoConfig.path}]));
+    const faqSchema=buildFaqSchema((serviceSeoConfig.faqs||[]).map(([q,a])=>({q,a})));
+    if(faqSchema)base.push(faqSchema);
   }else if(normalized==="/"){
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"}]));
   }
   return base;
 };
-const syncSeoTags=(meta,path,toolConfig,certSupportConfig)=>{
+const syncSeoTags=(meta,path,toolConfig,certSupportConfig,serviceSeoConfig)=>{
   if(typeof document==="undefined")return;
   document.title=meta.title;
   upsertMeta('meta[name="description"]',{name:"description",content:meta.description});
@@ -431,7 +693,7 @@ const syncSeoTags=(meta,path,toolConfig,certSupportConfig)=>{
   upsertMeta('meta[name="twitter:image"]',{name:"twitter:image",content:new URL("/logo512.png",SITE_URL).href});
   document.querySelectorAll("script[data-contarae-schema]").forEach(el=>el.remove());
   if(meta.noindex)return;
-  buildStructuredData(path,meta,toolConfig,certSupportConfig).forEach(schema=>{
+  buildStructuredData(path,meta,toolConfig,certSupportConfig,serviceSeoConfig).forEach(schema=>{
     const script=document.createElement("script");
     script.type="application/ld+json";
     script.setAttribute("data-contarae-schema","client");
@@ -495,9 +757,10 @@ function Nav({path}){
   const certRoute=isCertificationPath(path);
   const toolConfig=getToolRouteConfig(path);
   const certSupportConfig=getCertificationSupportRouteConfig(path);
-  const standaloneRoute=certRoute||!!toolConfig||!!certSupportConfig;
-  const localStandaloneId=certRoute?"certificacion":toolConfig?.sectionId||certSupportConfig?.sectionId;
-  const[act,sAct]=useState(certRoute||certSupportConfig?"certificacion":toolConfig?"herramientas":"inicio");
+  const serviceSeoConfig=getServiceSeoRouteConfig(path);
+  const standaloneRoute=certRoute||!!toolConfig||!!certSupportConfig||!!serviceSeoConfig;
+  const localStandaloneId=certRoute?"certificacion":toolConfig?.sectionId||certSupportConfig?.sectionId||serviceSeoConfig?.sectionId;
+  const[act,sAct]=useState(certRoute||certSupportConfig?"certificacion":toolConfig?"herramientas":serviceSeoConfig?"servicios":"inicio");
   const[dd,sDD]=useState(null);
 
   const menu=[
@@ -512,7 +775,7 @@ function Nav({path}){
 
   useEffect(()=>{
     if(standaloneRoute){
-      sAct(certRoute||certSupportConfig?"certificacion":"herramientas");
+      sAct(certRoute||certSupportConfig?"certificacion":toolConfig?"herramientas":"servicios");
       return;
     }
     const ids=["inicio","servicios","planes","escenarios","tramites","certificacion","herramientas","tool-renta","tool-retencion","tool-planilla","tool-nomina","tool-iva","tool-precio","calendario","blog","descargas","faq","alertas","whyus","nosotros","contacto"];
@@ -528,7 +791,7 @@ function Nav({path}){
     });
 
     return()=>obs.disconnect();
-  },[standaloneRoute,certRoute,certSupportConfig]);
+  },[standaloneRoute,certRoute,certSupportConfig,toolConfig,serviceSeoConfig]);
 
   const navBase={
     textDecoration:"none",
@@ -1161,13 +1424,13 @@ function WhyUs(){return(<Sec id="whyus" title="¿Por qué elegir a CONTARAE?" su
 ].map((w,i)=><Cd key={i}><div style={{fontSize:28,marginBottom:8}}>{w.i}</div><h3 style={{fontSize:16,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{w.t}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{w.d}</p></Cd>)}</div></Sec>)}
 
 function SvcS(){const svcs=[
-  {i:"📊",t:"Contabilidad Integral",d:"Ciclo contable completo para microempresas, emprendedores y pymes: registro de operaciones, conciliaciones bancarias, estados financieros y aplicación de NIIF.",w:"Hola CONTARAE, estoy interesado en el servicio de Contabilidad Integral."},
-  {i:"📋",t:"Asesoría Tributaria",d:"Acompañamiento en obligaciones ante la DIAN: declaración de renta, IVA, retención en la fuente, ICA, información exógena y planeación tributaria.",w:"Hola CONTARAE, necesito asesoría tributaria."},
-  {i:"💰",t:"Gestión Financiera",d:"Presupuestos, flujo de caja, indicadores financieros (KPIs), análisis de costos y reportes gerenciales personalizados.",w:"Hola CONTARAE, me interesa el servicio de Gestión Financiera."},
-  {i:"👥",t:"Nómina y Seguridad Social",d:"Liquidación de salarios, prestaciones sociales, aportes a seguridad social, planilla PILA, contratos laborales y formulario 220.",w:"Hola CONTARAE, necesito información sobre Nómina y Seguridad Social."},
-  {i:"📄",t:"Certificaciones Contables",d:"Certificados de ingresos, patrimonio y más, firmados por Contador Público. Conforme a Ley 43 de 1990. Entrega digital inmediata en PDF.",w:"Hola CONTARAE, necesito una certificación contable."},
-  {i:"🔧",t:"Otros Servicios Contables",d:"Auditoría interna, informes financieros especiales, asesoría ante la DIAN, liquidación de empresas, constitución de consorcios y orientación societaria.",w:"Hola CONTARAE, necesito información sobre un servicio contable específico."}
-];return(<Sec id="servicios" title="Soluciones profesionales para su negocio" sub="NUESTROS SERVICIOS" bg={B[1]}><p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:38,maxWidth:680,margin:"-34px auto 38px",fontFamily:F}}>Outsourcing contable para microempresas, emprendedores y pymes en Colombia.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:18}}>{svcs.map((s,i)=><Cd key={i}><div style={{fontSize:28,marginBottom:8}}>{s.i}</div><h3 style={{fontSize:16,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{s.t}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{s.d}</p><a href={wm(s.w)} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:10,fontSize:14,color:"#2563EB",fontWeight:600,textDecoration:"none",fontFamily:F}}>Solicitar asesoría →</a></Cd>)}</div></Sec>)}
+  {i:"📊",t:"Contabilidad Integral",d:"Ciclo contable completo para microempresas, emprendedores y pymes: registro de operaciones, conciliaciones bancarias, estados financieros y aplicación de NIIF.",p:"/contabilidad-para-pymes",w:"Hola CONTARAE, estoy interesado en el servicio de Contabilidad Integral."},
+  {i:"📋",t:"Asesoría Tributaria",d:"Acompañamiento en obligaciones ante la DIAN: declaración de renta, IVA, retención en la fuente, ICA, información exógena y planeación tributaria.",p:"/asesoria-tributaria",w:"Hola CONTARAE, necesito asesoría tributaria."},
+  {i:"💰",t:"Gestión Financiera",d:"Presupuestos, flujo de caja, indicadores financieros (KPIs), análisis de costos y reportes gerenciales personalizados.",p:"/servicios-contables",w:"Hola CONTARAE, me interesa el servicio de Gestión Financiera."},
+  {i:"👥",t:"Nómina y Seguridad Social",d:"Liquidación de salarios, prestaciones sociales, aportes a seguridad social, planilla PILA, contratos laborales y formulario 220.",p:"/nomina-y-seguridad-social",w:"Hola CONTARAE, necesito información sobre Nómina y Seguridad Social."},
+  {i:"📄",t:"Certificaciones Contables",d:"Certificados de ingresos, patrimonio y más, firmados por Contador Público. Conforme a Ley 43 de 1990. Entrega digital inmediata en PDF.",p:CERT_ROUTE,w:"Hola CONTARAE, necesito una certificación contable."},
+  {i:"🔧",t:"Otros Servicios Contables",d:"Auditoría interna, informes financieros especiales, asesoría ante la DIAN, liquidación de empresas, constitución de consorcios y orientación societaria.",p:"/servicios-contables",w:"Hola CONTARAE, necesito información sobre un servicio contable específico."}
+];return(<Sec id="servicios" title="Soluciones profesionales para su negocio" sub="NUESTROS SERVICIOS" bg={B[1]}><p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:20,maxWidth:680,margin:"-34px auto 20px",fontFamily:F}}>Outsourcing contable para microempresas, emprendedores y pymes en Colombia.</p><div style={{textAlign:"center",marginBottom:34}}><a href="/servicios-contables" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"11px 18px",borderRadius:13,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.12)",color:"#1D4ED8",fontSize:14,fontWeight:800,textDecoration:"none",fontFamily:F}}>Ver página de servicios contables</a></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:18}}>{svcs.map((s,i)=><Cd key={i}><div style={{fontSize:28,marginBottom:8}}>{s.i}</div><h3 style={{fontSize:16,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{s.t}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{s.d}</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:10}}><a href={s.p} style={{fontSize:14,color:"#2563EB",fontWeight:700,textDecoration:"none",fontFamily:F}}>Ver servicio →</a><a href={wm(s.w)} target="_blank" rel="noopener noreferrer" style={{fontSize:14,color:"#0F766E",fontWeight:700,textDecoration:"none",fontFamily:F}}>WhatsApp →</a></div></Cd>)}</div></Sec>)}
 
 function PlnS(){
   const plans=[
@@ -1186,7 +1449,8 @@ function PlnS(){
   };
   return(
     <Sec id="planes" title="Contabilidad integral para su empresa" sub="PLANES MENSUALES" bg={B[2]}>
-      <p style={{textAlign:"center",fontSize:14,color:"#5A6F8A",marginTop:-34,marginBottom:36,fontFamily:F}}>Precios de referencia según volumen de información.</p>
+      <p style={{textAlign:"center",fontSize:14,color:"#5A6F8A",marginTop:-34,marginBottom:16,fontFamily:F}}>Precios de referencia según volumen de información.</p>
+      <div style={{textAlign:"center",marginBottom:34}}><a href="/planes-contables" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"11px 18px",borderRadius:13,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.12)",color:"#1D4ED8",fontSize:14,fontWeight:800,textDecoration:"none",fontFamily:F}}>Ver detalle de planes contables</a></div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(290px,1fr))",gap:18}}>
         {plans.map((p,i)=>(
           <div
@@ -1230,11 +1494,11 @@ function PlnS(){
   )
 }
 
-function ScnS(){const scn=[{e:"👔",t:"Soy empleado y necesito certificación para arrendar",d:"Le piden certificación de ingresos firmada por contador. La emitimos en horas, 100% en línea.",l:"#certificacion"},{e:"💼",t:"Soy independiente y no sé si debo declarar renta",d:"Sus ingresos pueden obligarlo a declarar. Use nuestra herramienta para verificar al instante.",l:"#tool-renta"},{e:"🏪",t:"Tengo una pyme y necesito organizar mi contabilidad",d:"Su empresa necesita estados financieros confiables y cumplimiento tributario. Nuestros planes lo cubren.",l:"#planes"},{e:"📋",t:"Me pidieron renovar la matrícula mercantil",d:"El plazo vence el 31 de marzo. No renovar genera sanciones. Hacemos el trámite completo.",l:"#tramites"},{e:"🏗️",t:"Quiero crear mi empresa legalmente en Colombia",d:"SAS, LTDA o S.A., Cámara de Comercio, RUT y todos los requisitos para operar formalmente.",l:"#tramites"},{e:"🧮",t:"Quiero saber cuánto me retienen o debo pagar",d:"Use nuestras herramientas: retención en la fuente, planilla independientes, nómina e IVA.",l:"#herramientas"}];
+function ScnS(){const scn=[{e:"👔",t:"Soy empleado y necesito certificación para arrendar",d:"Le piden certificación de ingresos firmada por contador. La emitimos en horas, 100% en línea.",l:CERT_ROUTE},{e:"💼",t:"Soy independiente y no sé si debo declarar renta",d:"Sus ingresos pueden obligarlo a declarar. Use nuestra herramienta para verificar al instante.",l:"/debo-declarar-renta"},{e:"🏪",t:"Tengo una pyme y necesito organizar mi contabilidad",d:"Su empresa necesita estados financieros confiables y cumplimiento tributario. Nuestros planes lo cubren.",l:"/contabilidad-para-pymes"},{e:"📋",t:"Me pidieron renovar la matrícula mercantil",d:"El plazo vence el 31 de marzo. No renovar genera sanciones. Hacemos el trámite completo.",l:"#tramites"},{e:"🏗️",t:"Quiero crear mi empresa legalmente en Colombia",d:"SAS, LTDA o S.A., Cámara de Comercio, RUT y todos los requisitos para operar formalmente.",l:"/creacion-de-empresa"},{e:"🧮",t:"Quiero saber cuánto me retienen o debo pagar",d:"Use nuestras herramientas: retención en la fuente, planilla independientes, nómina e IVA.",l:"#herramientas"}];
 return(<Sec id="escenarios" title="¿Se identifica con alguno de estos casos?" sub="¿EN QUÉ LE PODEMOS AYUDAR?" bg={B[3]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18}}>{scn.map((s,i)=><a key={i} href={s.l} style={{textDecoration:"none",color:"inherit"}}><Cd s={{cursor:"pointer"}}><div style={{fontSize:28,marginBottom:8}}>{s.e}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{s.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.7,fontFamily:F}}>{s.d}</p><span style={{display:"inline-block",marginTop:8,fontSize:13,color:"#2563EB",fontWeight:600,fontFamily:F}}>Ver solución →</span></Cd></a>)}</div></Sec>)}
 
-function TrmS(){const trm=[{i:"📄",t:"Certificación de Ingresos",d:"Documento firmado por Contador Público. Válido ante bancos, inmobiliarias, embajadas. 100% online, entrega inmediata.",l:"cert",w:"Necesito un certificado de ingresos."},{i:"📝",t:"Declaración de Renta",d:"Preparación y presentación ante la DIAN. Plazos 2026: 12 agosto al 26 octubre.",l:"wa",w:"Necesito ayuda con mi declaración de renta."},{i:"🏢",t:"Renovación Matrícula Mercantil",d:"Gestión ante Cámara de Comercio. Plazo: 31 de marzo. Sanciones hasta 17 SMLMV.",l:"wa",w:"Necesito renovar mi matrícula mercantil."},{i:"🧾",t:"Facturación Electrónica",d:"Implementación completa: habilitación DIAN, proveedor tecnológico, capacitación y soporte.",l:"wa",w:"Necesito implementar facturación electrónica."},{i:"📊",t:"Información Exógena",d:"Medios magnéticos ante la DIAN. Sanciones desde $524.000 hasta 5% de sumas no reportadas.",l:"wa",w:"Necesito ayuda con información exógena."},{i:"🏗️",t:"Creación de Empresas",d:"SAS, LTDA, S.A.: estatutos, Cámara de Comercio, RUT, cuenta bancaria e IVA.",l:"wa",w:"Quiero crear mi empresa en Colombia."}];
-return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAVE" bg={B[4]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18}}>{trm.map((t,i)=><Cd key={i}><div style={{fontSize:26,marginBottom:6}}>{t.i}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{t.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{t.d}</p><a href={t.l==="cert"?"#certificacion":wm("Hola CONTARAE, "+t.w)} target={t.l==="wa"?"_blank":undefined} style={{display:"inline-block",marginTop:8,fontSize:13,color:"#2563EB",fontWeight:600,textDecoration:"none",fontFamily:F}}>{t.l==="cert"?"Solicitar al instante →":"Solicitar servicio →"}</a></Cd>)}</div></Sec>)}
+function TrmS(){const trm=[{i:"📄",t:"Certificación de Ingresos",d:"Documento firmado por Contador Público. Válido ante bancos, inmobiliarias, embajadas. 100% online, entrega inmediata.",l:CERT_ROUTE,w:"Necesito un certificado de ingresos."},{i:"📝",t:"Declaración de Renta",d:"Preparación y presentación ante la DIAN. Plazos 2026: 12 agosto al 26 octubre.",l:"/declaracion-de-renta-personas-naturales",w:"Necesito ayuda con mi declaración de renta."},{i:"🏢",t:"Renovación Matrícula Mercantil",d:"Gestión ante Cámara de Comercio. Plazo: 31 de marzo. Sanciones hasta 17 SMLMV.",l:"#contacto",w:"Necesito renovar mi matrícula mercantil."},{i:"🧾",t:"Facturación Electrónica",d:"Implementación completa: habilitación DIAN, proveedor tecnológico, capacitación y soporte.",l:"/facturacion-electronica",w:"Necesito implementar facturación electrónica."},{i:"📊",t:"Información Exógena",d:"Medios magnéticos ante la DIAN. Sanciones desde $524.000 hasta 5% de sumas no reportadas.",l:"#contacto",w:"Necesito ayuda con información exógena."},{i:"🏗️",t:"Creación de Empresas",d:"SAS, LTDA, S.A.: estatutos, Cámara de Comercio, RUT, cuenta bancaria e IVA.",l:"/creacion-de-empresa",w:"Quiero crear mi empresa en Colombia."}];
+return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAVE" bg={B[4]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18}}>{trm.map((t,i)=><Cd key={i}><div style={{fontSize:26,marginBottom:6}}>{t.i}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{t.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{t.d}</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8}}><a href={t.l} style={{fontSize:13,color:"#2563EB",fontWeight:700,textDecoration:"none",fontFamily:F}}>Ver detalle →</a><a href={wm("Hola CONTARAE, "+t.w)} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#0F766E",fontWeight:700,textDecoration:"none",fontFamily:F}}>WhatsApp →</a></div></Cd>)}</div></Sec>)}
 
 function MiniTrustIcon({kind}){
   const common={width:18,height:18,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:"1.8",strokeLinecap:"round",strokeLinejoin:"round"};
@@ -1498,6 +1762,86 @@ function CertificationSupportPage({config}){
         </div>
         <div style={{textAlign:"center",marginTop:24}}>
           <a href={CERT_ROUTE} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F}}>Ir a la página principal de certificación</a>
+        </div>
+      </Sec>
+    </>
+  );
+}
+
+function ServiceSeoPage({config}){
+  const related=SERVICE_SEO_ROUTES.filter(item=>item.path!==config.path).slice(0,4);
+  return(
+    <>
+      <section id={config.sectionId} style={{padding:"154px 24px 58px",background:"linear-gradient(135deg,#F4F8FF 0%,#EAF7FF 52%,#F8FBFF 100%)",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 14% 18%, rgba(37,99,235,.13) 0%, rgba(37,99,235,0) 25%), radial-gradient(circle at 86% 20%, rgba(14,165,233,.11) 0%, rgba(14,165,233,0) 24%)",pointerEvents:"none"}}/>
+        <div style={{maxWidth:1080,margin:"0 auto",display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(300px,.48fr)",gap:24,alignItems:"start",position:"relative",zIndex:1}} className="cert-hero-grid">
+          <div>
+            <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"8px 16px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.12)",fontSize:11,fontWeight:900,color:"#2563EB",letterSpacing:"1.5px",fontFamily:F,marginBottom:16}}>{config.badge}</div>
+            <h1 style={{fontFamily:FH,fontSize:"clamp(31px,4.4vw,52px)",lineHeight:1.05,color:"#0B1D3A",margin:"0 0 16px",maxWidth:820}}>{config.title}</h1>
+            <p style={{fontFamily:F,fontSize:17,color:"#3F5A7A",lineHeight:1.85,margin:"0 0 14px",maxWidth:780}}>{config.intro}</p>
+            <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.82,margin:"0 0 24px",maxWidth:780}}>{config.intent}</p>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}} className="cert-hero-actions">
+              <a href="#detalle-servicio" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Ver detalles</a>
+              <a href={wm(config.whatsapp)} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>{config.ctaLabel}</a>
+            </div>
+          </div>
+          <div style={{padding:22,borderRadius:24,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:12}}>
+            <div style={{fontSize:11,letterSpacing:"1.6px",fontWeight:900,color:"#93C5FD",fontFamily:F}}>RESUMEN DEL SERVICIO</div>
+            {config.highlights.map(([label,text],index)=>(
+              <div key={index} style={{padding:"14px 14px",borderRadius:18,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
+                <div style={{fontSize:11,letterSpacing:"1.2px",fontWeight:900,color:"#BFDBFE",fontFamily:F,marginBottom:5}}>{label.toUpperCase()}</div>
+                <div style={{fontSize:14,color:"rgba(240,249,255,.92)",lineHeight:1.65,fontFamily:F,fontWeight:650}}>{text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <Sec id="detalle-servicio" title="Qué incluye este servicio" sub="ALCANCE" bg={B[1]}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:18}} className="tool-grid">
+          {config.cards.map(([title,desc],index)=>(
+            <Cd key={index} s={{background:"#fff"}}>
+              <h2 style={{fontFamily:FH,fontSize:23,lineHeight:1.22,color:"#0B1D3A",marginBottom:10}}>{title}</h2>
+              <p style={{fontSize:15,color:"#52647F",lineHeight:1.85,margin:0}}>{desc}</p>
+            </Cd>
+          ))}
+        </div>
+      </Sec>
+
+      <Sec id="proceso-servicio" title="Cómo iniciar" sub="PROCESO" bg={B[6]} narrow>
+        <div style={{display:"grid",gap:12}}>
+          {config.checklist.map((item,index)=>(
+            <div key={index} style={{display:"grid",gridTemplateColumns:"36px minmax(0,1fr)",gap:12,alignItems:"start",padding:"18px 20px",borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.04)"}}>
+              <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(37,99,235,.10)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#2563EB",fontFamily:F}}>{index+1}</div>
+              <div style={{fontSize:15,color:"#334155",lineHeight:1.75,fontFamily:F,fontWeight:650}}>{item}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{textAlign:"center",marginTop:24}}>
+          <a href={wm(config.whatsapp)} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F}}>{config.ctaLabel}</a>
+        </div>
+      </Sec>
+
+      <Sec id="preguntas-servicio" title="Preguntas frecuentes" sub="ACLARACIONES" bg={B[1]} narrow>
+        <div style={{display:"grid",gap:12}}>
+          {config.faqs.map(([question,answer],index)=>(
+            <div key={index} style={{padding:"22px 24px",borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.04)"}}>
+              <h2 style={{fontFamily:F,fontSize:17,lineHeight:1.4,color:"#0B1D3A",margin:"0 0 8px",fontWeight:900}}>{question}</h2>
+              <p style={{fontSize:15,color:"#52647F",lineHeight:1.85,margin:0}}>{answer}</p>
+            </div>
+          ))}
+        </div>
+      </Sec>
+
+      <Sec id="servicios-relacionados" title="Servicios relacionados" sub="TAMBIÉN PUEDE INTERESARLE" bg={B[6]}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:14}} className="tool-grid">
+          {related.map(item=>(
+            <a key={item.path} href={item.path} style={{display:"block",padding:18,borderRadius:18,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 12px 26px rgba(15,23,42,.04)",textDecoration:"none"}}>
+              <div style={{fontFamily:F,fontSize:11,letterSpacing:"1.2px",fontWeight:900,color:"#2563EB",marginBottom:8}}>SERVICIO</div>
+              <h2 style={{fontFamily:FH,fontSize:19,lineHeight:1.25,color:"#0B1D3A",margin:"0 0 8px"}}>{item.title}</h2>
+              <p style={{fontFamily:F,fontSize:13,color:"#64748B",lineHeight:1.65,margin:0}}>Ver detalle del servicio y opciones de contacto.</p>
+            </a>
+          ))}
         </div>
       </Sec>
     </>
@@ -2425,15 +2769,17 @@ export default function App(){
   const toolRoute=!!toolConfig;
   const certSupportConfig=getCertificationSupportRouteConfig(path);
   const certSupportRoute=!!certSupportConfig;
+  const serviceSeoConfig=getServiceSeoRouteConfig(path);
+  const serviceSeoRoute=!!serviceSeoConfig;
 
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
   useEffect(()=>{
-    const meta=getClientSeoMeta({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig});
-    syncSeoTags(meta,path,toolConfig,certSupportConfig);
-  },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+    const meta=getClientSeoMeta({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig});
+    syncSeoTags(meta,path,toolConfig,certSupportConfig,serviceSeoConfig);
+  },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,serviceSeoRoute,serviceSeoConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:calc(14px + env(safe-area-inset-bottom,0px))!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:calc(66px + env(safe-area-inset-bottom,0px))!important;font-size:14px!important;opacity:.78!important;}}`}</style>
@@ -2447,6 +2793,10 @@ export default function App(){
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><CertificationVideoSection/></div>
+      <div className="ai"><FaqS/></div>
+      <div className="ai"><Ftr/></div>
+    </>:serviceSeoRoute?<>
+      <ServiceSeoPage config={serviceSeoConfig}/>
       <div className="ai"><FaqS/></div>
       <div className="ai"><Ftr/></div>
     </>:toolRoute?<>

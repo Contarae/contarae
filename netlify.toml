@@ -22,6 +22,24 @@
   force = true
 
 [[redirects]]
+  from = "/declaracion-de-renta"
+  to = "/declaracion-de-renta-personas-naturales"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/servicios"
+  to = "/servicios-contables"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/planes"
+  to = "/planes-contables"
+  status = 301
+  force = true
+
+[[redirects]]
   from = "/calculadora-retencion"
   to = "/retencion-en-la-fuente"
   status = 301
