@@ -1338,6 +1338,8 @@ function getShortMonthLabel(monthKey) {
 
 function buildDashboardTimeline({ serviceRecords = [], payments = [], leads = [], certifications = [] } = {}) {
   const serviceItems = serviceRecords.map((record) => ({
+    type: "solicitudes",
+    typeLabel: "Solicitud",
     date: record.updatedAt || record.createdAt || record.dueDate,
     title: record.title || getServiceTypeLabel(record.serviceType),
     note: `${formatProperName(record.clientName) || "Cliente sin nombre"} · ${getServiceStateSummary(record)}`,
@@ -1348,31 +1350,50 @@ function buildDashboardTimeline({ serviceRecords = [], payments = [], leads = []
   const paymentItems = payments
     .filter((payment) => payment.kind === "payment")
     .map((payment) => ({
+      type: "pagos",
+      typeLabel: "Pago",
       date: payment.paidAt || payment.createdAt,
       title: isVoidedServicePayment(payment) ? "Pago anulado" : "Pago registrado",
       note: `${payment.amount || "$ 0"} · ${payment.method || payment.source || "Medio sin dato"} · ${payment.serviceReference || payment.reference || ""}`,
       tone: isVoidedServicePayment(payment) ? "#B45309" : "#15803D",
-      bg: isVoidedServicePayment(payment) ? "rgba(245,158,11,.14)" : "rgba(34,197,94,.12)"
+      bg: isVoidedServicePayment(payment) ? "rgba(245,158,11,.14)" : "rgba(34,197,94,.12)",
+      reference: payment.serviceReference || payment.reference || ""
     }));
   const leadItems = leads.map((lead) => ({
+    type: "potenciales",
+    typeLabel: "Cliente potencial",
     date: lead.createdAt,
     title: "Cliente potencial",
     note: `${formatProperName(lead.name) || "Cliente sin nombre"} · ${lead.serviceInterest || "Servicio por definir"}`,
     tone: "#7C3AED",
-    bg: "rgba(124,58,237,.10)"
+    bg: "rgba(124,58,237,.10)",
+    reference: lead.documentNumber || lead.email || lead.phone || ""
   }));
   const certificationItems = certifications.map((record) => ({
+    type: "certificaciones",
+    typeLabel: "Certificación",
     date: record.updatedAt || record.approvedAt || record.createdAt,
     title: "Certificación",
     note: `${formatProperName(record.customerName) || "Cliente sin nombre"} · ${getStatusMeta(record.certificationStatus).label}`,
     tone: "#C2410C",
-    bg: "rgba(249,115,22,.12)"
+    bg: "rgba(249,115,22,.12)",
+    reference: record.consecutive ? `N° ${record.consecutive}` : record.reference
   }));
 
   return [...serviceItems, ...paymentItems, ...leadItems, ...certificationItems]
     .filter((item) => item.date)
-    .sort((left, right) => new Date(right.date || 0) - new Date(left.date || 0))
-    .slice(0, 8);
+    .sort((left, right) => new Date(right.date || 0) - new Date(left.date || 0));
+}
+
+function buildDashboardActivityCsv(items = []) {
+  const headers = ["fecha", "tipo", "titulo", "detalle", "referencia"];
+  return buildCsv(headers, items.map((item) => ({
+    fecha: item.date,
+    tipo: item.typeLabel || item.type,
+    titulo: item.title,
+    detalle: item.note,
+    referencia: item.reference || ""
+  })));
 }
 
 function StatCard({ label, value, note, tone = "#1D4ED8", trend, compact = false }) {
@@ -1424,6 +1445,95 @@ function EmptyDashboardNote({ children }) {
   );
 }
 
+function ActivityPulseCard({ stats = [], highlights = [], onOpenLog }) {
+  return (
+    <DashboardPanel
+      eyebrow="ACTIVIDAD"
+      title="Pulso operativo"
+      action={(
+        <button type="button" onClick={onOpenLog} style={{ padding: "10px 13px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+          Ver bitácora
+        </button>
+      )}
+    >
+      <div className="admin-activity-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginBottom: 14 }}>
+        {stats.map((item) => (
+          <div key={item.label} style={{ padding: 12, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontFamily: F, fontSize: 10, letterSpacing: "1px", color: "#64748B", fontWeight: 900 }}>{item.label}</div>
+            <div style={{ fontFamily: FH, color: item.tone, fontSize: 24, marginTop: 4 }}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+      {highlights.length ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {highlights.slice(0, 3).map((item, index) => (
+            <div key={`${item.title}-${item.date}-${index}`} style={{ display: "grid", gridTemplateColumns: "10px minmax(0,1fr)", gap: 10, alignItems: "start", padding: 10, borderRadius: 16, background: "#fff", border: "1px solid rgba(37,99,235,.08)" }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: item.tone || "#2563EB", marginTop: 6 }} />
+              <div>
+                <div style={{ fontFamily: F, fontSize: 13, color: "#0F172A", fontWeight: 900, lineHeight: 1.35 }}>{item.title}</div>
+                <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.55 }}>{item.note}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyDashboardNote>No hay alertas ni movimientos recientes para destacar.</EmptyDashboardNote>
+      )}
+    </DashboardPanel>
+  );
+}
+
+function ActivityLogDialog({ open, items = [], onClose }) {
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const term = search.trim().toLowerCase();
+  const filteredItems = items.filter((item) => {
+    if (filter !== "all" && item.type !== filter) return false;
+    if (!term) return true;
+    return [item.typeLabel, item.title, item.note, item.reference, item.date].join(" ").toLowerCase().includes(term);
+  });
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 16000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <section className="admin-modal-card" style={{ width: "min(980px,100%)", maxHeight: "90vh", overflowY: "auto", padding: 22, borderRadius: 28, background: "rgba(255,255,255,.98)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "start", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.5px", color: "#1D4ED8", fontWeight: 900, marginBottom: 5 }}>BITÁCORA OPERATIVA</div>
+            <h2 style={{ margin: 0, fontFamily: FH, color: "#0B1D3A", fontSize: 34, lineHeight: 1.08 }}>Actividad completa</h2>
+            <div style={{ marginTop: 8, fontFamily: F, color: "#64748B", fontSize: 13, lineHeight: 1.6 }}>{filteredItems.length} movimiento(s) visibles.</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ width: 44, height: 44, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: "pointer" }} aria-label="Cerrar bitácora">
+            X
+          </button>
+        </div>
+
+        <div className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "minmax(220px,1fr) minmax(180px,240px) auto", gap: 10, marginBottom: 16 }}>
+          <input style={inputStyle} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por cliente, referencia o detalle" />
+          <select style={inputStyle} value={filter} onChange={(event) => setFilter(event.target.value)}>
+            <option value="all">Todos los movimientos</option>
+            <option value="solicitudes">Solicitudes</option>
+            <option value="pagos">Pagos</option>
+            <option value="certificaciones">Certificaciones</option>
+            <option value="potenciales">Clientes potenciales</option>
+          </select>
+          <button type="button" onClick={() => downloadCsvFile(`bitacora-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildDashboardActivityCsv(filteredItems))} disabled={!filteredItems.length} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: filteredItems.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: filteredItems.length ? "pointer" : "not-allowed" }}>
+            Exportar Excel
+          </button>
+        </div>
+
+        {filteredItems.length ? (
+          <ClientTimeline items={filteredItems} />
+        ) : (
+          <EmptyDashboardNote>No se encontraron movimientos con los filtros actuales.</EmptyDashboardNote>
+        )}
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 function OperationsDashboard({
   summary,
   serviceRecords,
@@ -1439,6 +1549,7 @@ function OperationsDashboard({
   const today = getTodayDateString();
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(today);
   const [period, setPeriod] = useState("month");
+  const [activityLogOpen, setActivityLogOpen] = useState(false);
   const range = useMemo(() => getDashboardPeriodRange(period, today), [period, today]);
   const previousRange = useMemo(() => getPreviousDashboardRange(range, period), [range, period]);
   const calendar = useMemo(() => buildMonthlyDueCalendar(serviceRecords, today), [serviceRecords, today]);
@@ -1468,7 +1579,6 @@ function OperationsDashboard({
   const receivableRecords = serviceRecords
     .map((record) => ({ ...record, balanceAmount: getRequestBalance(record), dueDays: daysUntilDue(record.dueDate) }))
     .filter((record) => record.balanceAmount > 0 && record.status !== "cancelado");
-  const receivableMax = Math.max(...receivableRecords.map((record) => record.balanceAmount), 1);
   const traffic = [
     {
       label: "Pagado",
@@ -1546,6 +1656,20 @@ function OperationsDashboard({
     ...activeRecords.filter((record) => Number(record.pendingTasksCount || 0) > 0).map((record) => ({ ...record, priorityLabel: "Tareas", priorityTone: "#7C3AED" }))
   ].filter((record, index, list) => list.findIndex((item) => item.reference === record.reference) === index).slice(0, 6);
   const timeline = buildDashboardTimeline({ serviceRecords, payments, leads: clientLeads, certifications: certificationRecords });
+  const activityStats = [
+    { label: "Solicitudes", value: timeline.filter((item) => item.type === "solicitudes").length, tone: "#1D4ED8" },
+    { label: "Pagos", value: timeline.filter((item) => item.type === "pagos").length, tone: "#15803D" },
+    { label: "Clientes", value: timeline.filter((item) => item.type === "potenciales").length, tone: "#7C3AED" },
+    { label: "Certif.", value: timeline.filter((item) => item.type === "certificaciones").length, tone: "#C2410C" }
+  ];
+  const activityHighlights = urgentRecords.length
+    ? urgentRecords.slice(0, 3).map((record) => ({
+      date: record.dueDate || record.updatedAt || record.createdAt,
+      title: `${record.priorityLabel}: ${record.title || getServiceTypeLabel(record.serviceType)}`,
+      note: `${formatProperName(record.clientName) || "Cliente sin nombre"} · ${record.balanceAmount ? formatMoney(record.balanceAmount) : getServiceStateSummary(record)}`,
+      tone: record.priorityTone
+    }))
+    : timeline.slice(0, 3);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -1773,14 +1897,9 @@ function OperationsDashboard({
           )}
         </DashboardPanel>
 
-        <DashboardPanel eyebrow="ACTIVIDAD" title="Últimos movimientos">
-          {timeline.length ? (
-            <ClientTimeline items={timeline} />
-          ) : (
-            <EmptyDashboardNote>Aún no hay actividad reciente para mostrar.</EmptyDashboardNote>
-          )}
-        </DashboardPanel>
+        <ActivityPulseCard stats={activityStats} highlights={activityHighlights} onOpenLog={() => setActivityLogOpen(true)} />
       </div>
+      <ActivityLogDialog open={activityLogOpen} items={timeline} onClose={() => setActivityLogOpen(false)} />
     </div>
   );
 }
@@ -3051,6 +3170,10 @@ export default function AdminPanel() {
         grid-template-columns: repeat(2,minmax(0,1fr)) !important;
       }
 
+      .admin-activity-stat-grid {
+        grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+      }
+
       .admin-module-select-card > div:last-child {
         grid-template-columns: 1fr !important;
       }
@@ -3130,7 +3253,8 @@ export default function AdminPanel() {
     }
 
     @media (max-width: 520px) {
-      .admin-funnel-grid {
+      .admin-funnel-grid,
+      .admin-activity-stat-grid {
         grid-template-columns: 1fr !important;
       }
     }
@@ -3149,6 +3273,7 @@ export default function AdminPanel() {
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState("");
   const [selectedReference, setSelectedReference] = useState("");
+  const [certificationDialogOpen, setCertificationDialogOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
@@ -3218,6 +3343,7 @@ export default function AdminPanel() {
   const [backupBusy, setBackupBusy] = useState(false);
   const draftRef = useRef(draft);
   const certificateDraftRef = useRef(certificateDraft);
+  const certificationDetailRequestRef = useRef(0);
 
   const deferredSearch = useDeferredValue(search);
   const deferredServiceSearch = useDeferredValue(serviceSearch);
@@ -3420,6 +3546,9 @@ export default function AdminPanel() {
 
   const loadDetail = async (reference) => {
     if (!reference) return;
+    const requestId = certificationDetailRequestRef.current + 1;
+    certificationDetailRequestRef.current = requestId;
+    const isCurrentRequest = () => requestId === certificationDetailRequestRef.current;
 
     setDetailLoading(true);
     setDetailError("");
@@ -3432,6 +3561,7 @@ export default function AdminPanel() {
         throw new Error(data.error || "No fue posible cargar el detalle.");
       }
 
+      if (!isCurrentRequest()) return null;
       setDetail(data.detail);
       setProfessionalConfig(data.professionalConfig || null);
       setDraft(buildReviewDraft(data.detail));
@@ -3444,10 +3574,14 @@ export default function AdminPanel() {
       setPdfEditMode(false);
       return data.detail;
     } catch (error) {
-      setDetailError(error.message);
+      if (isCurrentRequest()) {
+        setDetailError(error.message);
+      }
       return null;
     } finally {
-      setDetailLoading(false);
+      if (isCurrentRequest()) {
+        setDetailLoading(false);
+      }
     }
   };
 
@@ -3463,12 +3597,6 @@ export default function AdminPanel() {
       loadClientLeads();
     }
   }, [session.authenticated]);
-
-  useEffect(() => {
-    if (session.authenticated && selectedReference) {
-      loadDetail(selectedReference);
-    }
-  }, [session.authenticated, selectedReference]);
 
   useEffect(() => {
     if (session.authenticated && serviceDialogOpen && selectedServiceReference) {
@@ -3576,8 +3704,10 @@ export default function AdminPanel() {
 
   const handleLogout = async () => {
     await fetch("/api/admin-logout", { method: "POST" });
+    certificationDetailRequestRef.current += 1;
     setRecords([]);
     setSelectedReference("");
+    setCertificationDialogOpen(false);
     setDetail(null);
     setDraft(buildReviewDraft());
     setCertificateDraft(buildCertificateDraftState());
@@ -3809,14 +3939,20 @@ export default function AdminPanel() {
   };
 
   const handleOpenCertificationRecord = (reference) => {
+    if (!reference) return;
     setSelectedReference(reference);
+    setCertificationDialogOpen(true);
     setDetail(null);
+    setDetailLoading(true);
     setDetailError("");
     setActiveModule("certificaciones");
+    loadDetail(reference);
   };
 
   const handleCloseCertificationDialog = () => {
     if (preparingOutput || sendBusy || uploadingSupports) return;
+    certificationDetailRequestRef.current += 1;
+    setCertificationDialogOpen(false);
     setSelectedReference("");
     setDetail(null);
     setDetailLoading(false);
@@ -3827,10 +3963,25 @@ export default function AdminPanel() {
     setSendDialogOpen(false);
     setUnlockPassword("");
     setUnlockError("");
+    if (session.authenticated) {
+      loadRecords();
+    }
   };
 
   const handleModuleChange = (moduleId) => {
     setActiveModule(moduleId);
+    if (moduleId !== "certificaciones") {
+      certificationDetailRequestRef.current += 1;
+      setCertificationDialogOpen(false);
+      setSelectedReference("");
+      setDetail(null);
+      setDetailLoading(false);
+      setDetailError("");
+      setPendingSupportFiles([]);
+      setPdfEditMode(false);
+      setUnlockDialogOpen(false);
+      setSendDialogOpen(false);
+    }
     if (moduleId !== "solicitudes") {
       setServiceDialogOpen(false);
       setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
@@ -4959,10 +5110,18 @@ export default function AdminPanel() {
                   </button>
                 );
               })}
+              {!filteredRecords.length && !listLoading ? (
+                <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+                  No hay certificaciones con los filtros actuales.
+                  <button type="button" onClick={() => { setSearch(""); setFilter("all"); }} style={{ display: "block", marginTop: 10, padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Quitar filtros
+                  </button>
+                </div>
+              ) : null}
             </div>
           </aside>
 
-          {selectedReference && typeof document !== "undefined" ? createPortal(
+          {certificationDialogOpen && selectedReference && typeof document !== "undefined" ? createPortal(
           <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={handleCloseCertificationDialog}>
           <main className="admin-main admin-modal-card" style={{ width: "min(1180px,100%)", maxHeight: "92vh", overflowY: "auto", padding: 22, borderRadius: 28, background: "rgba(255,255,255,.98)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid rgba(37,99,235,.10)" }}>
