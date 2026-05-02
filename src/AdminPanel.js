@@ -4799,7 +4799,7 @@ export default function AdminPanel() {
             error={serviceError}
             onOpenRequest={handleSelectServiceRequest}
             onOpenModule={handleModuleChange}
-            onNewRequest={handleNewServiceRequest}
+            onNewRequest={handleStartNewServiceRequest}
           />
         ) : null}
 
