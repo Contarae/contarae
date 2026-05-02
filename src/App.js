@@ -770,6 +770,7 @@ function Nav({path}){
     {l:"Herramientas",id:"herramientas",sub:[{l:"Introducción herramientas",id:"herramientas"},{l:"¿Debo declarar renta?",id:"tool-renta"},{l:"Retención en la fuente",id:"tool-retencion"},{l:"Planilla independientes",id:"tool-planilla"},{l:"Liquidador de nómina",id:"tool-nomina"},{l:"Liquidador de IVA",id:"tool-iva"},{l:"Precio antes de IVA",id:"tool-precio"},{l:"Calendario tributario",id:"calendario"}]},
     {l:"Recursos",id:"blog",sub:[{l:"Blog",id:"blog"},{l:"Descargas",id:"descargas"},{l:"Preguntas frecuentes",id:"faq"},{l:"Alertas tributarias",id:"alertas"}]},
     {l:"Nosotros",id:"whyus",sub:[{l:"¿Por qué elegirnos?",id:"whyus"},{l:"Sobre CONTARAE",id:"nosotros"}]},
+    {l:"Portal de pagos",id:"portal-pagos",href:PAYMENTS_PORTAL_ROUTE},
     {l:"Contacto",id:"contacto",sub:[{l:"Contacto",id:"contacto"}]}
   ];
 
@@ -820,6 +821,15 @@ function Nav({path}){
     sO(false);
     if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);
   };
+  const getMenuHref=item=>item.href||getSectionHref(item.id,path);
+  const goToMenuItem=item=>event=>{
+    if(item.href){
+      sDD(null);
+      sO(false);
+      return;
+    }
+    goTo(item.id)(event);
+  };
 
   return(
     <nav style={{
@@ -843,6 +853,10 @@ function Nav({path}){
           50%{background-position:100% 50%;opacity:1}
           100%{background-position:0% 50%;opacity:.88}
         }
+        @media(max-width:1180px){
+          .dk{display:none!important;}
+          .hm{display:block!important;}
+        }
       `}</style>
 
       <div style={{position:"absolute",inset:0,pointerEvents:"none",background:"linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,0) 18%, rgba(125,211,252,.04) 45%, rgba(255,255,255,0) 72%, rgba(255,255,255,.02))"}}/>
@@ -857,8 +871,8 @@ function Nav({path}){
             onMouseLeave={()=>sDD(null)}
           >
             <a
-              href={getSectionHref(m.id,path)}
-              onClick={goTo(m.id)}
+              href={getMenuHref(m)}
+              onClick={goToMenuItem(m)}
               style={{
                 ...navBase,
                 color:act===m.id?"#F8FBFF":"rgba(226,232,240,.84)",
@@ -982,8 +996,8 @@ function Nav({path}){
           {menu.map((m,i)=>
             <div key={i}>
               <a
-                href={getSectionHref(m.id,path)}
-                onClick={goTo(m.id)}
+                href={getMenuHref(m)}
+                onClick={goToMenuItem(m)}
                 style={{
                   display:"block",
                   padding:"13px 0",
@@ -2785,7 +2799,7 @@ const PV=[{t:"1. Responsable",c:`CONTARAE. Bogotá D.C. ${EM}. +57 300 143 2008.
 function Prv(){const[s,sS]=useState(false);return(<div style={{maxWidth:900,margin:"0 auto",padding:"0 24px"}}><div style={{textAlign:"center",marginBottom:16}}><button onClick={()=>sS(!s)} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:F,textDecoration:"underline"}}>{s?"Ocultar":"Consultar"} Política de Datos</button></div>{s&&<div style={{padding:24,borderRadius:13,background:"rgba(255,255,255,.05)",border:"1px solid rgba(96,165,250,.1)",marginBottom:18}}><h3 style={{fontFamily:FH,fontSize:17,fontWeight:700,color:"#fff",marginBottom:16,textAlign:"center"}}>Política de Tratamiento de Datos Personales</h3>{PV.map((p,i)=><div key={i} style={{marginBottom:12}}><h4 style={{fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:3,fontFamily:F}}>{p.t}</h4><p style={{fontSize:13,color:"rgba(255,255,255,.6)",lineHeight:1.8,fontFamily:F}}>{p.c}</p></div>)}</div>}</div>)}
 
 /* ══════ FOOTER ══════ */
-function Ftr(){return(<><section id="contacto" style={{padding:"88px 24px",background:B[7]}}><div style={{maxWidth:880,margin:"0 auto",textAlign:"center",padding:"56px 36px",borderRadius:24,background:"linear-gradient(135deg,#0B1D3A,#17345D 55%,#1B3A5C)",position:"relative",overflow:"hidden",boxShadow:"0 24px 60px rgba(15,23,42,.18)",border:"1px solid rgba(125,211,252,.12)"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 20% 20%, rgba(56,189,248,.12), transparent 32%), radial-gradient(circle at 80% 22%, rgba(59,130,246,.10), transparent 28%)"}}/><h2 style={{position:"relative",fontFamily:FH,fontSize:"clamp(23px,3.7vw,34px)",fontWeight:700,color:"#fff",marginBottom:14}}>¿Listo para ordenar sus finanzas?</h2><p style={{position:"relative",fontSize:15,color:"rgba(255,255,255,.70)",margin:"0 auto 28px",fontFamily:F,maxWidth:600,lineHeight:1.8}}>Contadores Públicos certificados en Bogotá a su servicio, con una experiencia clara, cercana y profesional en cada paso.</p><div style={{position:"relative",display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}><a href={wm("Hola CONTARAE, quiero recibir asesoría contable.")} target="_blank" rel="noopener noreferrer" style={{padding:"13px 28px",borderRadius:14,background:"#25D366",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 12px 24px rgba(37,211,102,.18)"}}>WhatsApp</a><a href={`mailto:${EM}`} style={{padding:"13px 28px",borderRadius:14,background:"rgba(255,255,255,.1)",color:"#fff",fontSize:15,fontWeight:600,textDecoration:"none",border:"1px solid rgba(255,255,255,.16)",fontFamily:F,backdropFilter:"blur(8px)"}}>Correo</a><a href={PAYMENTS_PORTAL_ROUTE} style={{padding:"13px 28px",borderRadius:14,background:"rgba(96,165,250,.18)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",border:"1px solid rgba(191,219,254,.22)",fontFamily:F,backdropFilter:"blur(8px)"}}>Portal de pagos</a></div><LeadCaptureForm/></div></section>
+function Ftr(){return(<><section id="contacto" style={{padding:"88px 24px",background:B[7]}}><div style={{maxWidth:880,margin:"0 auto",textAlign:"center",padding:"56px 36px",borderRadius:24,background:"linear-gradient(135deg,#0B1D3A,#17345D 55%,#1B3A5C)",position:"relative",overflow:"hidden",boxShadow:"0 24px 60px rgba(15,23,42,.18)",border:"1px solid rgba(125,211,252,.12)"}}><div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 20% 20%, rgba(56,189,248,.12), transparent 32%), radial-gradient(circle at 80% 22%, rgba(59,130,246,.10), transparent 28%)"}}/><h2 style={{position:"relative",fontFamily:FH,fontSize:"clamp(23px,3.7vw,34px)",fontWeight:700,color:"#fff",marginBottom:14}}>¿Listo para ordenar sus finanzas?</h2><p style={{position:"relative",fontSize:15,color:"rgba(255,255,255,.70)",margin:"0 auto 28px",fontFamily:F,maxWidth:600,lineHeight:1.8}}>Contadores Públicos certificados en Bogotá a su servicio, con una experiencia clara, cercana y profesional en cada paso.</p><div style={{position:"relative",display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:22}}><a href={wm("Hola CONTARAE, quiero recibir asesoría contable.")} target="_blank" rel="noopener noreferrer" style={{padding:"13px 28px",borderRadius:14,background:"#25D366",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",fontFamily:F,boxShadow:"0 12px 24px rgba(37,211,102,.18)"}}>WhatsApp</a><a href={`mailto:${EM}`} style={{padding:"13px 28px",borderRadius:14,background:"rgba(255,255,255,.1)",color:"#fff",fontSize:15,fontWeight:600,textDecoration:"none",border:"1px solid rgba(255,255,255,.16)",fontFamily:F,backdropFilter:"blur(8px)"}}>Correo</a></div><LeadCaptureForm/></div></section>
 <footer style={{padding:"44px 24px 32px",background:"#080E1B"}}><LogoFt/><div style={{maxWidth:720,margin:"0 auto",textAlign:"center"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:20}}><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📱 <strong style={{color:"#fff"}}>WhatsApp:</strong> +57 300 143 2008</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>✉️ <strong style={{color:"#fff"}}>Correo:</strong> {EM}</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>📍 <strong style={{color:"#fff"}}>Ubicación:</strong> Bogotá D.C.</div><div style={{fontSize:14,color:"rgba(255,255,255,.6)",fontFamily:F}}>🕐 <strong style={{color:"#fff"}}>Horario:</strong> Lun-Vie 8am-6pm</div></div><div style={{display:"flex",justifyContent:"center",gap:10,flexWrap:"wrap",marginBottom:20}}>{SOCIAL_LINKS.map(([label,url])=><a key={label} href={url} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#BFDBFE",fontFamily:F,textDecoration:"none",padding:"9px 13px",borderRadius:999,border:"1px solid rgba(96,165,250,.16)",background:"rgba(255,255,255,.04)"}}>{label}</a>)}</div><Prv/><div style={{display:"flex",justifyContent:"center",marginBottom:14}}><a href={ADMIN_ROUTE} style={{fontSize:12,color:"rgba(255,255,255,.45)",fontFamily:F,textDecoration:"none",padding:"9px 14px",borderRadius:999,border:"1px solid rgba(96,165,250,.14)",background:"rgba(255,255,255,.03)",transition:"all .2s ease"}} onMouseEnter={e=>{e.currentTarget.style.color="#BFDBFE";e.currentTarget.style.borderColor="rgba(96,165,250,.3)";e.currentTarget.style.background="rgba(37,99,235,.09)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(255,255,255,.45)";e.currentTarget.style.borderColor="rgba(96,165,250,.14)";e.currentTarget.style.background="rgba(255,255,255,.03)";}}>Panel de funcionarios</a></div><div style={{borderTop:"1px solid rgba(96,165,250,.1)",paddingTop:18,marginTop:12}}><p style={{fontSize:11,color:"rgba(255,255,255,.35)",fontFamily:F}}>© 2026 CONTARAE · Bogotá D.C., Colombia · Todos los derechos reservados</p><p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:4,fontFamily:F}}>Ley 1581 de 2012 — Protección de Datos Personales</p></div></div></footer></>)}
 
 /* ══════ FLOATS ══════ */
