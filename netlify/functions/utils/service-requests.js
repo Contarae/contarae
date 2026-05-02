@@ -14,6 +14,7 @@ const SERVICE_PAYMENT_PREFIX = "payment:";
 const SERVICE_DOCUMENT_PREFIX = "service-documents";
 const MAX_SERVICE_DOCUMENTS_PER_UPLOAD = 8;
 const MAX_SERVICE_DOCUMENT_SIZE = 10 * 1024 * 1024;
+const MAX_PAYMENT_SUPPORTS_PER_PAYMENT = 5;
 const DEFAULT_CURRENCY = "COP";
 const DEFAULT_WOMPI_PUBLIC_KEY = "pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 
@@ -124,6 +125,43 @@ function randomId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function createAuditEntry(action, actor = "admin", details = {}) {
+  return {
+    id: randomId(),
+    action: cleanText(action),
+    at: new Date().toISOString(),
+    by: cleanText(actor) || "admin",
+    ...details
+  };
+}
+
+function appendAuditTrail(record = {}, action, actor = "admin", details = {}) {
+  return [
+    ...(Array.isArray(record.auditTrail) ? record.auditTrail : []),
+    createAuditEntry(action, actor, details)
+  ];
+}
+
+function normalizeTaskStatus(value = "") {
+  const normalized = cleanText(value).toLowerCase();
+  return ["pending", "done", "cancelled"].includes(normalized) ? normalized : "pending";
+}
+
+function summarizeTask(task = {}) {
+  return {
+    id: task.id || randomId(),
+    title: cleanText(task.title),
+    dueDate: normalizeDate(task.dueDate),
+    status: normalizeTaskStatus(task.status),
+    note: cleanText(task.note),
+    createdAt: task.createdAt || "",
+    createdBy: task.createdBy || "",
+    completedAt: task.completedAt || "",
+    completedBy: task.completedBy || "",
+    updatedAt: task.updatedAt || ""
+  };
+}
+
 function createPaymentId() {
   return randomId().replace(/-/g, "").slice(0, 12).toUpperCase();
 }
@@ -163,10 +201,36 @@ function normalizePaymentAmount(value) {
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
 
+function normalizePaymentDate(value = "") {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T12:00:00-05:00`;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function isVoidedPayment(payment = {}) {
+  const status = cleanText(payment.status).toLowerCase();
+  return ["voided", "reversed", "annulled", "anulado"].includes(status) || Boolean(payment.voidedAt || payment.reversedAt);
+}
+
+function isAppliedPayment(payment = {}) {
+  return ["approved", "manual"].includes(cleanText(payment.status).toLowerCase()) && !isVoidedPayment(payment);
+}
+
 function summarizePayment(payment = {}) {
   const amount = Number(payment.amount || 0);
+  const serviceReference = normalizeReference(payment.serviceReference);
+  const supportFiles = (Array.isArray(payment.supportFiles) ? payment.supportFiles : []).map((file) => ({
+    ...file,
+    downloadPath: file?.blobKey && serviceReference ? getServiceDocumentDownloadPath(serviceReference, file.blobKey) : "",
+    sizeLabel: formatBytes(file?.size)
+  }));
   return {
     ...payment,
+    supportFiles,
+    applied: isAppliedPayment(payment),
+    voided: isVoidedPayment(payment),
     amountLabel: formatCurrencyValue(amount) || "$ 0",
     checkoutUrl: payment.checkoutUrl || ""
   };
@@ -174,8 +238,8 @@ function summarizePayment(payment = {}) {
 
 function sortByDateDesc(items = []) {
   return [...items].sort((left, right) => {
-    return new Date(right.createdAt || right.paidAt || right.updatedAt || 0) -
-      new Date(left.createdAt || left.paidAt || left.updatedAt || 0);
+    return new Date(right.at || right.createdAt || right.paidAt || right.updatedAt || right.completedAt || right.uploadedAt || 0) -
+      new Date(left.at || left.createdAt || left.paidAt || left.updatedAt || left.completedAt || left.uploadedAt || 0);
   });
 }
 
@@ -193,12 +257,94 @@ export function getServiceDocumentDownloadPath(reference, blobKey) {
   return `/api/admin-download-service-request-document?reference=${encodeURIComponent(normalizeReference(reference))}&key=${encodeURIComponent(String(blobKey || ""))}`;
 }
 
+function buildServiceTimeline(record = {}, detail = {}) {
+  const auditItems = (Array.isArray(record.auditTrail) ? record.auditTrail : []).map((item) => ({
+    id: item.id || randomId(),
+    kind: "audit",
+    title: item.label || item.title || getAuditLabel(item.action),
+    note: item.note || item.reason || item.details || "",
+    at: item.at || item.createdAt || item.updatedAt || "",
+    by: item.by || item.actor || "",
+    tone: "#1D4ED8"
+  }));
+
+  const taskItems = (detail.tasks || []).map((task) => ({
+    id: `task-${task.id}`,
+    kind: "task",
+    title: task.status === "done" ? "Tarea completada" : "Tarea creada",
+    note: `${task.title}${task.dueDate ? ` · vence ${task.dueDate}` : ""}`,
+    at: task.completedAt || task.createdAt || task.updatedAt || "",
+    by: task.completedBy || task.createdBy || "",
+    tone: task.status === "done" ? "#15803D" : "#B45309"
+  }));
+
+  const paymentItems = (detail.payments || []).flatMap((payment) => {
+    const items = [
+      {
+        id: `payment-${payment.reference}`,
+        kind: "payment",
+        title: payment.voided ? "Pago anulado" : "Pago registrado",
+        note: `${payment.amountLabel || formatCurrencyValue(payment.amount)} · ${payment.method || payment.source || "Pago"}`,
+        at: payment.voidedAt || payment.paidAt || payment.createdAt || "",
+        by: payment.voidedBy || payment.createdBy || "",
+        tone: payment.voided ? "#B45309" : "#15803D"
+      }
+    ];
+
+    (payment.supportFiles || []).forEach((file) => {
+      items.push({
+        id: `payment-support-${file.id || file.blobKey}`,
+        kind: "payment_support",
+        title: "Soporte de pago cargado",
+        note: file.originalName || "Soporte adjunto",
+        at: file.uploadedAt || payment.createdAt || "",
+        by: file.uploadedBy || "",
+        tone: "#7C3AED"
+      });
+    });
+
+    return items;
+  });
+
+  const documentItems = (detail.documents || []).map((document) => ({
+    id: `document-${document.id || document.blobKey}`,
+    kind: "document",
+    title: "Documento cargado",
+    note: document.originalName || "Documento adjunto",
+    at: document.uploadedAt || "",
+    by: document.uploadedBy || "",
+    tone: "#7C3AED"
+  }));
+
+  return sortByDateDesc([...auditItems, ...taskItems, ...paymentItems, ...documentItems])
+    .filter((item) => item.at)
+    .slice(0, 80);
+}
+
+function getAuditLabel(action = "") {
+  const labels = {
+    service_created: "Solicitud creada",
+    service_updated: "Solicitud actualizada",
+    payment_link_created: "Link de pago generado",
+    manual_payment_registered: "Pago manual registrado",
+    payment_voided: "Pago manual anulado",
+    service_documents_uploaded: "Documentos cargados",
+    task_created: "Tarea creada",
+    task_updated: "Tarea actualizada",
+    task_completed: "Tarea completada",
+    wompi_payment_approved: "Pago Wompi confirmado",
+    wompi_payment_event: "Evento Wompi recibido"
+  };
+  return labels[cleanText(action)] || cleanText(action) || "Movimiento registrado";
+}
+
 export function buildServiceRequestDetail(record = {}) {
   const agreedPriceAmount = parseCurrency(record.agreedPrice);
   const amountPaidAmount = parseCurrency(record.amountPaid);
   const balanceAmount = Math.max(agreedPriceAmount - amountPaidAmount, 0);
   const payments = sortByDateDesc(Array.isArray(record.payments) ? record.payments : []).map(summarizePayment);
   const paymentLinks = sortByDateDesc(Array.isArray(record.paymentLinks) ? record.paymentLinks : []).map(summarizePayment);
+  const tasks = sortByDateDesc(Array.isArray(record.tasks) ? record.tasks.map(summarizeTask) : []);
 
   const documents = (Array.isArray(record.documents) ? record.documents : []).map((document) => ({
     ...document,
@@ -206,17 +352,24 @@ export function buildServiceRequestDetail(record = {}) {
     sizeLabel: formatBytes(document?.size)
   }));
 
-  return {
+  const detail = {
     ...record,
     documents,
     payments,
     paymentLinks,
+    tasks,
+    auditTrail: Array.isArray(record.auditTrail) ? record.auditTrail : [],
     financials: {
       agreedPriceAmount,
       amountPaidAmount,
       balanceAmount,
       balance: formatCurrencyValue(balanceAmount)
     }
+  };
+
+  return {
+    ...detail,
+    timeline: buildServiceTimeline(record, detail)
   };
 }
 
@@ -241,6 +394,9 @@ export function summarizeServiceRequest(record = {}) {
     documentsCount: detail.documents?.length || 0,
     paymentsCount: detail.payments?.length || 0,
     paymentLinksCount: detail.paymentLinks?.length || 0,
+    tasksCount: detail.tasks?.length || 0,
+    pendingTasksCount: (detail.tasks || []).filter((task) => task.status === "pending").length,
+    overdueTasksCount: (detail.tasks || []).filter((task) => task.status === "pending" && task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10)).length,
     createdAt: detail.createdAt || "",
     updatedAt: detail.updatedAt || ""
   };
@@ -252,7 +408,7 @@ export function sanitizeServiceRequestInput(input = {}, existing = {}) {
   const clientInput = input.client || {};
   const existingClient = existing.client || {};
   const agreedPrice = normalizeCurrencyValue(input.agreedPrice ?? existing.agreedPrice);
-  const amountPaid = normalizeCurrencyValue(input.amountPaid ?? existing.amountPaid);
+  const amountPaid = normalizeCurrencyValue(existing.amountPaid);
 
   return {
     ...existing,
@@ -275,6 +431,8 @@ export function sanitizeServiceRequestInput(input = {}, existing = {}) {
     documents: Array.isArray(existing.documents) ? existing.documents : [],
     payments: Array.isArray(existing.payments) ? existing.payments : [],
     paymentLinks: Array.isArray(existing.paymentLinks) ? existing.paymentLinks : [],
+    tasks: Array.isArray(existing.tasks) ? existing.tasks : [],
+    auditTrail: Array.isArray(existing.auditTrail) ? existing.auditTrail : [],
     createdAt: existing.createdAt || now,
     createdBy: existing.createdBy || cleanText(input.actor) || "admin",
     updatedAt: now,
@@ -319,12 +477,14 @@ export async function deleteServiceRequest(reference, actor = "admin") {
 
   const paymentLinks = Array.isArray(record.paymentLinks) ? record.paymentLinks : [];
   const documents = Array.isArray(record.documents) ? record.documents : [];
+  const paymentSupportFiles = (Array.isArray(record.payments) ? record.payments : [])
+    .flatMap((payment) => Array.isArray(payment.supportFiles) ? payment.supportFiles : []);
   await Promise.all([
     store.delete(requestKey),
     ...paymentLinks
       .filter((link) => link.reference)
       .map((link) => store.delete(`${SERVICE_PAYMENT_PREFIX}${normalizeReference(link.reference)}`)),
-    ...documents
+    ...[...documents, ...paymentSupportFiles]
       .filter((document) => document.blobKey)
       .map((document) => store.delete(document.blobKey))
   ]);
@@ -354,10 +514,20 @@ function seedLegacyPaidAmount(record = {}, actor = "admin", now = new Date().toI
       status: "manual",
       source: "manual",
       method: "Pago registrado",
+      transactionReference: "",
+      payerName: "",
       note: "Valor pagado registrado en la solicitud antes de crear el historial de pagos.",
       paidAt: cleanText(record.updatedAt || record.createdAt) || now,
       createdAt: now,
-      createdBy: actor
+      createdBy: actor,
+      auditTrail: [
+        {
+          action: "legacy_seed",
+          at: now,
+          by: actor,
+          note: "Movimiento creado automáticamente desde el valor pagado histórico."
+        }
+      ]
     }
   ];
 }
@@ -372,7 +542,16 @@ export async function upsertServiceRequest(input = {}, actor = "admin") {
   const sanitizedRecord = sanitizeServiceRequestInput({ ...input, actor }, existing || {});
   const record = mergePaymentState({
     ...sanitizedRecord,
-    payments: seedLegacyPaidAmount(sanitizedRecord, actor)
+    payments: seedLegacyPaidAmount(sanitizedRecord, actor),
+    auditTrail: appendAuditTrail(
+      sanitizedRecord,
+      existing ? "service_updated" : "service_created",
+      actor,
+      {
+        label: existing ? "Solicitud actualizada" : "Solicitud creada",
+        note: sanitizedRecord.title || sanitizedRecord.reference
+      }
+    )
   });
   validateServiceRequestRecord(record);
   await store.setJSON(`${SERVICE_REQUEST_PREFIX}${record.reference}`, record);
@@ -383,7 +562,7 @@ export async function upsertServiceRequest(input = {}, actor = "admin") {
 function calculatePaymentState(record = {}) {
   const payments = Array.isArray(record.payments) ? record.payments : [];
   const paymentHistoryAmount = payments.reduce((sum, payment) => {
-    if (["approved", "manual"].includes(payment.status)) {
+    if (isAppliedPayment(payment)) {
       return sum + Number(payment.amount || 0);
     }
     return sum;
@@ -398,7 +577,7 @@ function calculatePaymentState(record = {}) {
         ? "pendiente"
         : balance > 0
           ? "parcial"
-          : payments.some((payment) => payment.source === "wompi")
+          : payments.some((payment) => payment.source === "wompi" && isAppliedPayment(payment))
             ? "pagado"
             : "pagado_manual";
 
@@ -505,6 +684,10 @@ async function createPaymentLinkForRecord(store, record = {}, input = {}, actor 
     ...record,
     status: record.status === "nuevo" || record.status === "cotizado" ? "pendiente_pago" : record.status,
     paymentLinks: [...paymentLinks, paymentLink],
+    auditTrail: appendAuditTrail(record, "payment_link_created", actor, {
+      label: "Link de pago generado",
+      note: `${paymentReference} por ${formatCurrencyValue(amount)}`
+    }),
     updatedAt: now,
     updatedBy: actor
   });
@@ -585,6 +768,61 @@ export async function ensureServicePaymentLink(reference, input = {}, actor = "a
   return createPaymentLinkForRecord(store, record, input, actor, origin, { reuseExisting: true });
 }
 
+async function uploadPaymentSupportFiles(store, reference, paymentReference, files = [], actor = "admin") {
+  const normalizedReference = normalizeReference(reference);
+  const normalizedPaymentReference = normalizeReference(paymentReference);
+  if (!files.length) return [];
+  if (files.length > MAX_PAYMENT_SUPPORTS_PER_PAYMENT) {
+    throw new Error(`Solo puedes adjuntar hasta ${MAX_PAYMENT_SUPPORTS_PER_PAYMENT} soportes por pago.`);
+  }
+
+  const uploaded = [];
+
+  for (const file of files) {
+    const contentType = normalizeContentType(file.type, file.name);
+
+    if (!isAllowedSupportContentType(contentType, file.name)) {
+      throw new Error(`El archivo "${file.name}" no tiene un formato permitido. Usa PDF, JPG, PNG, WEBP, HEIC, DOC o DOCX.`);
+    }
+
+    if (Number(file.size || 0) > MAX_SERVICE_DOCUMENT_SIZE) {
+      throw new Error(`El archivo "${file.name}" supera el límite de ${formatBytes(MAX_SERVICE_DOCUMENT_SIZE)}.`);
+    }
+
+    const blobKey = buildPaymentSupportBlobKey(normalizedReference, normalizedPaymentReference, file.name);
+    const uploadedAt = new Date().toISOString();
+
+    await store.set(blobKey, await file.arrayBuffer(), {
+      metadata: {
+        reference: normalizedReference,
+        paymentReference: normalizedPaymentReference,
+        originalName: file.name,
+        contentType,
+        size: Number(file.size || 0),
+        uploadedAt,
+        uploadedBy: actor,
+        category: "payment_support"
+      }
+    });
+
+    uploaded.push(
+      buildServiceDocumentRecord({
+        reference: normalizedReference,
+        paymentReference: normalizedPaymentReference,
+        blobKey,
+        originalName: file.name,
+        contentType,
+        size: file.size,
+        uploadedAt,
+        uploadedBy: actor,
+        category: "payment_support"
+      })
+    );
+  }
+
+  return uploaded;
+}
+
 export async function registerManualServicePayment(reference, input = {}, actor = "admin") {
   const normalizedReference = normalizeReference(reference);
   if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
@@ -612,9 +850,11 @@ export async function registerManualServicePayment(reference, input = {}, actor 
     throw new Error(`El pago manual no puede superar el saldo pendiente de ${formatCurrencyValue(currentState.balance)}.`);
   }
 
+  const paymentReference = `MANUAL-${createPaymentId()}`;
+  const supportFiles = await uploadPaymentSupportFiles(store, normalizedReference, paymentReference, Array.isArray(input.supportFiles) ? input.supportFiles : [], actor);
   const payment = {
     id: randomId(),
-    reference: `MANUAL-${createPaymentId()}`,
+    reference: paymentReference,
     serviceReference: normalizedReference,
     amount,
     amountLabel: formatCurrencyValue(amount),
@@ -622,10 +862,21 @@ export async function registerManualServicePayment(reference, input = {}, actor 
     status: "manual",
     source: "manual",
     method: cleanText(input.method) || "Pago manual",
+    transactionReference: cleanText(input.transactionReference || input.externalReference),
+    payerName: formatProperName(input.payerName || ""),
     note: cleanText(input.note),
-    paidAt: cleanText(input.paidAt) || now,
+    supportFiles,
+    paidAt: normalizePaymentDate(input.paidAt) || now,
     createdAt: now,
-    createdBy: actor
+    createdBy: actor,
+    auditTrail: [
+      {
+        action: "created",
+        at: now,
+        by: actor,
+        note: cleanText(input.note)
+      }
+    ]
   };
   const { paymentLinks, supersededLinks } = supersedePendingPaymentLinks(
     currentRecord.paymentLinks,
@@ -638,6 +889,10 @@ export async function registerManualServicePayment(reference, input = {}, actor 
     ...currentRecord,
     paymentLinks,
     payments: [...existingPayments, payment],
+    auditTrail: appendAuditTrail(currentRecord, "manual_payment_registered", actor, {
+      label: "Pago manual registrado",
+      note: `${payment.amountLabel} por ${payment.method}${supportFiles.length ? ` · ${supportFiles.length} soporte(s)` : ""}`
+    }),
     updatedAt: now,
     updatedBy: actor
   });
@@ -652,6 +907,134 @@ export async function registerManualServicePayment(reference, input = {}, actor 
   return {
     detail: buildServiceRequestDetail(nextRecord),
     payment: summarizePayment(payment)
+  };
+}
+
+export async function voidManualServicePayment(reference, paymentReference, input = {}, actor = "admin") {
+  const normalizedReference = normalizeReference(reference);
+  const normalizedPaymentReference = normalizeReference(paymentReference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+  if (!normalizedPaymentReference) throw new Error("Falta la referencia del pago.");
+
+  const reason = cleanText(input.reason);
+  if (!reason) throw new Error("Ingresa el motivo de anulación del pago.");
+
+  const store = getServiceRequestStore();
+  const record = await store.get(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!record) throw new Error("Solicitud no encontrada.");
+
+  const payments = seedLegacyPaidAmount(record, actor);
+  const paymentIndex = payments.findIndex((payment) =>
+    normalizeReference(payment.reference) === normalizedPaymentReference ||
+    normalizeReference(payment.id) === normalizedPaymentReference
+  );
+  if (paymentIndex < 0) throw new Error("El pago no existe en esta solicitud.");
+
+  const targetPayment = payments[paymentIndex];
+  if (isVoidedPayment(targetPayment)) throw new Error("Este pago ya está anulado.");
+  if (targetPayment.source === "wompi") {
+    throw new Error("Los pagos Wompi no se anulan desde el panel. Registra una novedad o reverso externo si aplica.");
+  }
+
+  const now = new Date().toISOString();
+  const nextPayments = payments.map((payment, index) => {
+    if (index !== paymentIndex) return payment;
+    return {
+      ...payment,
+      status: "voided",
+      voidedAt: now,
+      voidedBy: actor,
+      voidReason: reason,
+      auditTrail: [
+        ...(Array.isArray(payment.auditTrail) ? payment.auditTrail : []),
+        {
+          action: "voided",
+          at: now,
+          by: actor,
+          reason
+        }
+      ]
+    };
+  });
+
+  const nextRecord = mergePaymentState({
+    ...record,
+    payments: nextPayments,
+    auditTrail: appendAuditTrail(record, "payment_voided", actor, {
+      label: "Pago manual anulado",
+      note: `${targetPayment.amountLabel || formatCurrencyValue(targetPayment.amount)} · ${reason}`,
+      reason
+    }),
+    updatedAt: now,
+    updatedBy: actor
+  });
+
+  await store.setJSON(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, nextRecord);
+
+  return {
+    detail: buildServiceRequestDetail(nextRecord),
+    payment: summarizePayment(nextPayments[paymentIndex])
+  };
+}
+
+export async function upsertServiceRequestTask(reference, input = {}, actor = "admin") {
+  const normalizedReference = normalizeReference(reference);
+  if (!normalizedReference) throw new Error("Falta la referencia de la solicitud.");
+
+  const title = cleanText(input.title);
+  if (!title) throw new Error("Ingresa el nombre de la tarea.");
+
+  const store = getServiceRequestStore();
+  const record = await store.get(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, { type: "json" });
+  if (!record) throw new Error("Solicitud no encontrada.");
+
+  const now = new Date().toISOString();
+  const taskId = cleanText(input.id) || randomId();
+  const existingTasks = Array.isArray(record.tasks) ? record.tasks.map(summarizeTask) : [];
+  const existingTask = existingTasks.find((task) => task.id === taskId);
+  const status = normalizeTaskStatus(input.status || existingTask?.status);
+  const completedAt = status === "done"
+    ? (existingTask?.completedAt || now)
+    : "";
+  const task = {
+    id: taskId,
+    title,
+    dueDate: normalizeDate(input.dueDate || existingTask?.dueDate),
+    status,
+    note: cleanText(input.note || existingTask?.note),
+    createdAt: existingTask?.createdAt || now,
+    createdBy: existingTask?.createdBy || actor,
+    completedAt,
+    completedBy: completedAt ? (existingTask?.completedBy || actor) : "",
+    updatedAt: now,
+    updatedBy: actor
+  };
+
+  const nextTasks = existingTask
+    ? existingTasks.map((item) => item.id === taskId ? task : item)
+    : [...existingTasks, task];
+  const auditAction = !existingTask
+    ? "task_created"
+    : status === "done" && existingTask.status !== "done"
+      ? "task_completed"
+      : "task_updated";
+
+  const nextRecord = {
+    ...record,
+    tasks: nextTasks,
+    auditTrail: appendAuditTrail(record, auditAction, actor, {
+      label: getAuditLabel(auditAction),
+      note: task.title
+    }),
+    updatedAt: now,
+    updatedBy: actor
+  };
+
+  await store.setJSON(`${SERVICE_REQUEST_PREFIX}${normalizedReference}`, nextRecord);
+
+  return {
+    detail: buildServiceRequestDetail(nextRecord),
+    task: summarizeTask(task)
   };
 }
 
@@ -845,9 +1228,20 @@ export async function processServicePaymentEvent(paymentReference, transaction =
         status: "approved",
         source: "wompi",
         method: transaction.payment_method_type || "Wompi",
+        transactionReference: cleanText(transaction.id || transaction.reference || normalizedReference),
+        payerName: formatProperName(transaction.customer_data?.full_name || transaction.customer_name || ""),
+        note: "Pago confirmado automáticamente por Wompi.",
         paidAt,
         createdAt: now,
-        wompiTransaction: nextPaymentLink.wompiTransaction
+        wompiTransaction: nextPaymentLink.wompiTransaction,
+        auditTrail: [
+          {
+            action: "wompi_approved",
+            at: now,
+            by: "wompi-webhook",
+            reference: cleanText(transaction.id || transaction.reference || normalizedReference)
+          }
+        ]
       }
     ];
   }
@@ -863,6 +1257,10 @@ export async function processServicePaymentEvent(paymentReference, transaction =
     ...request,
     paymentLinks,
     payments,
+    auditTrail: appendAuditTrail(request, approved ? "wompi_payment_approved" : "wompi_payment_event", "wompi-webhook", {
+      label: approved ? "Pago Wompi confirmado" : "Evento Wompi recibido",
+      note: `${normalizedReference} · ${status || "SIN ESTADO"}${approved ? ` · ${formatCurrencyValue(amount)}` : ""}`
+    }),
     updatedAt: now,
     updatedBy: "wompi-webhook"
   });
@@ -890,18 +1288,29 @@ function buildServiceDocumentBlobKey(reference, originalName) {
   return `${SERVICE_DOCUMENT_PREFIX}/${normalizedReference}/${randomId()}-${fileName}`;
 }
 
+function buildPaymentSupportBlobKey(reference, paymentReference, originalName) {
+  const normalizedReference = normalizeReference(reference);
+  const normalizedPaymentReference = normalizeReference(paymentReference) || "payment";
+  const fileName = sanitizeFileName(originalName);
+  return `${SERVICE_DOCUMENT_PREFIX}/${normalizedReference}/payment-supports/${normalizedPaymentReference}/${randomId()}-${fileName}`;
+}
+
 function buildServiceDocumentRecord({
   reference,
+  paymentReference,
   blobKey,
   originalName,
   contentType,
   size,
   uploadedAt,
-  uploadedBy
+  uploadedBy,
+  category = "service_document"
 }) {
   return {
     id: randomId(),
     reference: normalizeReference(reference),
+    paymentReference: normalizeReference(paymentReference),
+    category,
     blobKey,
     originalName: sanitizeFileName(originalName),
     contentType: normalizeContentType(contentType, originalName),
@@ -966,6 +1375,10 @@ export async function uploadServiceRequestDocuments(reference, files = [], actor
   const updated = {
     ...record,
     documents: [...(Array.isArray(record.documents) ? record.documents : []), ...uploaded],
+    auditTrail: appendAuditTrail(record, "service_documents_uploaded", actor, {
+      label: "Documentos cargados",
+      note: `${uploaded.length} documento(s) adjunto(s)`
+    }),
     updatedAt: new Date().toISOString(),
     updatedBy: actor
   };

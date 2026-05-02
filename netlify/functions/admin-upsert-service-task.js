@@ -1,5 +1,5 @@
 import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-auth.js";
-import { registerManualServicePayment } from "./utils/service-requests.js";
+import { upsertServiceRequestTask } from "./utils/service-requests.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -32,28 +32,8 @@ export default async (req) => {
   }
 
   try {
-    const contentType = String(req.headers.get("content-type") || "");
-    let body = {};
-    const supportFiles = [];
-
-    if (contentType.includes("multipart/form-data")) {
-      const form = await req.formData();
-      body = Object.fromEntries(form.entries());
-      supportFiles.push(...form.getAll("supportFiles").filter((file) => typeof file?.arrayBuffer === "function"));
-    } else {
-      body = await req.json();
-    }
-
-    const reference = String(body?.reference || "").trim();
-
-    if (!reference) {
-      return new Response(JSON.stringify({ error: "Falta la referencia de la solicitud" }), {
-        status: 400,
-        headers
-      });
-    }
-
-    const result = await registerManualServicePayment(reference, { ...body, supportFiles }, session.username);
+    const body = await req.json();
+    const result = await upsertServiceRequestTask(body?.reference, body?.task || body, session.username);
 
     return new Response(
       JSON.stringify({
@@ -68,7 +48,7 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible registrar el pago manual",
+        error: "No fue posible guardar la tarea.",
         detail: error.message
       }),
       {
