@@ -1,4 +1,11 @@
 import { getStore } from "@netlify/blobs";
+import promoUtils from "./utils/promo-codes.cjs";
+
+const {
+  calculateCertificationPricing,
+  buildReferralSnapshot,
+  normalizePromoCode
+} = promoUtils;
 
 export default async (req, context) => {
   const headers = {
@@ -44,14 +51,47 @@ export default async (req, context) => {
       reference: ignoredReference,
       ...formPayload
     } = data;
+    const pricing = calculateCertificationPricing({
+      monthlyIncome: formPayload.total_ingresos_num || formPayload.total_ingresos,
+      promoCode: formPayload.codigo_promocional
+    });
+    const promoWasProvided = Boolean(normalizePromoCode(formPayload.codigo_promocional));
+
+    if (promoWasProvided && !pricing.promoApplied) {
+      return new Response(
+        JSON.stringify({ error: "El código promocional no está activo o no existe." }),
+        {
+          status: 400,
+          headers
+        }
+      );
+    }
+
+    const promoReferral = buildReferralSnapshot(pricing);
 
     const pendingRecord = {
       reference,
       status: "pending",
       createdAt: new Date().toISOString(),
       supportFiles: Array.isArray(supportFiles) ? supportFiles : [],
+      pricing: {
+        baseAmount: pricing.baseAmount,
+        discountAmount: pricing.discountAmount,
+        finalAmount: pricing.finalAmount,
+        promoApplied: pricing.promoApplied
+      },
+      promoReferral,
       formData: {
         ...formPayload,
+        total_ingresos_num: String(pricing.monthlyIncome || ""),
+        tarifa_base: pricing.baseAmountLabel,
+        descuento_promocional: pricing.promoApplied ? pricing.discountAmountLabel : "",
+        codigo_promocional: pricing.promoApplied ? pricing.promoCode : "",
+        aliado_estrategico: pricing.promoApplied ? pricing.promoAllyName : "",
+        porcentaje_descuento_promocional: pricing.promoApplied ? pricing.discountRateLabel : "",
+        porcentaje_comision_aliado: pricing.promoApplied ? pricing.commissionRateLabel : "",
+        comision_aliado_estimada: pricing.promoApplied ? pricing.commissionAmountLabel : "",
+        tarifa_pagada: pricing.finalAmountLabel,
         referencia_wompi: formPayload.referencia_wompi || reference
       }
     };

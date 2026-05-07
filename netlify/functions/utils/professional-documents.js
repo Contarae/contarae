@@ -18,8 +18,7 @@ const PROFESSIONAL_DOCUMENT_TYPES = {
 const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
-  "image/png",
-  "image/webp"
+  "image/png"
 ]);
 
 const MAX_DOCUMENT_SIZE = 8 * 1024 * 1024;
@@ -101,7 +100,7 @@ export async function uploadProfessionalDocument({
 
   const contentType = normalizeContentType(file.type, file.name);
   if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
-    throw new Error("Solo se permiten archivos PDF, JPG, PNG o WEBP.");
+    throw new Error("Solo se permiten archivos PDF, JPG o PNG.");
   }
 
   if (Number(file.size || 0) > MAX_DOCUMENT_SIZE) {

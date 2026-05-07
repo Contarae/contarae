@@ -6,6 +6,7 @@ import {
   getProfessionalDocumentsStatus,
   getProfessionalProfile
 } from "./utils/professional-documents.js";
+import { buildWatermarkedProfessionalCardAttachment } from "./utils/professional-watermark.js";
 import { sendResendEmail } from "./utils/resend-email.js";
 import {
   buildCertificateVerificationCode,
@@ -47,7 +48,7 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
           </p>
           <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.8;">
             <strong>Documento principal adjunto:</strong> Certificación de ingresos firmada por ${escapeHtml(profile.accountantName)}${profile.professionalCardNumber ? `, T.P. No. ${escapeHtml(profile.professionalCardNumber)}` : ""}.<br/>
-            ${includeProfessionalCard ? "Incluye copia de la tarjeta profesional.<br/>" : ""}
+            ${includeProfessionalCard ? "Incluye copia de la tarjeta profesional con marca de agua de uso exclusivo.<br/>" : ""}
             ${includeJccBackground ? "Incluye antecedentes vigentes ante la Junta Central de Contadores.<br/>" : ""}
             <strong>Validación:</strong> puede verificar la validez escaneando el código QR del PDF o consultando el código ${escapeHtml(verificationCode)} en <a href="${escapeHtml(verificationUrl)}" style="color:#2563eb;text-decoration:none;">${escapeHtml(verificationUrl)}</a>.<br/>
             Si la entidad receptora requiere un formato o vigencia específica, puede responder este mismo correo para validarlo.
@@ -74,7 +75,7 @@ function buildCustomerCertificationEmailText(detail, includeProfessionalCard, in
     `Adjuntamos la certificación de ingresos correspondiente a su solicitud ${summary.consecutive ? `N° ${summary.consecutive}` : summary.reference || ""}.`,
     "",
     `Documento principal: Certificación de ingresos firmada por ${profile.accountantName}${profile.professionalCardNumber ? `, T.P. No. ${profile.professionalCardNumber}` : ""}.`,
-    includeProfessionalCard ? "Incluye copia de la tarjeta profesional." : "",
+    includeProfessionalCard ? "Incluye copia de la tarjeta profesional con marca de agua de uso exclusivo." : "",
     includeJccBackground ? "Incluye antecedentes vigentes ante la Junta Central de Contadores." : "",
     `Validación: puede verificar la validez escaneando el código QR del PDF o consultando el código ${verificationCode} en ${verificationUrl}.`,
     "",
@@ -209,11 +210,15 @@ export default async (req) => {
     if (includeProfessionalCard) {
       const professionalCard = await getProfessionalDocumentBlob("professional_card");
       if (professionalCard) {
-        attachments.push({
-          filename: professionalCard.meta.fileName,
-          content: professionalCard.data,
-          type: professionalCard.meta.contentType
-        });
+        attachments.push(await buildWatermarkedProfessionalCardAttachment({
+          professionalCard,
+          customerName:
+            result.detail.certificateData?.nombre ||
+            result.detail.summary?.customerName ||
+            "",
+          reference,
+          consecutive: result.detail.summary?.consecutive || result.record?.consecutive || ""
+        }));
       }
     }
 

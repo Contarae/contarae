@@ -16,8 +16,18 @@ const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 const fmtI=v=>{const n=v.replace(/\D/g,"");return n?"$ "+fm(parseInt(n)):""};
 const pN=v=>parseInt(v.replace(/\D/g,""))||0;
-const gT=t=>{if(t<=2e6)return 80000;if(t<=4e6)return 100000;if(t<=7e6)return 120000;if(t<=12e6)return 150000;if(t<=20e6)return 180000;return 200000};
+const CERTIFICATION_PRICE_TIERS=[
+  {max:2000000,range:"Desde $0 hasta $2.000.000",formRange:"Ingresos desde $0 hasta $2.000.000",value:100000},
+  {max:4000000,range:"Desde $2.000.001 hasta $4.000.000",formRange:"Ingresos desde $2.000.001 hasta $4.000.000",value:120000},
+  {max:6000000,range:"Desde $4.000.001 hasta $6.000.000",formRange:"Ingresos desde $4.000.001 hasta $6.000.000",value:140000},
+  {max:8000000,range:"Desde $6.000.001 hasta $8.000.000",formRange:"Ingresos desde $6.000.001 hasta $8.000.000",value:160000},
+  {max:10000000,range:"Desde $8.000.001 hasta $10.000.000",formRange:"Ingresos desde $8.000.001 hasta $10.000.000",value:180000},
+  {max:Infinity,range:"Más de $10.000.000",formRange:"Ingresos desde $10.000.001 en adelante",value:200000}
+];
+const gT=t=>CERTIFICATION_PRICE_TIERS.find(item=>Number(t||0)<=item.max)?.value||200000;
 const disc=v=>Math.round(v/.75);
+const certDisc=v=>Math.round(v/.9);
+const promoCodeValue=value=>String(value||"").trim().toUpperCase();
 const SUPPORT_MAX_FILES=5;
 const SUPPORT_MAX_BYTES=6*1024*1024;
 const SUPPORT_ACCEPT=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx";
@@ -1598,9 +1608,32 @@ function LeadCaptureForm(){
   );
 }
 
+function CertificationPricingMiniCard(){
+  return(
+    <div style={{padding:22,borderRadius:24,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",marginBottom:14,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:11,letterSpacing:"1.5px",fontWeight:900,color:"#93C5FD",fontFamily:F,marginBottom:6}}>TARIFAS CERTIFICACIÓN</div>
+          <div style={{fontFamily:FH,fontSize:28,lineHeight:1.08,color:"#fff"}}>Desde $100.000</div>
+        </div>
+        <span style={{display:"inline-flex",alignItems:"center",padding:"7px 11px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:10,fontWeight:900,color:"#FDBA74",fontFamily:F,whiteSpace:"nowrap"}}>10% OFF</span>
+      </div>
+      <p style={{fontSize:13,color:"rgba(226,232,240,.78)",lineHeight:1.7,fontFamily:F,margin:"0 0 12px"}}>El valor se calcula según los ingresos mensuales recurrentes reportados. Si tiene código de aliado, el descuento adicional se verá antes de pagar.</p>
+      <div style={{display:"grid",gap:7}}>
+        {CERTIFICATION_PRICE_TIERS.map((item,index)=>(
+          <div key={item.range} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0",borderBottom:index===CERTIFICATION_PRICE_TIERS.length-1?"none":"1px solid rgba(125,211,252,.10)"}}>
+            <span style={{fontSize:12,color:"rgba(226,232,240,.78)",fontFamily:F,lineHeight:1.55}}>{item.range}</span>
+            <span style={{fontSize:13,fontWeight:900,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>${fm(item.value)}</span>
+          </div>
+        ))}
+      </div>
+      <a href={CERT_ROUTE} style={{display:"flex",alignItems:"center",justifyContent:"center",marginTop:16,padding:"12px 16px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:14,fontWeight:900,textDecoration:"none",fontFamily:F,boxShadow:"0 14px 28px rgba(37,99,235,.20)"}}>Iniciar solicitud</a>
+    </div>
+  )
+}
+
 function CertificationHero(){
   const heroMetrics=[["Tiempo estimado","Menos de 1 día hábil"],["Proceso","100% online"],["Pago","Wompi seguro"]];
-  const priceRanges=[["Desde $0 hasta $2.000.000","$80.000"],["Desde $2.000.001 hasta $4.000.000","$100.000"],["Desde $4.000.001 hasta $7.000.000","$120.000"],["Desde $7.000.001 hasta $12.000.000","$150.000"],["Desde $12.000.001 hasta $20.000.000","$180.000"],["Más de $20.000.000","$200.000"]];
   const recipientTags=[{label:"Bancos",kind:"bank"},{label:"Inmobiliarias",kind:"home"},{label:"Embajadas",kind:"globe"},{label:"Concesionarios",kind:"car"},{label:"Licitaciones",kind:"doc"},{label:"Arrendadores",kind:"shield"}];
   const processSteps=["Completa el formulario","Paga seguro con Wompi","Recibe el PDF listo para presentar"];
   const proofPoints=["Soportes verificables","Firma profesional","Seguimiento de referencia","Atención humana"];
@@ -1686,15 +1719,15 @@ function CertificationHero(){
               <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
                 <div>
                   <div style={{fontSize:11,letterSpacing:"1.6px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:6}}>TARIFAS CON DESCUENTO</div>
-                  <div style={{fontSize:30,fontWeight:800,lineHeight:1,color:"#fff",fontFamily:F}}>Desde $80.000</div>
+                  <div style={{fontSize:30,fontWeight:800,lineHeight:1,color:"#fff",fontFamily:F}}>Desde $100.000</div>
                 </div>
-                <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:11,fontWeight:800,color:"#FDBA74",fontFamily:F}}>25% OFF vigente</div>
+                <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:11,fontWeight:800,color:"#FDBA74",fontFamily:F}}>10% OFF vigente</div>
               </div>
               <div style={{fontSize:12,color:"rgba(226,232,240,.78)",fontFamily:F,lineHeight:1.65,marginBottom:10}}>
                 Los siguientes valores aplican según el rango de ingresos mensuales reportados, desde y hasta cada tramo.
               </div>
               <div style={{display:"grid",gap:8}}>
-                {priceRanges.map(([range,price],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:i===priceRanges.length-1?"none":"1px solid rgba(125,211,252,.10)"}}><div style={{fontSize:12,color:"rgba(226,232,240,.76)",fontFamily:F,lineHeight:1.6}}>{range}</div><div style={{fontSize:13,fontWeight:800,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>{price}</div></div>)}
+                {CERTIFICATION_PRICE_TIERS.map((item,i)=><div key={item.range} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:i===CERTIFICATION_PRICE_TIERS.length-1?"none":"1px solid rgba(125,211,252,.10)"}}><div style={{fontSize:12,color:"rgba(226,232,240,.76)",fontFamily:F,lineHeight:1.6}}>{item.range}</div><div style={{fontSize:13,fontWeight:800,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>${fm(item.value)}</div></div>)}
               </div>
             </div>
             <div style={{padding:"16px 16px 14px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
@@ -1733,11 +1766,14 @@ function CertificationSupportPage({config}){
               <a href="#guia-certificacion" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Ver guía del caso</a>
             </div>
           </div>
-          <div style={{padding:24,borderRadius:24,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
-            <div style={{fontSize:12,letterSpacing:"1.4px",fontWeight:900,color:"#1D4ED8",fontFamily:F,marginBottom:14}}>ANTES DE SOLICITAR</div>
-            <div style={{display:"grid",gap:12}}>
-              {config.checklist.map((item,index)=><div key={index} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr)",gap:10,alignItems:"start"}}><div style={{width:28,height:28,borderRadius:"50%",background:"rgba(37,99,235,.10)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#2563EB",fontFamily:F}}>{index+1}</div><div style={{fontSize:14,color:"#334155",lineHeight:1.65,fontFamily:F,fontWeight:650}}>{item}</div></div>)}
+          <div style={{display:"grid",gap:14}}>
+            <div style={{padding:24,borderRadius:24,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 22px 50px rgba(15,23,42,.08)"}}>
+              <div style={{fontSize:12,letterSpacing:"1.4px",fontWeight:900,color:"#1D4ED8",fontFamily:F,marginBottom:14}}>ANTES DE SOLICITAR</div>
+              <div style={{display:"grid",gap:12}}>
+                {config.checklist.map((item,index)=><div key={index} style={{display:"grid",gridTemplateColumns:"28px minmax(0,1fr)",gap:10,alignItems:"start"}}><div style={{width:28,height:28,borderRadius:"50%",background:"rgba(37,99,235,.10)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#2563EB",fontFamily:F}}>{index+1}</div><div style={{fontSize:14,color:"#334155",lineHeight:1.65,fontFamily:F,fontWeight:650}}>{item}</div></div>)}
+              </div>
             </div>
+            <CertificationPricingMiniCard/>
           </div>
         </div>
       </section>
@@ -2248,7 +2284,7 @@ function PaymentsPortalPage(){
 
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
-  const CT=[{r:"Ingresos desde $0 hasta $2.000.000",v:80000},{r:"Ingresos desde $2.000.001 hasta $4.000.000",v:100000},{r:"Ingresos desde $4.000.001 hasta $7.000.000",v:120000},{r:"Ingresos desde $7.000.001 hasta $12.000.000",v:150000},{r:"Ingresos desde $12.000.001 hasta $20.000.000",v:180000},{r:"Ingresos desde $20.000.001 en adelante",v:200000}];
+  const CT=CERTIFICATION_PRICE_TIERS.map(item=>({r:item.formRange,v:item.value}));
   const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",perMes:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",ev:[createEmptyEventualIncome()],cm:""};
   const PAYMENT_STORAGE_KEY="contarae-certification-reference";
   const PAYMENT_QUERY_PARAM="cert_ref";
@@ -2263,6 +2299,9 @@ function CrtS(){
   const[supportFiles,sSupportFiles]=useState([]);
   const[lastRef,sLastRef]=useState("");
   const[paymentFlow,sPaymentFlow]=useState({phase:PAYMENT_PHASES.idle,reference:"",status:"",message:"",consecutive:""});
+  const[promoCode,sPromoCode]=useState("");
+  const[promoStatus,sPromoStatus]=useState({state:"idle",message:""});
+  const[promoBusy,sPromoBusy]=useState(false);
   const pollTimeoutRef=useRef(null);
   const pollStartedAtRef=useRef(0);
   const u=(k,v)=>sF(p=>({...p,[k]:v}));
@@ -2279,9 +2318,30 @@ function CrtS(){
   const recurrentPeriodTotal=certifiedMonths?recurrentMonthlyTotal*certifiedMonths:0;
   const globalPeriodTotal=recurrentPeriodTotal+eventualTotal;
   const totalIng=recurrentMonthlyTotal;
-  const tarifa=gT(recurrentMonthlyTotal);
+  const baseTarifa=gT(recurrentMonthlyTotal);
+  const promoApplied=promoStatus.state==="valid"&&promoStatus.code===promoCodeValue(promoCode)&&promoStatus.monthlyIncome===recurrentMonthlyTotal;
+  const promoDiscount=promoApplied?Number(promoStatus.discountAmount||0):0;
+  const tarifa=promoApplied?Number(promoStatus.finalAmount||baseTarifa):baseTarifa;
   const createPaymentReference=()=>`CONTARAE-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
   const periodLabel=buildCertifiedPeriodLabel(f.per,certifiedMonths);
+  const updatePromoCode=value=>{sPromoCode(value);sPromoStatus({state:"idle",message:""});};
+  const clearPromoCode=()=>{sPromoCode("");sPromoStatus({state:"idle",message:""});};
+  const validatePromoCode=async()=>{
+    const code=promoCodeValue(promoCode);
+    if(!code){sPromoStatus({state:"invalid",message:"Ingresa un código promocional."});return;}
+    if(!recurrentMonthlyTotal){sPromoStatus({state:"invalid",message:"Primero registra los ingresos recurrentes para calcular la tarifa."});return;}
+    sPromoBusy(true);
+    try{
+      const response=await fetch("/api/validate-promo-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,monthlyIncome:recurrentMonthlyTotal})});
+      const data=await response.json();
+      if(!response.ok||!data.valid){sPromoStatus({state:"invalid",message:data.error||"Código no válido o inactivo.",code,monthlyIncome:recurrentMonthlyTotal});return;}
+      sPromoStatus({...data,state:"valid",message:`Código aplicado: ${data.discountRateLabel} adicional.`,monthlyIncome:recurrentMonthlyTotal});
+    }catch(error){
+      sPromoStatus({state:"invalid",message:"No fue posible validar el código. Intente nuevamente.",code,monthlyIncome:recurrentMonthlyTotal});
+    }finally{
+      sPromoBusy(false);
+    }
+  };
   const buildPendingPayload=(paymentReference,uploadedSupportFiles=[])=>({
     nombre:f.n,
     tipo_documento:f.td,
@@ -2304,9 +2364,15 @@ function CrtS(){
     otros_descripcion:f.oD,
     ingresos_eventuales_json:JSON.stringify(filledEventuals),
     total_ingresos:"$"+fm(recurrentMonthlyTotal),
+    total_ingresos_num:String(recurrentMonthlyTotal),
     total_ingresos_periodo:"$"+fm(recurrentPeriodTotal),
     total_ingresos_eventuales:eventualTotal?`$${fm(eventualTotal)}`:"",
     total_ingresos_global_periodo:eventualTotal?`$${fm(globalPeriodTotal)}`:"",
+    tarifa_base:"$"+fm(baseTarifa),
+    codigo_promocional:promoApplied?promoStatus.code:"",
+    aliado_estrategico:promoApplied?promoStatus.allyName:"",
+    descuento_promocional:promoApplied?`$${fm(promoDiscount)}`:"",
+    porcentaje_descuento_promocional:promoApplied?promoStatus.discountRateLabel:"",
     tarifa_pagada:"$"+fm(tarifa),
     soportes_adjuntos:uploadedSupportFiles.map(file=>file.originalName).join(", "),
     referencia_wompi:paymentReference,
@@ -2347,7 +2413,7 @@ function CrtS(){
   const clearTrackedReference=()=>{try{window.sessionStorage.removeItem(PAYMENT_STORAGE_KEY);}catch(e){} if(typeof window!=="undefined"){const url=new URL(window.location.href);url.searchParams.delete(PAYMENT_QUERY_PARAM);if(window.history?.replaceState)window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash}`);}};
   const persistTrackedReference=reference=>{try{window.sessionStorage.setItem(PAYMENT_STORAGE_KEY,reference);}catch(e){} if(typeof window!=="undefined"){const url=new URL(window.location.href);url.searchParams.set(PAYMENT_QUERY_PARAM,reference);if(window.history?.replaceState)window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash||"#certificacion"}`);}};
   const buildRedirectUrl=reference=>{const url=new URL(window.location.href);url.searchParams.set(PAYMENT_QUERY_PARAM,reference);url.hash="certificacion";return url.toString();};
-  const resetForm=()=>{sStep(0);sAcc(false);sCitySug([]);sOpenForm(false);sF(INITIAL_FORM);sSupportFiles([]);};
+  const resetForm=()=>{sStep(0);sAcc(false);sCitySug([]);sOpenForm(false);sF(INITIAL_FORM);sSupportFiles([]);clearPromoCode();};
   const closePaymentFeedback=()=>{clearPollTimeout();sPaymentFlow({phase:PAYMENT_PHASES.idle,reference:"",status:"",message:"",consecutive:""});};
   const releaseCheckoutOverlay=reference=>{sPaymentFlow({phase:PAYMENT_PHASES.idle,reference:reference||"",status:"",message:"",consecutive:""});};
   const cleanupWompiArtifacts=()=>{if(typeof document==="undefined")return;Array.from(document.querySelectorAll('iframe[src*="checkout.wompi.co"]')).forEach(frame=>{const container=frame.parentElement;if(container&&container!==document.body&&container.childElementCount===1){container.remove();return;}frame.remove();});};
@@ -2394,6 +2460,7 @@ function CrtS(){
   };
   const openWompi=async()=>{let paymentReference="";try{
     if(typeof window==="undefined"||!window.WidgetCheckout){alert("La pasarela de pago aún se está cargando. Intente nuevamente en unos segundos.");return;}
+    if(promoCodeValue(promoCode)&&!promoApplied){alert("Valide el código promocional o borre el campo antes de pagar.");return;}
     paymentReference=createPaymentReference();
     const phoneDigits=normalizeColombianMobileNumber(f.tel);
     const legalIdType=f.td==="Pasaporte"?"PP":f.td;
@@ -2406,9 +2473,9 @@ function CrtS(){
     const spd=await sp.json();
     if(!sp.ok||!spd.ok){closePaymentFeedback();alert("No fue posible preparar la solicitud. Intente nuevamente.");return;}
     persistTrackedReference(paymentReference);
-    const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,amountInCents:tarifa*100,currency:"COP"})});
+    const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,amountInCents:tarifa*100,currency:"COP",monthlyIncome:recurrentMonthlyTotal,promoCode:promoApplied?promoStatus.code:""})});
     const sd=await sg.json();
-    if(!sd.signature){clearTrackedReference();closePaymentFeedback();alert("Error generando la firma de seguridad. Intente nuevamente.");return;}
+    if(!sg.ok||!sd.signature){clearTrackedReference();closePaymentFeedback();alert(sd.error||"Error generando la firma de seguridad. Intente nuevamente.");return;}
     sOpenForm(false);
     if(document.activeElement instanceof HTMLElement)document.activeElement.blur();
     sPaymentFlow({phase:PAYMENT_PHASES.opening,reference:paymentReference,status:"OPENING",message:"Estamos abriendo la ventana segura de Wompi. Si está en celular, al volver seguiremos confirmando el pago automáticamente.",consecutive:""});
@@ -2434,7 +2501,7 @@ function CrtS(){
   }catch(e){clearTrackedReference();markPaymentFailed(paymentReference||lastRef,"CONNECTION_ERROR","Ocurrió un problema al conectar con la pasarela de pago. Intente nuevamente o contáctenos para ayudarle.");}};
   const supportRef=paymentFlow.reference||lastRef||"PENDIENTE";
   const supportCode=paymentFlow.consecutive?`Solicitud N° ${paymentFlow.consecutive}`:supportRef;
-  const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0ACódigo: ${supportCode}%0AReferencia: ${supportRef}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0AIngreso mensual recurrente: $${fm(recurrentMonthlyTotal)}%0ATotal recurrente del período: $${fm(recurrentPeriodTotal)}${eventualTotal?`%0ATotal ingresos eventuales: $${fm(eventualTotal)}%0ATotal global del período: $${fm(globalPeriodTotal)}`:""}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AEnviaré los soportes documentales por este medio o por correo electrónico.`;
+  const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0ACódigo: ${supportCode}%0AReferencia: ${supportRef}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0AIngreso mensual recurrente: $${fm(recurrentMonthlyTotal)}%0ATotal recurrente del período: $${fm(recurrentPeriodTotal)}${eventualTotal?`%0ATotal ingresos eventuales: $${fm(eventualTotal)}%0ATotal global del período: $${fm(globalPeriodTotal)}`:""}${promoApplied?`%0ACódigo promocional: ${promoStatus.code}%0ADescuento promocional: $${fm(promoDiscount)}`:""}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AEnviaré los soportes documentales por este medio o por correo electrónico.`;
   const pasos=["Datos personales","Destino","Ingresos y soportes","Confirmación y pago","Entrega en PDF"];
   const moveStep=n=>{sStep(n);};
   useEffect(()=>{
@@ -2461,9 +2528,9 @@ function CrtS(){
     <p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:10,fontFamily:F}}>Solicítela 100% online y recíbala firmada por Contador Público con tarjeta profesional vigente.</p>
     <p style={{textAlign:"center",fontSize:14,color:"#5A6F8A",marginBottom:36,fontFamily:F}}>Para arriendo, crédito bancario, visa, licitaciones y más. Si sus soportes están claros, en muchos casos puede quedar lista el mismo día o en menos de 1 día hábil.</p>
 
-    <div id="certificacion-info" style={{display:"grid",gap:14,marginBottom:28,scrollMarginTop:"150px"}}>{[["¿Qué es un certificado de ingresos?","Documento suscrito por Contador Público con tarjeta profesional vigente que certifica sus ingresos con base en soportes verificables como extractos bancarios, contratos, facturas y comprobantes de pago."],["¿Por qué firma de Contador Público?","Según la Ley 43 de 1990 (art. 10), la firma otorga fe pública. El CTCP (Concepto 1106/2019) ratifica que deben soportarse en documentación verificable."],["¿Para qué se necesita?","Créditos bancarios, arrendamientos, compra de vehículo, trámites de visa, licitaciones, libreta militar y trámites académicos."],["¿Cuánto cuesta?","Desde $80.000 COP según el rango de ingresos. Incluye revisión profesional, elaboración y firma. Entrega digital en PDF."]].map(([t,d],i)=><div key={i} style={{padding:22,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.12)"}}><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.8,fontFamily:F}}>{d}</p></div>)}</div>
+    <div id="certificacion-info" style={{display:"grid",gap:14,marginBottom:28,scrollMarginTop:"150px"}}>{[["¿Qué es un certificado de ingresos?","Documento suscrito por Contador Público con tarjeta profesional vigente que certifica sus ingresos con base en soportes verificables como extractos bancarios, contratos, facturas y comprobantes de pago."],["¿Por qué firma de Contador Público?","Según la Ley 43 de 1990 (art. 10), la firma otorga fe pública. El CTCP (Concepto 1106/2019) ratifica que deben soportarse en documentación verificable."],["¿Para qué se necesita?","Créditos bancarios, arrendamientos, compra de vehículo, trámites de visa, licitaciones, libreta militar y trámites académicos."],["¿Cuánto cuesta?","Desde $100.000 COP según el rango de ingresos. Incluye revisión profesional, elaboración y firma. Entrega digital en PDF."]].map(([t,d],i)=><div key={i} style={{padding:22,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.12)"}}><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.8,fontFamily:F}}>{d}</p></div>)}</div>
 
-    <div style={{padding:24,borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",marginBottom:28,color:"#fff"}}><h3 style={{fontSize:17,fontWeight:700,marginBottom:14,textAlign:"center",fontFamily:F}}>Tarifas certificado de ingresos</h3><div className="cert-price-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>{CT.map((t,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:7,background:"rgba(255,255,255,.07)",fontFamily:F}}><span style={{fontSize:14,opacity:.85}}>{t.r}</span><div style={{textAlign:"right"}}><span style={{fontSize:11,textDecoration:"line-through",opacity:.5}}>${fm(disc(t.v))}</span><span style={{display:"inline-block",marginLeft:6,fontSize:9,fontWeight:700,color:"#fff",background:"#DC2626",padding:"1px 6px",borderRadius:100}}>25% OFF</span><div style={{fontSize:15,fontWeight:700,color:"#60A5FA"}}>${fm(t.v)}</div></div></div>)}</div><div style={{marginTop:14,padding:12,borderRadius:8,background:"rgba(96,165,250,.13)",fontSize:13,fontFamily:F}}>🔒 Pago seguro procesado por <strong>Wompi</strong>. Tarjeta, PSE, Nequi o Daviplata.</div></div>
+    <div style={{padding:24,borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",marginBottom:28,color:"#fff"}}><h3 style={{fontSize:17,fontWeight:700,marginBottom:14,textAlign:"center",fontFamily:F}}>Tarifas certificado de ingresos</h3><div className="cert-price-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>{CT.map((t,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:7,background:"rgba(255,255,255,.07)",fontFamily:F}}><span style={{fontSize:14,opacity:.85}}>{t.r}</span><div style={{textAlign:"right"}}><span style={{fontSize:11,textDecoration:"line-through",opacity:.5}}>${fm(certDisc(t.v))}</span><span style={{display:"inline-block",marginLeft:6,fontSize:9,fontWeight:700,color:"#fff",background:"#DC2626",padding:"1px 6px",borderRadius:100}}>10% OFF</span><div style={{fontSize:15,fontWeight:700,color:"#60A5FA"}}>${fm(t.v)}</div></div></div>)}</div><div style={{marginTop:14,padding:12,borderRadius:8,background:"rgba(96,165,250,.13)",fontSize:13,fontFamily:F}}>🔒 Pago seguro procesado por <strong>Wompi</strong>. Tarjeta, PSE, Nequi o Daviplata.</div></div>
 
     <div style={{padding:24,borderRadius:16,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 5px 24px rgba(37,99,235,.05)",marginBottom:10}}><h3 style={{fontSize:18,fontWeight:700,color:"#0B1D3A",marginBottom:14,fontFamily:F,textAlign:"center"}}>Así funciona su solicitud</h3><div className="cert-process-grid" style={{display:"grid",gap:10,gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))"}}>{["Completa el formulario en minutos","Relaciona solo los ingresos que aplican","Paga seguro con Wompi","Revisión profesional y validación","En muchos casos, la recibes el mismo día"].map((txt,i)=><div key={i} style={{padding:14,borderRadius:12,background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.10)"}}><div style={{width:26,height:26,borderRadius:"50%",background:"#2563EB",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,fontFamily:F,marginBottom:8}}>{i+1}</div><div style={{fontSize:14,fontWeight:600,color:"#0B1D3A",lineHeight:1.55,fontFamily:F}}>{txt}</div></div>)}</div><div style={{textAlign:"center",marginTop:18}}><button type="button" onClick={()=>sOpenForm(true)} style={{padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontSize:16,fontWeight:700,border:"none",cursor:"pointer",fontFamily:F,boxShadow:"0 14px 30px rgba(37,99,235,.18)"}}>Iniciar formulario de solicitud</button></div></div>
 
@@ -2496,6 +2563,8 @@ function CrtS(){
 
       <div style={{marginTop:18,padding:18,borderRadius:11,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",color:"#fff"}}><div style={{display:"grid",gap:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL INGRESOS MENSUALES RECURRENTES</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Calculado automáticamente — no modificable</div></div><div style={{fontSize:24,fontWeight:700,fontFamily:F,color:"#60A5FA"}}>$ {fm(recurrentMonthlyTotal)}</div></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL RECURRENTE DEL PERÍODO</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>{periodLabel||"Período no definido"}</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(recurrentPeriodTotal)}</div></div>{eventualTotal?(<><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL EVENTUAL DEL PERÍODO</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Solo ingresos no fijos reportados arriba</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(eventualTotal)}</div></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL GLOBAL DEL PERÍODO</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Recurrentes del período + eventuales</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F,color:"#BFDBFE"}}>$ {fm(globalPeriodTotal)}</div></div></>):null}<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>VALOR A PAGAR</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Según ingresos mensuales recurrentes</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(tarifa)}</div></div></div></div>
 
+      <div style={{marginTop:16,padding:20,borderRadius:16,background:"linear-gradient(135deg,rgba(37,99,235,.10),rgba(56,189,248,.10))",border:"1px solid rgba(37,99,235,.18)",boxShadow:"0 14px 30px rgba(37,99,235,.08)"}}><div style={{display:"grid",gap:12}}><div><div style={{fontSize:12,letterSpacing:"1.3px",fontWeight:900,color:"#1D4ED8",fontFamily:F}}>CÓDIGO PROMOCIONAL / REFERIDOS</div><p style={{fontSize:14,color:"#3a5068",lineHeight:1.75,fontFamily:F,margin:"6px 0 0"}}>Si viene referido por un aliado estratégico, ingrese su código para aplicar un 15% adicional antes del pago.</p></div><div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:10,alignItems:"center"}} className="promo-code-row"><input style={{...IS,background:"#fff",textTransform:"uppercase"}} value={promoCode} onChange={e=>updatePromoCode(e.target.value)} placeholder="Escriba el código del aliado"/><button type="button" onClick={validatePromoCode} disabled={promoBusy||!promoCodeValue(promoCode)} style={{padding:"13px 18px",borderRadius:13,border:"none",background:promoBusy||!promoCodeValue(promoCode)?"#CBD5E1":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:900,cursor:promoBusy||!promoCodeValue(promoCode)?"not-allowed":"pointer"}}>{promoBusy?"Validando...":"Aplicar"}</button><button type="button" onClick={clearPromoCode} disabled={!promoCodeValue(promoCode)} style={{padding:"13px 16px",borderRadius:13,border:"1px solid rgba(37,99,235,.14)",background:"#fff",color:"#1D4ED8",fontFamily:F,fontWeight:900,cursor:promoCodeValue(promoCode)?"pointer":"not-allowed",opacity:promoCodeValue(promoCode)?1:.55}}>Limpiar</button></div>{promoStatus.state==="valid"&&promoApplied?<div style={{padding:14,borderRadius:14,background:"rgba(34,197,94,.12)",border:"1px solid rgba(34,197,94,.20)",fontFamily:F,color:"#14532D",lineHeight:1.7}}><strong>Código aplicado correctamente.</strong> Valor normal: <strong>$ {fm(baseTarifa)}</strong> · Descuento: <strong>- $ {fm(promoDiscount)}</strong> · Total con referido: <strong>$ {fm(tarifa)}</strong></div>:null}{promoStatus.state==="invalid"?<div style={{padding:14,borderRadius:14,background:"rgba(220,38,38,.08)",border:"1px solid rgba(220,38,38,.16)",fontFamily:F,color:"#991B1B",lineHeight:1.7,fontWeight:800}}>{promoStatus.message}</div>:null}<style>{`@media(max-width:720px){.promo-code-row{grid-template-columns:1fr!important;}}`}</style></div></div>
+
       <div style={{marginTop:16,padding:18,borderRadius:12,background:"rgba(37,99,235,.04)",border:"1px dashed rgba(37,99,235,.16)"}}><h4 style={{fontSize:14,fontWeight:700,color:"#1B3A5C",marginBottom:8,fontFamily:F}}>📎 Soportes documentales opcionales</h4><p style={{fontSize:14,color:"#1B3A5C",lineHeight:1.8,fontFamily:F,marginBottom:10}}>Si ya cuenta con algunos soportes, puede adjuntarlos ahora mismo para que queden vinculados a la solicitud. Esto agiliza la revisión en el panel interno de CONTARAE.</p><div style={{padding:16,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.12)",marginBottom:12}}><input type="file" multiple accept={SUPPORT_ACCEPT} onChange={e=>{addSupportFiles(e.target.files);e.target.value="";}} style={{...IS,padding:"10px 12px",cursor:"pointer"}}/><div style={{marginTop:8,fontSize:12,color:"#64748B",lineHeight:1.7,fontFamily:F}}>Formatos permitidos: PDF, JPG, PNG, WEBP, HEIC, DOC y DOCX. Máximo {SUPPORT_MAX_FILES} archivos de hasta {fmtB(SUPPORT_MAX_BYTES)} cada uno.</div></div>{supportFiles.length>0&&<div style={{display:"grid",gap:8,marginBottom:12}}>{supportFiles.map((file,index)=><div key={`${file.name}-${file.lastModified}-${index}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div><div style={{fontSize:14,fontWeight:700,color:"#0B1D3A",fontFamily:F,lineHeight:1.5}}>{file.name}</div><div style={{fontSize:12,color:"#64748B",fontFamily:F}}>{fmtB(file.size)} · {file.type||"Archivo"}</div></div><button type="button" onClick={()=>removeSupportFile(index)} style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(220,38,38,.14)",background:"rgba(220,38,38,.06)",color:"#DC2626",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Quitar</button></div>)}</div>}<p style={{fontSize:14,color:"#3a5068",lineHeight:1.8,fontFamily:F,marginBottom:10}}>Si aún no tiene todos los soportes, puede completar el pago y enviarlos después por <strong>WhatsApp</strong> o <strong>correo electrónico</strong>. Ejemplos: contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones, comprobantes de pago y demás documentos que acrediten la información reportada.</p><p style={{fontSize:14,color:"#3a5068",lineHeight:1.8,fontFamily:F,marginBottom:0}}>Después de recibir la solicitud, un profesional de CONTARAE se pondrá en contacto para realizar la revisión completa de la documentación y validar la información antes de emitir la certificación.</p></div>
 
       <div style={{marginTop:12}}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Comentarios</label><textarea style={{...IS,minHeight:60,resize:"vertical",marginTop:4}} value={f.cm} onChange={e=>u("cm",e.target.value)} placeholder="Información adicional..."/></div>
@@ -2503,7 +2572,7 @@ function CrtS(){
     </div>}
 
     {step===3&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:14,fontFamily:F}}>📋 Paso 4: Confirmación y Pago</h4>
-      <div style={{padding:18,borderRadius:11,background:"#f0f4fa",border:"1px solid rgba(37,99,235,.12)",marginBottom:16}}><div style={{display:"grid",gap:6,fontSize:15,fontFamily:F,color:"#3a5068"}}><div><strong>Nombre:</strong> {f.n}</div><div><strong>Documento:</strong> {f.td} {f.cc} — {f.le}</div><div><strong>Teléfono:</strong> {f.tel} | <strong>Correo:</strong> {f.em}</div><div><strong>Destino:</strong> {f.dir} {f.ent&&`— ${f.ent}`} | <strong>Período:</strong> {periodLabel||f.per}</div><div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(37,99,235,.1)"}}><strong>Total mensual recurrente:</strong> <span style={{color:"#2563EB",fontWeight:700,fontSize:17}}>$ {fm(recurrentMonthlyTotal)}</span></div><div><strong>Total recurrente del período:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(recurrentPeriodTotal)}</span>{eventualTotal?<> | <strong>Total eventuales:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(eventualTotal)}</span></>:null}</div><div>{eventualTotal?(<><strong>Total global del período:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(globalPeriodTotal)}</span> | </>):null}<strong>Valor a pagar:</strong> <span style={{color:"#0B1D3A",fontWeight:700,fontSize:17}}>$ {fm(tarifa)}</span></div></div></div>
+      <div style={{padding:18,borderRadius:11,background:"#f0f4fa",border:"1px solid rgba(37,99,235,.12)",marginBottom:16}}><div style={{display:"grid",gap:6,fontSize:15,fontFamily:F,color:"#3a5068"}}><div><strong>Nombre:</strong> {f.n}</div><div><strong>Documento:</strong> {f.td} {f.cc} — {f.le}</div><div><strong>Teléfono:</strong> {f.tel} | <strong>Correo:</strong> {f.em}</div><div><strong>Destino:</strong> {f.dir} {f.ent&&`— ${f.ent}`} | <strong>Período:</strong> {periodLabel||f.per}</div><div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(37,99,235,.1)"}}><strong>Total mensual recurrente:</strong> <span style={{color:"#2563EB",fontWeight:700,fontSize:17}}>$ {fm(recurrentMonthlyTotal)}</span></div><div><strong>Total recurrente del período:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(recurrentPeriodTotal)}</span>{eventualTotal?<> | <strong>Total eventuales:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(eventualTotal)}</span></>:null}</div>{promoApplied?<div><strong>Valor normal:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(baseTarifa)}</span> | <strong>Código:</strong> <span style={{color:"#15803D",fontWeight:800}}>{promoStatus.code}</span> | <strong>Descuento:</strong> <span style={{color:"#15803D",fontWeight:800}}>- $ {fm(promoDiscount)}</span></div>:null}<div>{eventualTotal?(<><strong>Total global del período:</strong> <span style={{color:"#0B1D3A",fontWeight:700}}>$ {fm(globalPeriodTotal)}</span> | </>):null}<strong>Valor a pagar:</strong> <span style={{color:"#0B1D3A",fontWeight:700,fontSize:17}}>$ {fm(tarifa)}</span></div></div></div>
 
       <div style={{padding:18,borderRadius:11,background:"rgba(220,38,38,.03)",border:"1px solid rgba(220,38,38,.1)",marginBottom:16}}><h4 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:10,fontFamily:F}}>CONDICIONES DEL SERVICIO</h4><div style={{fontSize:14,color:"#3a5068",lineHeight:1.85,fontFamily:F}}>
         <p style={{marginBottom:8}}><strong>1. Veracidad:</strong> Declaro bajo gravedad del juramento (art. 83 Constitución) que la información refleja mi realidad económica. Los soportes son auténticos y no han sido alterados.</p>
@@ -2839,7 +2908,7 @@ export default function App(){
     </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
-    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
+    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><CertificationVideoSection/></div>

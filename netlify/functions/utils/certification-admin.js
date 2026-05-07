@@ -295,6 +295,11 @@ function summarizeRecord(record, source) {
     recurringPeriodTotal: formData.total_ingresos_periodo || "",
     eventualIncomeTotal: hasEventuals ? formData.total_ingresos_eventuales || "" : "",
     globalPeriodIncomeTotal: hasEventuals ? formData.total_ingresos_global_periodo || "" : "",
+    baseFee: formData.tarifa_base || "",
+    promoCode: formData.codigo_promocional || "",
+    promoAllyName: formData.aliado_estrategico || "",
+    promoDiscount: formData.descuento_promocional || "",
+    promoCommissionEstimate: formData.comision_aliado_estimada || "",
     fee: formData.tarifa_pagada || "",
     consecutive: record.consecutive || "",
     certificateVersion: Number(record.certificateVersion || 0) || null,
@@ -307,7 +312,8 @@ function summarizeRecord(record, source) {
     lastEventStatus: record.lastEventStatus || "",
     netlifySubmittedAt: record.netlifySubmittedAt || "",
     businessNotificationSentAt: record.businessNotificationSentAt || "",
-    customerNotificationSentAt: record.customerNotificationSentAt || ""
+    customerNotificationSentAt: record.customerNotificationSentAt || "",
+    allyNotificationSentAt: record.allyNotificationSentAt || ""
   };
 }
 

@@ -799,7 +799,7 @@ function buildPaymentsCsv(payments = [], certificationRecords = []) {
 }
 
 function buildCertificationsCsv(records = []) {
-  const headers = ["referencia", "consecutivo", "cliente", "documento", "correo", "telefono", "destino", "entidad", "estado_certificacion", "estado_pago", "tarifa", "soportes", "creado", "actualizado"];
+  const headers = ["referencia", "consecutivo", "cliente", "documento", "correo", "telefono", "destino", "entidad", "estado_certificacion", "estado_pago", "tarifa_base", "codigo_promocional", "aliado", "descuento_promocional", "tarifa", "comision_aliado_estimada", "soportes", "creado", "actualizado"];
   return buildCsv(headers, records.map((record) => ({
     referencia: record.reference,
     consecutivo: record.consecutive,
@@ -811,7 +811,12 @@ function buildCertificationsCsv(records = []) {
     entidad: record.entity,
     estado_certificacion: getStatusMeta(record.certificationStatus).label,
     estado_pago: getPaymentMeta(record.paymentStatus).label,
+    tarifa_base: record.baseFee,
+    codigo_promocional: record.promoCode,
+    aliado: record.promoAllyName,
+    descuento_promocional: record.promoDiscount,
     tarifa: record.fee,
+    comision_aliado_estimada: record.promoCommissionEstimate,
     soportes: record.supportFilesCount || record.supportsCount || 0,
     creado: record.createdAt,
     actualizado: record.updatedAt
@@ -5170,7 +5175,10 @@ export default function AdminPanel() {
                   <InfoTile label="Total recurrente del período" value={detail.totals?.recurringPeriod} />
                   {detail.totals?.eventualPeriod ? <InfoTile label="Total eventuales del período" value={detail.totals?.eventualPeriod} /> : null}
                   {detail.totals?.globalPeriod ? <InfoTile label="Total global del período" value={detail.totals?.globalPeriod} /> : null}
+                  {detail.summary.promoCode ? <InfoTile label="Código referido" value={`${detail.summary.promoCode}${detail.summary.promoAllyName ? ` · ${detail.summary.promoAllyName}` : ""}`} /> : null}
+                  {detail.summary.promoDiscount ? <InfoTile label="Descuento referido" value={detail.summary.promoDiscount} /> : null}
                   <InfoTile label="Tarifa pagada" value={detail.summary.fee} />
+                  {detail.summary.promoCommissionEstimate ? <InfoTile label="Comisión estimada aliado" value={detail.summary.promoCommissionEstimate} /> : null}
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>
 
@@ -5851,7 +5859,7 @@ export default function AdminPanel() {
                             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                               <label style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>
                                 {busy ? "Cargando..." : "Actualizar documento"}
-                                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" disabled={busy} onChange={(event) => handleProfessionalDocumentUpload(type, event)} style={{ display: "none" }} />
+                                <input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={busy} onChange={(event) => handleProfessionalDocumentUpload(type, event)} style={{ display: "none" }} />
                               </label>
                               {document?.downloadPath ? (
                                 <a href={document.downloadPath} target="_blank" rel="noopener noreferrer" style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 800, textDecoration: "none" }}>
@@ -5934,6 +5942,11 @@ export default function AdminPanel() {
                   <div style={{ fontFamily: F, fontSize: 12, color: professionalConfig?.documents?.professional_card?.available ? "#15803D" : "#B45309", marginTop: 4 }}>
                     {professionalConfig?.documents?.professional_card?.available ? `Disponible: ${professionalConfig.documents.professional_card.fileName}` : "No hay un archivo cargado actualmente."}
                   </div>
+                  {professionalConfig?.documents?.professional_card?.available ? (
+                    <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", marginTop: 6, lineHeight: 1.6 }}>
+                      Se enviará como PDF protegido con marca de agua: uso exclusivo para esta certificación, nombre del cliente y referencia del expediente.
+                    </div>
+                  ) : null}
                 </div>
               </label>
               <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", cursor: "pointer" }}>

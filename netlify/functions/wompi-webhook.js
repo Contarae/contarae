@@ -1,6 +1,11 @@
 import crypto from "crypto";
 import { getStore } from "@netlify/blobs";
 import { processServicePaymentEvent } from "./utils/service-requests.js";
+import promoUtils from "./utils/promo-codes.cjs";
+
+const {
+  parseMoneyValue
+} = promoUtils;
 
 function getValueByPath(obj, path) {
   return path.split(".").reduce((acc, key) => acc?.[key], obj);
@@ -132,7 +137,12 @@ function buildBusinessSummaryRows(paidRecord, reference) {
     ["Total recurrente del período", formData.total_ingresos_periodo],
     ["Total eventuales del período", formData.total_ingresos_eventuales],
     ["Total global del período", formData.total_ingresos_global_periodo],
+    ["Tarifa base", formData.tarifa_base],
+    ["Código promocional", formData.codigo_promocional],
+    ["Aliado estratégico", formData.aliado_estrategico],
+    ["Descuento promocional", formData.descuento_promocional],
     ["Tarifa pagada", formData.tarifa_pagada],
+    ["Comisión aliado estimada", formData.comision_aliado_estimada],
     ["Soportes adjuntos", supportFiles.length ? `${supportFiles.length} archivo(s)` : "Sin adjuntos"],
     ["Comentarios", formData.comentarios],
     ["Declaración juramentada", formData.declaracion_juramentada]
@@ -239,6 +249,9 @@ function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLin
     ["Total recurrente del período", formData.total_ingresos_periodo],
     ["Total eventuales del período", formData.total_ingresos_eventuales],
     ["Total global del período", formData.total_ingresos_global_periodo],
+    ["Valor normal", formData.tarifa_base],
+    ["Código promocional", formData.codigo_promocional],
+    ["Descuento promocional", formData.descuento_promocional],
     ["Valor pagado", formData.tarifa_pagada],
     ["Destino", joinValues([formData.destino, formData.entidad])],
     ["Período", formData.periodo]
@@ -298,6 +311,9 @@ function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLin
     ["Total recurrente del período", formData.total_ingresos_periodo],
     ["Total eventuales del período", formData.total_ingresos_eventuales],
     ["Total global del período", formData.total_ingresos_global_periodo],
+    ["Valor normal", formData.tarifa_base],
+    ["Código promocional", formData.codigo_promocional],
+    ["Descuento promocional", formData.descuento_promocional],
     ["Valor pagado", formData.tarifa_pagada],
     ["Destino", joinValues([formData.destino, formData.entidad])],
     ["Período", formData.periodo]
@@ -321,6 +337,92 @@ function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLin
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function getPromoReferral(paidRecord = {}) {
+  const formData = paidRecord.formData || {};
+  const referral = paidRecord.promoReferral || {};
+  const code = String(referral.code || formData.codigo_promocional || "").trim();
+  const allyEmail = normalizeEmail(referral.allyEmail || "");
+  const allyName = String(referral.allyName || formData.aliado_estrategico || "").trim();
+
+  if (!code || !allyEmail || !allyName) return null;
+
+  return {
+    code,
+    allyName,
+    allyEmail,
+    baseAmountLabel: referral.baseAmountLabel || formData.tarifa_base || "",
+    discountAmountLabel: referral.discountAmountLabel || formData.descuento_promocional || "",
+    finalAmountLabel: referral.finalAmountLabel || formData.tarifa_pagada || "",
+    commissionRateLabel: referral.commissionRateLabel || formData.porcentaje_comision_aliado || "",
+    commissionAmountLabel: referral.commissionAmountLabel || formData.comision_aliado_estimada || ""
+  };
+}
+
+function buildAllyEmailHtml(paidRecord, reference) {
+  const formData = paidRecord.formData || {};
+  const referral = getPromoReferral(paidRecord);
+  const rows = [
+    ["Cliente referido", formData.nombre],
+    ["Servicio adquirido", "Certificación de ingresos"],
+    ["Referencia Wompi", reference],
+    ["Código usado", referral?.code],
+    ["Valor normal del servicio", referral?.baseAmountLabel],
+    ["Descuento aplicado al cliente", referral?.discountAmountLabel],
+    ["Valor pagado por el cliente", referral?.finalAmountLabel],
+    ["Comisión pactada", referral?.commissionRateLabel],
+    ["Valor estimado de comisión", referral?.commissionAmountLabel]
+  ].filter(([, value]) => String(value || "").trim());
+
+  return `
+    <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
+      <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #dbe5f1;border-radius:18px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#0b1d3a,#2563eb);padding:24px 28px;color:#ffffff;">
+          <div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.82;">CONTARAE aliados</div>
+          <h1 style="margin:10px 0 4px;font-size:24px;">Nueva venta referida</h1>
+          <p style="margin:0;font-size:14px;opacity:0.88;">Un cliente usó tu código promocional en una certificación de ingresos.</p>
+        </div>
+        <div style="padding:24px 28px;">
+          <p style="margin:0 0 16px;color:#334155;line-height:1.8;">
+            Hola ${escapeHtml(referral?.allyName || "aliado")}, te informamos que se registró una nueva venta referida con tu código.
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+            ${buildRowsHtml(rows)}
+          </table>
+          <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.8;">
+            Este valor corresponde a una <strong>comisión estimada</strong>. La liquidación definitiva se realizará conforme a los acuerdos comerciales establecidos con CONTARAE y podrá ajustarse ante reversos, devoluciones, contracargos o novedades administrativas.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildAllyEmailText(paidRecord, reference) {
+  const formData = paidRecord.formData || {};
+  const referral = getPromoReferral(paidRecord);
+  const rows = [
+    ["Cliente referido", formData.nombre],
+    ["Servicio adquirido", "Certificación de ingresos"],
+    ["Referencia Wompi", reference],
+    ["Código usado", referral?.code],
+    ["Valor normal del servicio", referral?.baseAmountLabel],
+    ["Descuento aplicado al cliente", referral?.discountAmountLabel],
+    ["Valor pagado por el cliente", referral?.finalAmountLabel],
+    ["Comisión pactada", referral?.commissionRateLabel],
+    ["Valor estimado de comisión", referral?.commissionAmountLabel]
+  ].filter(([, value]) => String(value || "").trim());
+
+  return [
+    `Hola ${referral?.allyName || "aliado"},`,
+    "",
+    "Se registró una nueva venta referida con tu código promocional.",
+    "",
+    buildRowsText(rows),
+    "",
+    "Este valor corresponde a una comisión estimada. La liquidación definitiva se realizará conforme a los acuerdos comerciales establecidos con CONTARAE y podrá ajustarse ante reversos, devoluciones, contracargos o novedades administrativas."
+  ].join("\n");
 }
 
 async function sendResendEmail({
@@ -577,6 +679,35 @@ export default async (req, context) => {
         );
       }
 
+      const expectedAmountInCents = Math.round(
+        Number(pendingRecord.pricing?.finalAmount || parseMoneyValue(pendingRecord.formData?.tarifa_pagada || 0)) * 100
+      );
+      const receivedAmountInCents = Number(transaction.amount_in_cents || 0);
+
+      if (expectedAmountInCents > 0 && receivedAmountInCents !== expectedAmountInCents) {
+        await store.setJSON(`pending:${reference}`, {
+          ...pendingRecord,
+          status: "amount_mismatch",
+          lastEventStatus: status,
+          lastEventAt: new Date().toISOString(),
+          amountMismatch: {
+            expectedAmountInCents,
+            receivedAmountInCents,
+            transactionId: transaction.id || ""
+          }
+        });
+
+        return new Response(
+          JSON.stringify({
+            error: "El valor pagado no coincide con la tarifa calculada para esta solicitud.",
+            reference,
+            expectedAmountInCents,
+            receivedAmountInCents
+          }),
+          { status: 409, headers }
+        );
+      }
+
       const seqRecord = await store.get("meta:last-sequence", { type: "json" });
       const lastSequence = seqRecord?.lastSequence || 999;
       const newSequence = lastSequence + 1;
@@ -614,9 +745,11 @@ export default async (req, context) => {
         paidRecord.wompiTransaction?.customer_email ||
         transaction.customer_email
     );
+    const promoReferralForCompletion = getPromoReferral(paidRecord);
     const allNotificationsCompleted =
       Boolean(paidRecord.businessNotificationSentAt) &&
-      (customerEmail ? Boolean(paidRecord.customerNotificationSentAt) : true);
+      (customerEmail ? Boolean(paidRecord.customerNotificationSentAt) : true) &&
+      (promoReferralForCompletion ? Boolean(paidRecord.allyNotificationSentAt) : true);
 
     if (paidRecord.netlifySubmittedAt && allNotificationsCompleted) {
       return new Response(
@@ -627,7 +760,8 @@ export default async (req, context) => {
           consecutivo: paidRecord.consecutive,
           submittedAt: paidRecord.netlifySubmittedAt,
           businessNotificationSentAt: paidRecord.businessNotificationSentAt || null,
-          customerNotificationSentAt: paidRecord.customerNotificationSentAt || null
+          customerNotificationSentAt: paidRecord.customerNotificationSentAt || null,
+          allyNotificationSentAt: paidRecord.allyNotificationSentAt || null
         }),
         { status: 200, headers }
       );
@@ -732,6 +866,30 @@ export default async (req, context) => {
           notificationErrors.customer = error.message;
         }
       }
+
+      const promoReferral = getPromoReferral(updatedPaidRecord);
+      if (promoReferral && !updatedPaidRecord.allyNotificationSentAt) {
+        try {
+          const allyEmailResult = await sendResendEmail({
+            apiKey: resendApiKey,
+            from: resendFromEmail,
+            to: promoReferral.allyEmail,
+            subject: `CONTARAE | Nueva venta referida con código ${promoReferral.code}`,
+            html: buildAllyEmailHtml(updatedPaidRecord, reference),
+            text: buildAllyEmailText(updatedPaidRecord, reference),
+            replyTo: replyToBusinessEmail,
+            idempotencyKey: `${reference}:ally:${promoReferral.code}`
+          });
+
+          updatedPaidRecord = {
+            ...updatedPaidRecord,
+            allyNotificationSentAt: new Date().toISOString(),
+            allyNotificationId: allyEmailResult.id || ""
+          };
+        } catch (error) {
+          notificationErrors.ally = error.message;
+        }
+      }
     } else {
       notificationErrors.resend = "RESEND_API_KEY no configurada";
     }
@@ -755,6 +913,7 @@ export default async (req, context) => {
         submittedAt: updatedPaidRecord.netlifySubmittedAt,
         businessNotificationSentAt: updatedPaidRecord.businessNotificationSentAt || null,
         customerNotificationSentAt: updatedPaidRecord.customerNotificationSentAt || null,
+        allyNotificationSentAt: updatedPaidRecord.allyNotificationSentAt || null,
         notificationWarnings: Object.keys(notificationErrors).length
           ? notificationErrors
           : null
