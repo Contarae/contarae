@@ -167,6 +167,8 @@ const PDF_NOTE_FIELDS = [
   ["otros_descripcion", "Detalle otros ingresos mensuales recurrentes"]
 ];
 
+const CERTIFICATE_CLARIFICATION_FIELD = "nota_aclaratoria_certificacion";
+
 const shell = {
   minHeight: "100vh",
   background:
@@ -861,6 +863,7 @@ function buildCertificateDraftState(source = {}) {
     remesas: source?.remesas || "",
     otros_ingresos: source?.otros_ingresos || "",
     otros_descripcion: source?.otros_descripcion || "",
+    [CERTIFICATE_CLARIFICATION_FIELD]: source?.[CERTIFICATE_CLARIFICATION_FIELD] || "",
     ingresos_eventuales_json: source?.ingresos_eventuales_json || "[]",
     periodo_meses: source?.periodo_meses || "",
     total_ingresos: source?.total_ingresos || "",
@@ -5548,6 +5551,49 @@ export default function AdminPanel() {
                           </div>
                         </div>
                       </div>
+                      {(() => {
+                        const field = CERTIFICATE_CLARIFICATION_FIELD;
+                        const fieldMeta = getModifiedFieldMeta(field);
+                        return (
+                          <div
+                            style={{
+                              marginBottom: 12,
+                              padding: 14,
+                              borderRadius: 18,
+                              border: fieldMeta.modified ? "1px solid rgba(245,158,11,.24)" : "1px solid rgba(37,99,235,.10)",
+                              background: fieldMeta.modified ? "rgba(245,158,11,.08)" : "#F8FBFF"
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                              <div>
+                                <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 4 }}>
+                                  PÁRRAFO ACLARATORIO OPCIONAL
+                                </div>
+                                <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6 }}>
+                                  Se imprimirá antes de “La presente certificación...”. Déjalo vacío si no aplica.
+                                </div>
+                              </div>
+                              {fieldMeta.modified ? (
+                                <span style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(245,158,11,.16)", color: "#B45309", fontFamily: F, fontSize: 11, fontWeight: 800 }}>
+                                  Modificado
+                                </span>
+                              ) : null}
+                            </div>
+                            <textarea
+                              disabled={!pdfEditMode || editLocked}
+                              style={{ ...inputStyle, minHeight: 96, resize: "vertical", background: !pdfEditMode || editLocked ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
+                              value={certificateDraft[field]}
+                              onChange={(event) => handleCertificateFieldChange(field, event.target.value)}
+                              placeholder="Escribe aquí únicamente el texto que debe aparecer en la certificación, sin título."
+                            />
+                            {fieldMeta.modified ? (
+                              <div style={{ fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+                                Este párrafo se incluirá en el PDF solo con el texto escrito aquí.
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                       <div style={{ marginBottom: 12, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
                         <div style={{ fontSize: 12, letterSpacing: "1.2px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>ANOTACIÓN DEL AJUSTE</div>
                         <textarea

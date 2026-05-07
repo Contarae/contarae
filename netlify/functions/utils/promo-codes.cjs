@@ -77,11 +77,11 @@ function formatMoneyValue(value) {
 function getCertificationPriceByMonthlyIncome(monthlyIncome) {
   const amount = Math.max(0, Math.round(Number(monthlyIncome || 0)));
   if (amount <= 2000000) return 100000;
-  if (amount <= 4000000) return 120000;
-  if (amount <= 6000000) return 140000;
-  if (amount <= 8000000) return 160000;
-  if (amount <= 10000000) return 180000;
-  return 200000;
+  if (amount <= 4000000) return 110000;
+  if (amount <= 6000000) return 120000;
+  if (amount <= 8000000) return 130000;
+  if (amount <= 10000000) return 140000;
+  return 150000;
 }
 
 function getActivePromoCode(inputCode) {

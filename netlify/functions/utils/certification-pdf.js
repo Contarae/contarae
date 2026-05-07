@@ -599,6 +599,9 @@ export function buildCertificationNarrative(record = {}) {
   const formattedAccountantDocument = formatDocumentNumber(profile.accountantDocumentNumber) || "POR CONFIGURAR";
   const formattedProfessionalCard = formatProfessionalCardNumber(profile.professionalCardNumber) || "POR CONFIGURAR";
   const customerReference = String(formData.nombre || "").trim() || "la parte interesada";
+  const clarificationNote = String(formData.nota_aclaratoria_certificacion || "")
+    .replace(/\s+/g, " ")
+    .trim();
   const highlightedAmount = (value) => ({ text: buildAmountDisplay(value), bold: true });
   const paragraph = (segments, extra = {}) => ({
     type: "paragraph",
@@ -753,6 +756,10 @@ export function buildCertificationNarrative(record = {}) {
         "."
       ])
     );
+  }
+
+  if (clarificationNote) {
+    blocks.push(paragraph(clarificationNote));
   }
 
   blocks.push(

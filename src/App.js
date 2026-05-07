@@ -14,17 +14,25 @@ const CERTIFICATION_VIDEO_EMBED="https://www.youtube.com/embed/yHF1p9T9kgU";
 const fm=n=>new Intl.NumberFormat("es-CO").format(n);
 const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
-const fmtI=v=>{const n=v.replace(/\D/g,"");return n?"$ "+fm(parseInt(n)):""};
-const pN=v=>parseInt(v.replace(/\D/g,""))||0;
+const onlyDigits=value=>String(value||"").replace(/\D/g,"");
+const normalizeEmail=value=>String(value||"").trim().toLowerCase();
+const isValidEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(normalizeEmail(value));
+const formatProperName=value=>String(value||"").normalize("NFC").replace(/[^\p{L}\p{M}'’ -]/gu,"").replace(/\s+/g," ").trim().split(" ").filter(Boolean).map(word=>word.split("-").map(part=>part?part.charAt(0).toLocaleUpperCase("es-CO")+part.slice(1).toLocaleLowerCase("es-CO"):"").join("-")).join(" ");
+const NUMERIC_CONTROL_KEYS=new Set(["Backspace","Delete","Tab","ArrowLeft","ArrowRight","Home","End","Enter"]);
+const preventNonNumericInput=event=>{if(event.ctrlKey||event.metaKey||event.altKey||NUMERIC_CONTROL_KEYS.has(event.key))return;if(!/^\d$/.test(event.key))event.preventDefault();};
+const numericInputProps={inputMode:"numeric",onKeyDown:preventNonNumericInput};
+const currencyInputProps={...numericInputProps,autoComplete:"off"};
+const fmtI=v=>{const n=onlyDigits(v);return n?"$ "+fm(parseInt(n,10)):""};
+const pN=v=>parseInt(onlyDigits(v),10)||0;
 const CERTIFICATION_PRICE_TIERS=[
   {max:2000000,range:"Desde $0 hasta $2.000.000",formRange:"Ingresos desde $0 hasta $2.000.000",value:100000},
-  {max:4000000,range:"Desde $2.000.001 hasta $4.000.000",formRange:"Ingresos desde $2.000.001 hasta $4.000.000",value:120000},
-  {max:6000000,range:"Desde $4.000.001 hasta $6.000.000",formRange:"Ingresos desde $4.000.001 hasta $6.000.000",value:140000},
-  {max:8000000,range:"Desde $6.000.001 hasta $8.000.000",formRange:"Ingresos desde $6.000.001 hasta $8.000.000",value:160000},
-  {max:10000000,range:"Desde $8.000.001 hasta $10.000.000",formRange:"Ingresos desde $8.000.001 hasta $10.000.000",value:180000},
-  {max:Infinity,range:"Más de $10.000.000",formRange:"Ingresos desde $10.000.001 en adelante",value:200000}
+  {max:4000000,range:"Desde $2.000.001 hasta $4.000.000",formRange:"Ingresos desde $2.000.001 hasta $4.000.000",value:110000},
+  {max:6000000,range:"Desde $4.000.001 hasta $6.000.000",formRange:"Ingresos desde $4.000.001 hasta $6.000.000",value:120000},
+  {max:8000000,range:"Desde $6.000.001 hasta $8.000.000",formRange:"Ingresos desde $6.000.001 hasta $8.000.000",value:130000},
+  {max:10000000,range:"Desde $8.000.001 hasta $10.000.000",formRange:"Ingresos desde $8.000.001 hasta $10.000.000",value:140000},
+  {max:Infinity,range:"Más de $10.000.000",formRange:"Ingresos desde $10.000.001 en adelante",value:150000}
 ];
-const gT=t=>CERTIFICATION_PRICE_TIERS.find(item=>Number(t||0)<=item.max)?.value||200000;
+const gT=t=>CERTIFICATION_PRICE_TIERS.find(item=>Number(t||0)<=item.max)?.value||150000;
 const disc=v=>Math.round(v/.75);
 const certDisc=v=>Math.round(v/.9);
 const promoCodeValue=value=>String(value||"").trim().toUpperCase();
@@ -41,7 +49,7 @@ const buildCertifiedPeriodLabel=(period,months)=>{if(!period)return"";if(period=
 const sanitizeEventualIncomeRows=rows=>(Array.isArray(rows)?rows:[]).map(row=>({amount:String(row?.amount||""),concept:String(row?.concept||"").trim()}));
 const getFilledEventualIncomeRows=rows=>sanitizeEventualIncomeRows(rows).filter(row=>pN(row.amount)>0&&row.concept);
 const hasIncompleteEventualIncomeRows=rows=>sanitizeEventualIncomeRows(rows).some(row=>(pN(row.amount)>0&&!row.concept)||(!pN(row.amount)&&row.concept));
-const normalizeColombianMobileNumber=value=>{const digits=String(value||"").replace(/\D/g,"");if(!digits)return"";if(digits.startsWith("57")&&digits.length===12)return digits.slice(2);if(digits.startsWith("0057")&&digits.length===14)return digits.slice(4);if(digits.startsWith("0")&&digits.length===11)return digits.slice(1);return digits.length>10?digits.slice(-10):digits;};
+const normalizeColombianMobileNumber=value=>{const digits=onlyDigits(value);if(!digits)return"";if(digits.startsWith("57")&&digits.length===12)return digits.slice(2);if(digits.startsWith("0057")&&digits.length===14)return digits.slice(4);if(digits.startsWith("0")&&digits.length===11)return digits.slice(1);return digits.length>10?digits.slice(-10):digits;};
 const isValidColombianMobileNumber=value=>/^3\d{9}$/.test(normalizeColombianMobileNumber(value));
 const CERT_ROUTE="/certificacion";
 const CERT_ROUTE_ALIASES=new Set([CERT_ROUTE,"/certificacion-de-ingresos"]);
@@ -1557,14 +1565,27 @@ function LeadCaptureForm(){
   const[busy,setBusy]=useState(false);
   const[message,setMessage]=useState("");
   const[error,setError]=useState("");
-  const update=(field,value)=>setForm(current=>({...current,[field]:value}));
+  const update=(field,value)=>setForm(current=>({
+    ...current,
+    [field]:field==="documentNumber"?onlyDigits(value):field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):value
+  }));
   const submit=async event=>{
     event.preventDefault();
-    setBusy(true);
     setMessage("");
     setError("");
+    const normalized={...form,name:formatProperName(form.name),documentNumber:onlyDigits(form.documentNumber),phone:normalizeColombianMobileNumber(form.phone).slice(0,10),email:normalizeEmail(form.email)};
+    setForm(normalized);
+    if(!normalized.name||!normalized.documentNumber||!normalized.phone||!normalized.email){
+      setError("Complete todos los datos de contacto.");
+      return;
+    }
+    if(!isValidEmail(normalized.email)){
+      setError("Ingrese un correo electrónico válido.");
+      return;
+    }
+    setBusy(true);
     try{
-      const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,sourcePath:window.location.pathname})});
+      const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...normalized,sourcePath:window.location.pathname})});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
       setMessage("Datos registrados correctamente. Te contactaremos por el canal que indicaste.");
@@ -1581,10 +1602,10 @@ function LeadCaptureForm(){
       <div style={{fontSize:12,letterSpacing:"1.5px",fontWeight:900,color:"#93C5FD",fontFamily:F}}>RECIBE ASESORÍA</div>
       <div style={{fontFamily:FH,fontSize:24,lineHeight:1.15,color:"#fff"}}>Déjanos tus datos y te contactamos</div>
       <div className="lead-form-grid" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
-        <input required value={form.name} onChange={e=>update("name",e.target.value)} placeholder="Nombre completo" style={{...IS,borderRadius:13}}/>
-        <input required value={form.documentNumber} onChange={e=>update("documentNumber",e.target.value)} placeholder="Documento o NIT" style={{...IS,borderRadius:13}}/>
-        <input required value={form.phone} onChange={e=>update("phone",e.target.value)} placeholder="WhatsApp" style={{...IS,borderRadius:13}}/>
-        <input required type="email" value={form.email} onChange={e=>update("email",e.target.value)} placeholder="Correo electrónico" style={{...IS,borderRadius:13}}/>
+        <input required value={form.name} onChange={e=>update("name",e.target.value)} onBlur={e=>update("name",formatProperName(e.target.value))} placeholder="Nombre completo" autoComplete="name" style={{...IS,borderRadius:13}}/>
+        <input required {...numericInputProps} value={form.documentNumber} onChange={e=>update("documentNumber",e.target.value)} placeholder="Documento o NIT" autoComplete="off" style={{...IS,borderRadius:13}}/>
+        <input required {...numericInputProps} value={form.phone} onChange={e=>update("phone",e.target.value)} placeholder="WhatsApp (ej. 300 000 0000)" autoComplete="tel" style={{...IS,borderRadius:13}}/>
+        <input required type="email" inputMode="email" value={form.email} onChange={e=>update("email",e.target.value)} onBlur={e=>update("email",normalizeEmail(e.target.value))} placeholder="Correo electrónico" autoComplete="email" style={{...IS,borderRadius:13}}/>
       </div>
       <select value={form.serviceInterest} onChange={e=>update("serviceInterest",e.target.value)} style={{...IS,borderRadius:13}}>
         {["Certificación de ingresos","Declaración de renta","Contabilidad mensual","Asesoría tributaria","Creación de empresa","Facturación electrónica","Otro servicio"].map(item=><option key={item} value={item}>{item}</option>)}
@@ -2133,7 +2154,7 @@ function PaymentsPortalPage(){
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState("");
   const[searched,setSearched]=useState(false);
-  const cleanDocument=value=>String(value||"").replace(/[^\dA-Za-z.-]/g,"").slice(0,30);
+  const cleanDocument=value=>onlyDigits(value).slice(0,30);
   const update=(field,value)=>setForm(current=>({...current,[field]:field==="documentNumber"?cleanDocument(value):value}));
   const serviceLabel=value=>({
     renta:"Declaración de renta",
@@ -2209,7 +2230,7 @@ function PaymentsPortalPage(){
               <option value="NIT">NIT</option>
               <option value="PAS">Pasaporte</option>
             </select>
-            <input value={form.documentNumber} onChange={event=>update("documentNumber",event.target.value)} placeholder="Número de documento" style={{...IS,borderRadius:14,padding:"14px 15px"}}/>
+            <input {...numericInputProps} value={form.documentNumber} onChange={event=>update("documentNumber",event.target.value)} placeholder="Número de documento" style={{...IS,borderRadius:14,padding:"14px 15px"}}/>
             <button type="submit" disabled={loading} style={{padding:"14px 22px",borderRadius:14,border:"none",background:loading?"#CBD5E1":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:900,cursor:loading?"not-allowed":"pointer",whiteSpace:"nowrap"}}>
               {loading?"Consultando...":"Consultar"}
             </button>
@@ -2310,6 +2331,20 @@ function CrtS(){
   const addEventualIncomeRow=()=>sF(p=>({...p,ev:[...(p.ev||[]),createEmptyEventualIncome()]}));
   const removeEventualIncomeRow=index=>sF(p=>({...p,ev:(p.ev||[]).filter((_,rowIndex)=>rowIndex!==index).length?(p.ev||[]).filter((_,rowIndex)=>rowIndex!==index):[createEmptyEventualIncome()]}));
   const handleCity=v=>{u("le",v);sCitySug(v.length>=2?CITIES.filter(c=>c.toLowerCase().includes(v.toLowerCase())).slice(0,8):[]);};
+  const normalizePersonalData=()=>({
+    n:formatProperName(f.n),
+    cc:onlyDigits(f.cc),
+    tel:normalizeColombianMobileNumber(f.tel).slice(0,10),
+    em:normalizeEmail(f.em)
+  });
+  const continueFromPersonalStep=()=>{
+    const normalized=normalizePersonalData();
+    sF(current=>({...current,...normalized}));
+    if(!normalized.n||!normalized.cc||!normalized.tel||!normalized.em){alert("Complete todos los campos");return;}
+    if(!isValidColombianMobileNumber(normalized.tel)){alert("Ingrese un número de celular colombiano válido de 10 dígitos.");return;}
+    if(!isValidEmail(normalized.em)){alert("Ingrese un correo electrónico válido.");return;}
+    moveStep(1);
+  };
   const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."]];
   const recurrentMonthlyTotal=ings.reduce((s,[,k])=>s+pN(f[k]),0)+pN(f.iO);
   const certifiedMonths=getCertifiedMonths(f.per,f.perMes);
@@ -2343,13 +2378,13 @@ function CrtS(){
     }
   };
   const buildPendingPayload=(paymentReference,uploadedSupportFiles=[])=>({
-    nombre:f.n,
+    nombre:formatProperName(f.n),
     tipo_documento:f.td,
-    numero_documento:f.cc,
+    numero_documento:onlyDigits(f.cc),
     lugar_expedicion:f.le,
-    telefono:f.tel,
-    correo:f.em,
-    email:f.em,
+    telefono:normalizeColombianMobileNumber(f.tel).slice(0,10),
+    correo:normalizeEmail(f.em),
+    email:normalizeEmail(f.em),
     destino:f.dir,
     entidad:f.ent,
     periodo:periodLabel,
@@ -2461,8 +2496,11 @@ function CrtS(){
   const openWompi=async()=>{let paymentReference="";try{
     if(typeof window==="undefined"||!window.WidgetCheckout){alert("La pasarela de pago aún se está cargando. Intente nuevamente en unos segundos.");return;}
     if(promoCodeValue(promoCode)&&!promoApplied){alert("Valide el código promocional o borre el campo antes de pagar.");return;}
+    const normalizedPersonal=normalizePersonalData();
+    sF(current=>({...current,...normalizedPersonal}));
+    if(!normalizedPersonal.n||!normalizedPersonal.cc||!isValidColombianMobileNumber(normalizedPersonal.tel)||!isValidEmail(normalizedPersonal.em)){alert("Revise los datos personales: nombre, documento, celular y correo deben estar completos y válidos.");sStep(0);sOpenForm(true);return;}
     paymentReference=createPaymentReference();
-    const phoneDigits=normalizeColombianMobileNumber(f.tel);
+    const phoneDigits=normalizeColombianMobileNumber(normalizedPersonal.tel);
     const legalIdType=f.td==="Pasaporte"?"PP":f.td;
     let uploadedSupportFiles=[];
     sLastRef(paymentReference);
@@ -2488,11 +2526,11 @@ function CrtS(){
       signature:{integrity:sd.signature},
       redirectUrl:buildRedirectUrl(paymentReference),
       customerData:{
-        email:f.em||undefined,
-        fullName:f.n||undefined,
+        email:normalizedPersonal.em||undefined,
+        fullName:normalizedPersonal.n||undefined,
         phoneNumber:phoneDigits||undefined,
         phoneNumberPrefix:phoneDigits?"+57":undefined,
-        legalId:f.cc||undefined,
+        legalId:normalizedPersonal.cc||undefined,
         legalIdType:legalIdType||undefined
       }
     });
@@ -2540,13 +2578,13 @@ function CrtS(){
     <div style={{padding:28,borderRadius:16,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 5px 24px rgba(37,99,235,.05)"}}>
 
     {step===0&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:14,fontFamily:F}}>📋 Paso 1: Datos Personales</h4><div style={{display:"grid",gap:14}}>
-      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Nombre completo</label><input style={IS} value={f.n} onChange={e=>u("n",e.target.value)}/></div>
+      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Nombre completo</label><input style={IS} value={f.n} onChange={e=>u("n",e.target.value)} onBlur={e=>u("n",formatProperName(e.target.value))} autoComplete="name"/></div>
       <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Tipo de documento</label><select style={{...IS,cursor:"pointer"}} value={f.td} onChange={e=>u("td",e.target.value)}><option>CC</option><option>TI</option><option>CE</option><option>Pasaporte</option><option>NIT</option></select></div>
-      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Número de documento</label><input style={IS} value={f.cc} onChange={e=>u("cc",e.target.value)}/></div>
+      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Número de documento</label><input {...numericInputProps} style={IS} value={f.cc} onChange={e=>u("cc",onlyDigits(e.target.value))} autoComplete="off"/></div>
       <div style={{position:"relative"}}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Lugar de expedición</label><input style={IS} value={f.le} onChange={e=>handleCity(e.target.value)} placeholder="Escriba su ciudad..."/>{citySug.length>0&&<div style={{position:"absolute",top:"100%",left:0,width:"100%",background:"#fff",border:"1px solid #d0d9e8",borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:10,maxHeight:200,overflowY:"auto"}}>{citySug.map((c,i)=><div key={i} onClick={()=>{u("le",c);sCitySug([]);}} style={{padding:"10px 14px",cursor:"pointer",fontSize:14,fontFamily:F,borderBottom:"1px solid #f0f0f0"}} onMouseEnter={e=>e.target.style.background="#f0f4fa"} onMouseLeave={e=>e.target.style.background="#fff"}>{c}</div>)}</div>}</div>
-      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Teléfono / WhatsApp</label><input style={IS} inputMode="numeric" value={f.tel} onChange={e=>u("tel",e.target.value)} placeholder="Ej: 3138265050"/><div style={{marginTop:6,fontSize:12,color:"#64748B",fontFamily:F}}>Ingrese un celular colombiano de 10 dígitos. Si va a pagar por Nequi, use preferiblemente el mismo número asociado a esa cuenta.</div></div>
-      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Correo electrónico</label><input style={IS} value={f.em} onChange={e=>u("em",e.target.value)}/></div>
-    </div><div style={{textAlign:"right",marginTop:16}}><button type="button" onClick={()=>!f.n||!f.cc||!f.tel||!f.em?alert("Complete todos los campos"):!isValidColombianMobileNumber(f.tel)?alert("Ingrese un número de celular colombiano válido de 10 dígitos."):moveStep(1)} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div></div>}
+      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Teléfono / WhatsApp</label><input {...numericInputProps} style={IS} value={f.tel} onChange={e=>u("tel",normalizeColombianMobileNumber(e.target.value).slice(0,10))} placeholder="Ej: 300 000 0000" autoComplete="tel"/><div style={{marginTop:6,fontSize:12,color:"#64748B",fontFamily:F}}>Ingrese un celular colombiano de 10 dígitos. Si va a pagar por Nequi, use preferiblemente el mismo número asociado a esa cuenta.</div></div>
+      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Correo electrónico</label><input style={IS} type="email" inputMode="email" value={f.em} onChange={e=>u("em",e.target.value)} onBlur={e=>u("em",normalizeEmail(e.target.value))} autoComplete="email"/></div>
+    </div><div style={{textAlign:"right",marginTop:16}}><button type="button" onClick={continueFromPersonalStep} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div></div>}
 
     {step===1&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:14,fontFamily:F}}>🏢 Paso 2: Destino de la Certificación</h4><div style={{display:"grid",gap:14}}>
       <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>¿A quién va dirigida?</label><select style={{...IS,cursor:"pointer"}} value={f.dir} onChange={e=>u("dir",e.target.value)}><option value="">Seleccione...</option>{["Banco o entidad financiera","Inmobiliaria o arrendador","Embajada o trámite migratorio","Concesionario de vehículos","Entidad pública","Contratación o licitación","Otro destino"].map(o=><option key={o}>{o}</option>)}</select></div>
@@ -2556,10 +2594,10 @@ function CrtS(){
     </div><div style={{display:"flex",justifyContent:"space-between",marginTop:16}}><button type="button" onClick={()=>moveStep(0)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button><button type="button" onClick={()=>f.dir&&certifiedMonths>0?moveStep(2):alert("Seleccione el destino y un período válido")} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div></div>}
 
     {step===2&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:4,fontFamily:F}}>💰 Paso 3: Ingresos y Soportes</h4><p style={{fontSize:13,color:"#7A8FA8",marginBottom:14,fontFamily:F}}>Primero relacione sus ingresos mensuales recurrentes. Luego, si aplica, agregue ingresos eventuales del período certificado.</p>
-      <div style={{padding:18,borderRadius:14,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)",marginBottom:14}}><div style={{fontSize:12,letterSpacing:"1.2px",fontWeight:800,color:"#1D4ED8",marginBottom:12,fontFamily:F}}>INGRESOS MENSUALES RECURRENTES</div><div style={{display:"grid",gap:14}}>{ings.map(([l,k,tip])=><div key={k}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>{l}</label><span style={{fontSize:13,color:"#7A8FA8",fontFamily:F,display:"block",marginBottom:3}}>{tip}</span><input style={IS} value={f[k]} onChange={e=>uF(k,e.target.value)} placeholder="$ 0"/></div>)}
-      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Otros ingresos mensuales recurrentes</label><span style={{fontSize:13,color:"#7A8FA8",fontFamily:F,display:"block",marginBottom:3}}>Honorarios, comisiones u otros ingresos que se repiten de manera habitual.</span><input style={IS} value={f.iO} onChange={e=>uF("iO",e.target.value)} placeholder="$ 0"/><input style={{...IS,marginTop:6}} value={f.oD} onChange={e=>u("oD",e.target.value)} placeholder="Concepto de estos ingresos mensuales recurrentes"/></div></div></div>
+      <div style={{padding:18,borderRadius:14,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)",marginBottom:14}}><div style={{fontSize:12,letterSpacing:"1.2px",fontWeight:800,color:"#1D4ED8",marginBottom:12,fontFamily:F}}>INGRESOS MENSUALES RECURRENTES</div><div style={{display:"grid",gap:14}}>{ings.map(([l,k,tip])=><div key={k}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>{l}</label><span style={{fontSize:13,color:"#7A8FA8",fontFamily:F,display:"block",marginBottom:3}}>{tip}</span><input {...currencyInputProps} style={IS} value={f[k]} onChange={e=>uF(k,e.target.value)} placeholder="$ 0"/></div>)}
+      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Otros ingresos mensuales recurrentes</label><span style={{fontSize:13,color:"#7A8FA8",fontFamily:F,display:"block",marginBottom:3}}>Honorarios, comisiones u otros ingresos que se repiten de manera habitual.</span><input {...currencyInputProps} style={IS} value={f.iO} onChange={e=>uF("iO",e.target.value)} placeholder="$ 0"/><input style={{...IS,marginTop:6}} value={f.oD} onChange={e=>u("oD",e.target.value)} placeholder="Concepto de estos ingresos mensuales recurrentes"/></div></div></div>
 
-      <div style={{padding:18,borderRadius:14,background:"#fff",border:"1px solid rgba(37,99,235,.10)",marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}><div><div style={{fontSize:12,letterSpacing:"1.2px",fontWeight:800,color:"#1D4ED8",fontFamily:F}}>INGRESOS EVENTUALES DEL PERÍODO</div><div style={{fontSize:13,color:"#64748B",fontFamily:F,marginTop:4}}>Registre ingresos no ordinarios, no fijos y no periódicos que sí deban incluirse en la certificación del período.</div></div><button type="button" onClick={addEventualIncomeRow} style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(37,99,235,.16)",background:"rgba(37,99,235,.05)",color:"#2563EB",fontFamily:F,fontWeight:700,cursor:"pointer"}}>+ Agregar ingreso eventual</button></div><div style={{display:"grid",gap:12}}>{(f.ev||[]).map((row,index)=><div key={index} style={{display:"grid",gap:10,padding:14,borderRadius:12,background:"rgba(37,99,235,.04)",border:"1px solid rgba(37,99,235,.10)"}}><div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Valor eventual #{index+1}</label><input style={IS} value={row.amount} onChange={e=>uE(index,"amount",e.target.value)} placeholder="$ 0"/></div><div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Concepto del ingreso eventual</label><input style={IS} value={row.concept} onChange={e=>uE(index,"concept",e.target.value)} placeholder="Ej: premio por rifa, venta ocasional, bonificación extraordinaria"/></div><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{fontSize:12,color:"#64748B",fontFamily:F}}>Este valor no se sumará al ingreso mensual recurrente, solo al total del período.</div><button type="button" onClick={()=>removeEventualIncomeRow(index)} disabled={(f.ev||[]).length===1} style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(220,38,38,.14)",background:(f.ev||[]).length===1?"rgba(148,163,184,.10)":"rgba(220,38,38,.06)",color:(f.ev||[]).length===1?"#94A3B8":"#DC2626",fontSize:12,fontWeight:700,cursor:(f.ev||[]).length===1?"not-allowed":"pointer",fontFamily:F}}>Quitar</button></div></div>)}</div></div>
+      <div style={{padding:18,borderRadius:14,background:"#fff",border:"1px solid rgba(37,99,235,.10)",marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}><div><div style={{fontSize:12,letterSpacing:"1.2px",fontWeight:800,color:"#1D4ED8",fontFamily:F}}>INGRESOS EVENTUALES DEL PERÍODO</div><div style={{fontSize:13,color:"#64748B",fontFamily:F,marginTop:4}}>Registre ingresos no ordinarios, no fijos y no periódicos que sí deban incluirse en la certificación del período.</div></div><button type="button" onClick={addEventualIncomeRow} style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(37,99,235,.16)",background:"rgba(37,99,235,.05)",color:"#2563EB",fontFamily:F,fontWeight:700,cursor:"pointer"}}>+ Agregar ingreso eventual</button></div><div style={{display:"grid",gap:12}}>{(f.ev||[]).map((row,index)=><div key={index} style={{display:"grid",gap:10,padding:14,borderRadius:12,background:"rgba(37,99,235,.04)",border:"1px solid rgba(37,99,235,.10)"}}><div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Valor eventual #{index+1}</label><input {...currencyInputProps} style={IS} value={row.amount} onChange={e=>uE(index,"amount",e.target.value)} placeholder="$ 0"/></div><div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Concepto del ingreso eventual</label><input style={IS} value={row.concept} onChange={e=>uE(index,"concept",e.target.value)} placeholder="Ej: premio por rifa, venta ocasional, bonificación extraordinaria"/></div><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{fontSize:12,color:"#64748B",fontFamily:F}}>Este valor no se sumará al ingreso mensual recurrente, solo al total del período.</div><button type="button" onClick={()=>removeEventualIncomeRow(index)} disabled={(f.ev||[]).length===1} style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(220,38,38,.14)",background:(f.ev||[]).length===1?"rgba(148,163,184,.10)":"rgba(220,38,38,.06)",color:(f.ev||[]).length===1?"#94A3B8":"#DC2626",fontSize:12,fontWeight:700,cursor:(f.ev||[]).length===1?"not-allowed":"pointer",fontFamily:F}}>Quitar</button></div></div>)}</div></div>
 
       <div style={{marginTop:18,padding:18,borderRadius:11,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",color:"#fff"}}><div style={{display:"grid",gap:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL INGRESOS MENSUALES RECURRENTES</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Calculado automáticamente — no modificable</div></div><div style={{fontSize:24,fontWeight:700,fontFamily:F,color:"#60A5FA"}}>$ {fm(recurrentMonthlyTotal)}</div></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL RECURRENTE DEL PERÍODO</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>{periodLabel||"Período no definido"}</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(recurrentPeriodTotal)}</div></div>{eventualTotal?(<><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL EVENTUAL DEL PERÍODO</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Solo ingresos no fijos reportados arriba</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(eventualTotal)}</div></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>TOTAL GLOBAL DEL PERÍODO</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Recurrentes del período + eventuales</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F,color:"#BFDBFE"}}>$ {fm(globalPeriodTotal)}</div></div></>):null}<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.1)"}}><div><div style={{fontSize:13,opacity:.55,fontFamily:F}}>VALOR A PAGAR</div><div style={{fontSize:11,opacity:.4,fontFamily:F}}>Según ingresos mensuales recurrentes</div></div><div style={{fontSize:22,fontWeight:700,fontFamily:F}}>$ {fm(tarifa)}</div></div></div></div>
 
@@ -2713,7 +2751,7 @@ function ToolRenta({uv}){
   const[leadMsg,setLeadMsg]=useState("");
   const[leadErr,setLeadErr]=useState("");
   const t14=1400*uv,t45=4500*uv;
-  const getNitDate=(n)=>{const d=(n||"").replace(/\D/g,"").slice(-2);if(d.length!==2)return null;const map=[[[1,2],"12 de agosto"],[[3,4],"13 de agosto"],[[5,6],"14 de agosto"],[[7,8],"18 de agosto"],[[9,10],"19 de agosto"],[[11,12],"20 de agosto"],[[13,14],"21 de agosto"],[[15,16],"24 de agosto"],[[17,18],"25 de agosto"],[[19,20],"26 de agosto"],[[21,22],"27 de agosto"],[[23,24],"28 de agosto"],[[25,26],"31 de agosto"],[[27,28],"1 de septiembre"],[[29,30],"2 de septiembre"],[[31,32],"3 de septiembre"],[[33,34],"4 de septiembre"],[[35,36],"7 de septiembre"],[[37,38],"8 de septiembre"],[[39,40],"9 de septiembre"],[[41,42],"10 de septiembre"],[[43,44],"11 de septiembre"],[[45,46],"14 de septiembre"],[[47,48],"15 de septiembre"],[[49,50],"16 de septiembre"],[[51,52],"17 de septiembre"],[[53,54],"18 de septiembre"],[[55,56],"21 de septiembre"],[[57,58],"22 de septiembre"],[[59,60],"23 de septiembre"],[[61,62],"24 de septiembre"],[[63,64],"25 de septiembre"],[[65,66],"28 de septiembre"],[[67,68],"1 de octubre"],[[69,70],"2 de octubre"],[[71,72],"5 de octubre"],[[73,74],"6 de octubre"],[[75,76],"7 de octubre"],[[77,78],"8 de octubre"],[[79,80],"9 de octubre"],[[81,82],"13 de octubre"],[[83,84],"14 de octubre"],[[85,86],"15 de octubre"],[[87,88],"16 de octubre"],[[89,90],"19 de octubre"],[[91,92],"20 de octubre"],[[93,94],"21 de octubre"],[[95,96],"22 de octubre"],[[97,98],"23 de octubre"],[[99,0],"26 de octubre"]];const num=parseInt(d,10);for(const [[a,b],f] of map){if(num>=a&&num<=b)return f;if(a===99&&d==="00")return f;}return null;};
+  const getNitDate=(n)=>{const d=onlyDigits(n).slice(-2);if(d.length!==2)return null;const map=[[[1,2],"12 de agosto"],[[3,4],"13 de agosto"],[[5,6],"14 de agosto"],[[7,8],"18 de agosto"],[[9,10],"19 de agosto"],[[11,12],"20 de agosto"],[[13,14],"21 de agosto"],[[15,16],"24 de agosto"],[[17,18],"25 de agosto"],[[19,20],"26 de agosto"],[[21,22],"27 de agosto"],[[23,24],"28 de agosto"],[[25,26],"31 de agosto"],[[27,28],"1 de septiembre"],[[29,30],"2 de septiembre"],[[31,32],"3 de septiembre"],[[33,34],"4 de septiembre"],[[35,36],"7 de septiembre"],[[37,38],"8 de septiembre"],[[39,40],"9 de septiembre"],[[41,42],"10 de septiembre"],[[43,44],"11 de septiembre"],[[45,46],"14 de septiembre"],[[47,48],"15 de septiembre"],[[49,50],"16 de septiembre"],[[51,52],"17 de septiembre"],[[53,54],"18 de septiembre"],[[55,56],"21 de septiembre"],[[57,58],"22 de septiembre"],[[59,60],"23 de septiembre"],[[61,62],"24 de septiembre"],[[63,64],"25 de septiembre"],[[65,66],"28 de septiembre"],[[67,68],"1 de octubre"],[[69,70],"2 de octubre"],[[71,72],"5 de octubre"],[[73,74],"6 de octubre"],[[75,76],"7 de octubre"],[[77,78],"8 de octubre"],[[79,80],"9 de octubre"],[[81,82],"13 de octubre"],[[83,84],"14 de octubre"],[[85,86],"15 de octubre"],[[87,88],"16 de octubre"],[[89,90],"19 de octubre"],[[91,92],"20 de octubre"],[[93,94],"21 de octubre"],[[95,96],"22 de octubre"],[[97,98],"23 de octubre"],[[99,0],"26 de octubre"]];const num=parseInt(d,10);for(const [[a,b],f] of map){if(num>=a&&num<=b)return f;if(a===99&&d==="00")return f;}return null;};
   const fields=[["Ingresos brutos anuales","i",t14,"Incluye salarios, honorarios, rentas, comisiones y otros ingresos recibidos en el año."],["Patrimonio bruto a 31 de diciembre","p",t45,"Suma bienes, cuentas, inversiones, vehículos e inmuebles antes de restar deudas."],["Compras y consumos","c",t14,"Compras con cualquier medio de pago durante el año."],["Consumos con tarjeta de crédito","tc",t14,"Total de consumos hechos con tarjeta de crédito."],["Consignaciones y movimientos bancarios","b",t14,"Entradas y movimientos bancarios acumulados durante el año."]];
   const chk=()=>{
     const items=fields.map(([label,key,limit,help])=>{const value=pN(rF[key]);const pct=limit>0?Math.round((value/limit)*100):0;return{label,key,limit,help,value,pct,exceeds:value>=limit,near:value>=limit*.8&&value<limit};});
@@ -2730,17 +2768,25 @@ function ToolRenta({uv}){
       note:ob?"Hay al menos un criterio que supera el tope legal de referencia. Conviene preparar la declaración con soporte profesional.":near.length?"No se supera el tope, pero uno o más rubros están cerca. Es recomendable revisar soportes antes de descartar la obligación.":"Con los valores informados no se superan los topes evaluados. El resultado sigue siendo orientativo."
     });
   };
-  const updateLead=(field,value)=>setLead(current=>({...current,[field]:value}));
+  const updateLead=(field,value)=>setLead(current=>({
+    ...current,
+    [field]:field==="documentNumber"?onlyDigits(value):field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):value
+  }));
   const submitLead=async event=>{
     event.preventDefault();
     if(!rR)return;
-    setLeadBusy(true);setLeadMsg("");setLeadErr("");
+    setLeadMsg("");setLeadErr("");
+    const normalized={...lead,name:formatProperName(lead.name),documentNumber:onlyDigits(lead.documentNumber),phone:normalizeColombianMobileNumber(lead.phone).slice(0,10),email:normalizeEmail(lead.email)};
+    setLead(normalized);
+    if(!normalized.name||!normalized.documentNumber||!normalized.phone||!normalized.email){setLeadErr("Complete todos los datos de contacto.");return;}
+    if(!isValidEmail(normalized.email)){setLeadErr("Ingrese un correo electrónico válido.");return;}
+    setLeadBusy(true);
     try{
-      const selectedDue=getNitDate(lead.documentNumber||rF.nit);
+      const selectedDue=getNitDate(normalized.documentNumber||rF.nit);
       const due=selectedDue?`Fecha estimada de vencimiento: ${selectedDue} de 2026.`:"Fecha estimada pendiente por confirmar con los últimos dos dígitos del documento.";
       const reasons=rR.items.filter(item=>item.exceeds||item.near).map(item=>`${item.label}: ${cop(item.value)} frente a tope ${cop(item.limit)} (${item.pct}%).`).join(" ");
       const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        ...lead,
+        ...normalized,
         serviceInterest:"Declaración de renta",
         comment:`Resultado herramienta renta: ${rR.level}. ${due} ${reasons || "No se superan topes, pero solicita revisión profesional."}`,
         sourcePath:window.location.pathname,
@@ -2761,8 +2807,8 @@ function ToolRenta({uv}){
       <h3 style={{fontSize:20,fontWeight:700,color:"#0B1D3A",marginBottom:8,fontFamily:F}}>¿Debe declarar renta?</h3>
       <div style={{...NOTE_BOX,marginBottom:16}}>Año gravable 2025. UVT usada: {cop(uv)}. La herramienta hace un diagnóstico por topes, nivel de cercanía y fecha estimada de vencimiento para orientar el siguiente paso.</div>
       <div style={{display:"grid",gap:12}}>
-        {fields.map(([label,key,limit,help])=><div key={key}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>{label}</label><div style={{fontSize:12,color:"#64748B",margin:"3px 0 6px",fontFamily:F}}>Tope de referencia: {cop(limit)}. {help}</div><input style={IS} value={rF[key]} onChange={e=>sRF(p=>({...p,[key]:fmtI(e.target.value)}))} placeholder="COP $ 0"/></div>)}
-        <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Dos últimos dígitos del documento o NIT</label><div style={{fontSize:12,color:"#64748B",margin:"3px 0 6px",fontFamily:F}}>Con este dato se estima la fecha de vencimiento para declarar renta.</div><input style={{...IS,maxWidth:180,textAlign:"center",fontSize:18,fontWeight:700}} value={rF.nit} onChange={e=>sRF(p=>({...p,nit:e.target.value.replace(/\D/g,"").slice(0,2)}))} placeholder="00" maxLength="2"/></div>
+        {fields.map(([label,key,limit,help])=><div key={key}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>{label}</label><div style={{fontSize:12,color:"#64748B",margin:"3px 0 6px",fontFamily:F}}>Tope de referencia: {cop(limit)}. {help}</div><input {...currencyInputProps} style={IS} value={rF[key]} onChange={e=>sRF(p=>({...p,[key]:fmtI(e.target.value)}))} placeholder="COP $ 0"/></div>)}
+        <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Dos últimos dígitos del documento o NIT</label><div style={{fontSize:12,color:"#64748B",margin:"3px 0 6px",fontFamily:F}}>Con este dato se estima la fecha de vencimiento para declarar renta.</div><input {...numericInputProps} style={{...IS,maxWidth:180,textAlign:"center",fontSize:18,fontWeight:700}} value={rF.nit} onChange={e=>sRF(p=>({...p,nit:onlyDigits(e.target.value).slice(0,2)}))} placeholder="00" maxLength="2"/></div>
         <button type="button" onClick={chk} style={{padding:"12px 20px",borderRadius:12,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:700,border:"none",cursor:"pointer",fontFamily:F}}>Analizar mi caso</button>
       </div>
       {rR&&<div style={{marginTop:16,padding:18,borderRadius:14,background:rR.ob?"rgba(220,38,38,.06)":rR.near.length?"rgba(245,158,11,.08)":"rgba(22,163,74,.06)",border:`1px solid ${rR.ob?"rgba(220,38,38,.14)":rR.near.length?"rgba(245,158,11,.18)":"rgba(22,163,74,.16)"}`}}><div style={{fontSize:17,fontWeight:700,color:rR.ob?"#DC2626":rR.near.length?"#B45309":"#15803D",marginBottom:8,fontFamily:F}}>{rR.level}</div><div style={{fontSize:14,color:"#475569",lineHeight:1.7,fontFamily:F,marginBottom:12}}>{rR.note}</div><div style={{display:"grid",gap:8}}>{rR.items.map(item=><div key={item.key} style={{padding:12,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.08)",fontFamily:F}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",fontSize:13,color:"#0F172A",fontWeight:800}}><span>{item.label}</span><span>{item.pct}% del tope</span></div><div style={{height:8,borderRadius:999,background:"#E2E8F0",overflow:"hidden",marginTop:8}}><div style={{height:"100%",width:`${Math.min(item.pct,100)}%`,background:item.exceeds?"#DC2626":item.near?"#F59E0B":"#22C55E"}}/></div><div style={{fontSize:12,color:"#64748B",marginTop:6}}>{cop(item.value)} / {cop(item.limit)}</div></div>)}</div>{rR.nitDate&&<div style={{marginTop:14,padding:14,borderRadius:12,background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.12)",fontSize:14,color:"#0F172A",fontFamily:F}}>Fecha estimada de presentación: <strong>{rR.nitDate} de 2026</strong>.</div>}{(rR.ob||rR.near.length>0)&&<form onSubmit={submitLead} style={{marginTop:14,display:"grid",gap:10,padding:16,borderRadius:14,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div style={{fontSize:14,fontWeight:800,color:"#1D4ED8",fontFamily:F}}>Solicita que revisemos tu caso</div><div className="renta-lead-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}><input required style={IS} value={lead.name} onChange={e=>updateLead("name",e.target.value)} placeholder="Nombre completo"/><input required style={IS} value={lead.documentNumber} onChange={e=>updateLead("documentNumber",e.target.value)} placeholder="Documento o NIT"/><input required style={IS} value={lead.phone} onChange={e=>updateLead("phone",e.target.value)} placeholder="WhatsApp"/><input required type="email" style={IS} value={lead.email} onChange={e=>updateLead("email",e.target.value)} placeholder="Correo electrónico"/></div><label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input required type="checkbox" checked={lead.treatmentConsent} onChange={e=>updateLead("treatmentConsent",e.target.checked)}/>Autorizo el tratamiento de mis datos para gestionar esta solicitud.</label><label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input type="checkbox" checked={lead.marketingConsent} onChange={e=>updateLead("marketingConsent",e.target.checked)}/>Autorizo recibir información por WhatsApp y/o correo.</label>{leadMsg?<div style={{padding:10,borderRadius:12,background:"rgba(34,197,94,.12)",color:"#15803D",fontFamily:F,fontWeight:800}}>{leadMsg}</div>:null}{leadErr?<div style={{padding:10,borderRadius:12,background:"rgba(220,38,38,.10)",color:"#991B1B",fontFamily:F,fontWeight:800}}>{leadErr}</div>:null}<button type="submit" disabled={leadBusy} style={{padding:"12px 18px",borderRadius:12,border:"none",background:leadBusy?"#94A3B8":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:800,cursor:leadBusy?"not-allowed":"pointer"}}>{leadBusy?"Registrando...":"Enviar solicitud de contacto"}</button></form>}<div style={{marginTop:10,fontSize:12,color:"#64748B",fontFamily:F,lineHeight:1.7}}>Resultado orientativo. La obligación real puede depender de residencia fiscal, tipo de ingresos, retenciones, soportes, topes especiales y otras condiciones normativas.</div></div>}

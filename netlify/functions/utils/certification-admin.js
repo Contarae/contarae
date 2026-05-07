@@ -77,6 +77,7 @@ const CERTIFICATE_EDITABLE_FIELDS = [
   "remesas",
   "otros_ingresos",
   "otros_descripcion",
+  "nota_aclaratoria_certificacion",
   "ingresos_eventuales_json",
   "periodo_meses",
   "total_ingresos",
