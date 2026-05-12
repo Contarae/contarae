@@ -245,17 +245,17 @@ const NUMBER_WORDS = {
   13: "TRECE",
   14: "CATORCE",
   15: "QUINCE",
-  16: "DIECISEIS",
+  16: "DIECISÉIS",
   17: "DIECISIETE",
   18: "DIECIOCHO",
   19: "DIECINUEVE",
   20: "VEINTE",
   21: "VEINTIUNO",
-  22: "VEINTIDOS",
-  23: "VEINTITRES",
+  22: "VEINTIDÓS",
+  23: "VEINTITRÉS",
   24: "VEINTICUATRO",
   25: "VEINTICINCO",
-  26: "VEINTISEIS",
+  26: "VEINTISÉIS",
   27: "VEINTISIETE",
   28: "VEINTIOCHO",
   29: "VEINTINUEVE"
@@ -302,7 +302,7 @@ const PERIOD_WORD_MAP = {
 
 function apocopateSpanishNumber(value) {
   return String(value || "")
-    .replace(/VEINTIUNO$/g, "VEINTIUN")
+    .replace(/VEINTIUNO$/g, "VEINTIÚN")
     .replace(/ Y UNO$/g, " Y UN")
     .replace(/UNO$/g, "UN");
 }
@@ -339,32 +339,54 @@ function numberToSpanishWords(value) {
   if (!number) return "CERO";
   if (number < 1000) return convertTripletToWords(number);
 
-  const millions = Math.floor(number / 1000000);
-  const thousands = Math.floor((number % 1000000) / 1000);
-  const remainder = number % 1000;
-  const parts = [];
+  if (number < 1000000) {
+    const thousands = Math.floor(number / 1000);
+    const remainder = number % 1000;
+    const parts = [];
 
-  if (millions > 0) {
-    if (millions === 1) {
-      parts.push("UN MILLON");
-    } else {
-      parts.push(`${apocopateSpanishNumber(convertTripletToWords(millions))} MILLONES`);
-    }
-  }
-
-  if (thousands > 0) {
     if (thousands === 1) {
       parts.push("MIL");
     } else {
       parts.push(`${apocopateSpanishNumber(convertTripletToWords(thousands))} MIL`);
     }
+
+    if (remainder > 0) {
+      parts.push(convertTripletToWords(remainder));
+    }
+
+    return parts.join(" ");
+  }
+
+  const millions = Math.floor(number / 1000000);
+  const remainder = number % 1000000;
+  const parts = [];
+
+  if (millions > 0) {
+    if (millions === 1) {
+      parts.push("UN MILLÓN");
+    } else {
+      parts.push(`${apocopateSpanishNumber(numberToSpanishWords(millions))} MILLONES`);
+    }
   }
 
   if (remainder > 0) {
-    parts.push(convertTripletToWords(remainder));
+    parts.push(numberToSpanishWords(remainder));
   }
 
   return parts.join(" ");
+}
+
+function needsDeBeforePesos(amountWords = "") {
+  const normalized = removeAccents(amountWords)
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
+  return /\bMILLON(?:ES)?$/.test(normalized);
+}
+
+function buildPesosLabel(amountWords = "") {
+  return needsDeBeforePesos(amountWords) ? "DE PESOS M/CTE" : "PESOS M/CTE";
 }
 
 function buildAmountInLetters(value) {
@@ -376,13 +398,14 @@ function buildAmountInLetters(value) {
     maximumFractionDigits: 2
   }).format(integerAmount);
 
-  return `${amountWords} PESOS M/CTE ($${formattedAmount})`;
+  return `${amountWords} ${buildPesosLabel(amountWords)} ($${formattedAmount})`;
 }
 
 function buildAmountWordsOnly(value) {
   const amount = parseCurrency(value);
   const integerAmount = Math.max(0, Math.floor(amount));
-  return `${apocopateSpanishNumber(numberToSpanishWords(integerAmount))} PESOS M/CTE`;
+  const amountWords = apocopateSpanishNumber(numberToSpanishWords(integerAmount));
+  return `${amountWords} ${buildPesosLabel(amountWords)}`;
 }
 
 function buildAmountDisplay(value) {
