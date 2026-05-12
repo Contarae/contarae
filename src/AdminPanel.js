@@ -3313,7 +3313,8 @@ export default function AdminPanel() {
   const [sendDraft, setSendDraft] = useState({
     includeProfessionalCard: false,
     includeJccBackground: false,
-    confirmedReview: false
+    confirmedReview: false,
+    correctionReason: ""
   });
   const [activeModule, setActiveModule] = useState("dashboard");
   const [serviceRecords, setServiceRecords] = useState([]);
@@ -3368,8 +3369,22 @@ export default function AdminPanel() {
     [certificateEventualEditorRows]
   );
   const lockedStatuses = new Set(["enviada", "pago_no_confirmado", "rechazada"]);
-  const isLockedStatus = lockedStatuses.has(detail?.summary?.certificationStatus);
+  const certificationStatus = detail?.summary?.certificationStatus || "";
+  const isLockedStatus = lockedStatuses.has(certificationStatus);
   const editLocked = Boolean(isLockedStatus && !editOverridePassword);
+  const isSentCertification = certificationStatus === "enviada";
+  const isCorrectionReady = Boolean(isSentCertification && editOverridePassword);
+  const sendStatusHardBlocked = ["pago_no_confirmado", "rechazada"].includes(certificationStatus);
+  const sendButtonDisabled = Boolean(sendStatusHardBlocked || preparingOutput === "send" || sendBusy);
+  const sendRequiresCorrectionReason = Boolean(isSentCertification);
+  const sendCannotConfirm = Boolean(
+    !sendDraft.confirmedReview ||
+    sendBusy ||
+    (sendRequiresCorrectionReason && !String(sendDraft.correctionReason || "").trim()) ||
+    (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) ||
+    (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available)
+  );
+  const issuedCertificates = Array.isArray(detail?.issuedCertificates) ? detail.issuedCertificates : [];
   const originalFormData = detail?.formData || {};
   const activeModuleMeta = ADMIN_MODULES.find((module) => module.id === activeModule) || ADMIN_MODULES[0];
 
@@ -4757,8 +4772,16 @@ export default function AdminPanel() {
 
   const openSendDialog = async () => {
     if (!detail?.summary?.reference) return;
-    if (detail?.summary?.certificationStatus === "enviada") {
-      setDetailError("Esta certificación ya fue enviada al cliente.");
+
+    const status = detail?.summary?.certificationStatus || "";
+    if (["pago_no_confirmado", "rechazada"].includes(status)) {
+      setDetailError("Este expediente está cerrado y no permite enviar certificación.");
+      return;
+    }
+
+    if (status === "enviada" && editLocked) {
+      setDetailError("Para emitir una versión corregida debes desbloquear el expediente con contraseña.");
+      setUnlockDialogOpen(true);
       return;
     }
 
@@ -4770,10 +4793,11 @@ export default function AdminPanel() {
       setSendDraft({
         includeProfessionalCard: false,
         includeJccBackground: false,
-        confirmedReview: false
+        confirmedReview: false,
+        correctionReason: ""
       });
       setSendDialogOpen(true);
-      setNotice("Datos de emisión guardados antes de confirmar el envío.");
+      setNotice(status === "enviada" ? "Datos guardados antes de emitir la versión corregida." : "Datos de emisión guardados antes de confirmar el envío.");
     } catch (error) {
       setDetailError(error.message);
     } finally {
@@ -4798,7 +4822,9 @@ export default function AdminPanel() {
           certificateOverrides: previewDraft,
           includeProfessionalCard: sendDraft.includeProfessionalCard,
           includeJccBackground: sendDraft.includeJccBackground,
-          confirmedReview: sendDraft.confirmedReview
+          confirmedReview: sendDraft.confirmedReview,
+          correctionReason: sendDraft.correctionReason,
+          overridePassword: editOverridePassword
         })
       });
       const data = await response.json();
@@ -4815,9 +4841,9 @@ export default function AdminPanel() {
       const whatsappLink = buildDeliveryWhatsappLink(refreshedDetail);
       setSendSuccessDialog({
         open: true,
-        title: "Certificación enviada correctamente",
+        title: refreshedDetail?.summary?.certificateVersion > 1 ? "Versión corregida enviada" : "Certificación enviada correctamente",
         message: refreshedDetail?.contact?.email
-          ? `El PDF fue enviado al correo ${refreshedDetail.contact.email}. El expediente ya quedó actualizado y puedes continuar con la notificación por WhatsApp si lo deseas.`
+          ? `El PDF fue enviado al correo ${refreshedDetail.contact.email}. El expediente guardó la versión emitida y puedes continuar con la notificación por WhatsApp si lo deseas.`
           : "El PDF fue enviado correctamente al cliente. El expediente ya quedó actualizado y puedes continuar con la notificación por WhatsApp si lo deseas.",
         whatsappLink,
         customerEmail: refreshedDetail?.contact?.email || ""
@@ -5182,6 +5208,7 @@ export default function AdminPanel() {
                   {detail.summary.promoDiscount ? <InfoTile label="Descuento referido" value={detail.summary.promoDiscount} /> : null}
                   <InfoTile label="Tarifa pagada" value={detail.summary.fee} />
                   {detail.summary.promoCommissionEstimate ? <InfoTile label="Comisión estimada aliado" value={detail.summary.promoCommissionEstimate} /> : null}
+                  <InfoTile label="Versión vigente" value={detail.summary.certificateVersion ? `Versión ${detail.summary.certificateVersion}` : "Sin emisión"} />
                   <InfoTile label="Registrada" value={formatDate(detail.summary.createdAt)} />
                 </div>
 
@@ -5866,8 +5893,8 @@ export default function AdminPanel() {
                         <button type="button" onClick={handleOpenPreviewPdf} disabled={preparingOutput === "preview" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 800, cursor: preparingOutput === "preview" || sendBusy ? "not-allowed" : "pointer", opacity: preparingOutput === "preview" || sendBusy ? 0.7 : 1 }}>
                           {preparingOutput === "preview" ? "Guardando y preparando PDF..." : "Ver borrador PDF"}
                         </button>
-                        <button type="button" onClick={openSendDialog} disabled={isLockedStatus || preparingOutput === "send" || sendBusy} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: isLockedStatus || preparingOutput === "send" || sendBusy ? "#86EFAC" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: isLockedStatus || preparingOutput === "send" || sendBusy ? "not-allowed" : "pointer", opacity: isLockedStatus || preparingOutput === "send" || sendBusy ? 0.8 : 1 }}>
-                          {isLockedStatus ? `Expediente ${getStatusMeta(detail.summary.certificationStatus).label.toLowerCase()}` : preparingOutput === "send" ? "Guardando antes de enviar..." : "Enviar certificación al cliente"}
+                        <button type="button" onClick={openSendDialog} disabled={sendButtonDisabled} style={{ padding: "12px 16px", borderRadius: 16, border: "none", background: sendButtonDisabled ? "#86EFAC" : "linear-gradient(135deg,#15803D,#22C55E)", color: "#fff", fontFamily: F, fontWeight: 800, cursor: sendButtonDisabled ? "not-allowed" : "pointer", opacity: sendButtonDisabled ? 0.8 : 1 }}>
+                          {sendStatusHardBlocked ? `Expediente ${getStatusMeta(detail.summary.certificationStatus).label.toLowerCase()}` : preparingOutput === "send" ? "Guardando antes de enviar..." : isSentCertification ? (isCorrectionReady ? "Enviar nueva versión corregida" : "Emitir corrección (desbloquear)") : "Enviar certificación al cliente"}
                         </button>
                         {detail.summary.certificationStatus === "enviada" && buildDeliveryWhatsappLink(detail) ? (
                           <a
@@ -5880,6 +5907,54 @@ export default function AdminPanel() {
                           </a>
                         ) : null}
                       </div>
+                    </section>
+
+                    <section style={{ padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                      <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 800, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>CERTIFICADOS EMITIDOS</div>
+                      <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.8, marginBottom: 12 }}>
+                        Cada envío definitivo queda guardado dentro del expediente. Si emites una corrección, la versión anterior queda marcada como reemplazada.
+                      </div>
+                      {issuedCertificates.length ? (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {issuedCertificates.map((certificate) => {
+                            const status = String(certificate.status || "").trim();
+                            const isCurrent = status === "vigente";
+                            return (
+                              <div key={certificate.id || `${certificate.version}-${certificate.issuedAt}`} style={{ padding: 14, borderRadius: 18, background: isCurrent ? "rgba(34,197,94,.08)" : "#F8FBFF", border: isCurrent ? "1px solid rgba(34,197,94,.16)" : "1px solid rgba(37,99,235,.10)" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                  <div>
+                                    <div style={{ fontFamily: F, fontWeight: 900, color: "#0F172A", marginBottom: 4 }}>
+                                      Versión {certificate.version || "-"} · {isCurrent ? "Vigente" : "Reemplazada"}
+                                    </div>
+                                    <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6 }}>
+                                      Emitida: {formatDate(certificate.issuedAt || certificate.sentAt)}<br />
+                                      Código: {certificate.verificationCode || "Sin código"}
+                                    </div>
+                                  </div>
+                                  {certificate.downloadPath ? (
+                                    <a href={certificate.downloadPath} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 12px", borderRadius: 12, background: "#fff", border: "1px solid rgba(37,99,235,.16)", color: "#1D4ED8", textDecoration: "none", fontFamily: F, fontSize: 12, fontWeight: 900 }}>
+                                      Ver PDF
+                                    </a>
+                                  ) : (
+                                    <span style={{ padding: "9px 12px", borderRadius: 12, background: "#E2E8F0", color: "#64748B", fontFamily: F, fontSize: 12, fontWeight: 900 }}>
+                                      PDF no almacenado
+                                    </span>
+                                  )}
+                                </div>
+                                {certificate.correctionReason || certificate.note ? (
+                                  <div style={{ marginTop: 10, fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.7 }}>
+                                    {certificate.correctionReason || certificate.note}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F, color: "#64748B", fontSize: 13 }}>
+                          Aún no hay certificados emitidos para este expediente.
+                        </div>
+                      )}
                     </section>
 
                     <section style={{ padding: 20, borderRadius: 22, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
@@ -5975,10 +6050,29 @@ export default function AdminPanel() {
         <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !sendBusy && setSendDialogOpen(false)}>
           <div className="admin-modal-card" style={{ width: "min(720px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.20)" }} onClick={(event) => event.stopPropagation()}>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#1D4ED8", fontWeight: 800, fontFamily: F, marginBottom: 10 }}>DOBLE CONFIRMACIÓN DE ENVÍO</div>
-            <h3 style={{ margin: 0, fontFamily: FH, fontSize: 34, lineHeight: 1.08, color: "#0B1D3A" }}>Enviar certificación al cliente</h3>
+            <h3 style={{ margin: 0, fontFamily: FH, fontSize: 34, lineHeight: 1.08, color: "#0B1D3A" }}>{sendRequiresCorrectionReason ? "Enviar versión corregida" : "Enviar certificación al cliente"}</h3>
             <p style={{ margin: "12px 0 18px", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.8 }}>
-              Antes de enviar, confirma si esta solicitud requiere adjuntar copia de la tarjeta profesional y/o antecedentes ante la Junta Central de Contadores.
+              {sendRequiresCorrectionReason
+                ? "Esta emisión reemplazará la versión vigente. Registra el motivo de corrección y confirma los adjuntos antes de enviar."
+                : "Antes de enviar, confirma si esta solicitud requiere adjuntar copia de la tarjeta profesional y/o antecedentes ante la Junta Central de Contadores."}
             </p>
+
+            {sendRequiresCorrectionReason ? (
+              <label style={{ display: "block", marginBottom: 16 }}>
+                <span style={{ display: "block", fontFamily: F, fontSize: 12, letterSpacing: "1.4px", color: "#B45309", fontWeight: 900, marginBottom: 8 }}>
+                  MOTIVO DE LA CORRECCIÓN
+                </span>
+                <textarea
+                  value={sendDraft.correctionReason}
+                  onChange={(event) => setSendDraft((current) => ({ ...current, correctionReason: event.target.value }))}
+                  placeholder="Ejemplo: Se ajustó el destino de presentación o se corrigió el concepto de ingresos reportado por el cliente."
+                  style={{ ...inputStyle, minHeight: 96, resize: "vertical", background: "#FFF7ED", borderColor: "#FED7AA" }}
+                />
+                <span style={{ display: "block", marginTop: 6, fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.5 }}>
+                  Este texto queda en el historial interno del expediente; no se imprime dentro de la certificación.
+                </span>
+              </label>
+            ) : null}
 
             <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
               <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", cursor: "pointer" }}>
@@ -6020,19 +6114,19 @@ export default function AdminPanel() {
               <button
                 type="button"
                 onClick={handleSendCertification}
-                disabled={!sendDraft.confirmedReview || sendBusy || (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) || (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available)}
+                disabled={sendCannotConfirm}
                 style={{
                   padding: "12px 18px",
                   borderRadius: 16,
                   border: "none",
-                  background: !sendDraft.confirmedReview || sendBusy || (sendDraft.includeProfessionalCard && !professionalConfig?.documents?.professional_card?.available) || (sendDraft.includeJccBackground && !professionalConfig?.documents?.jcc_background?.available) ? "#CBD5E1" : "linear-gradient(135deg,#15803D,#22C55E)",
+                  background: sendCannotConfirm ? "#CBD5E1" : "linear-gradient(135deg,#15803D,#22C55E)",
                   color: "#fff",
                   fontFamily: F,
                   fontWeight: 800,
-                  cursor: !sendDraft.confirmedReview || sendBusy ? "not-allowed" : "pointer"
+                  cursor: sendCannotConfirm ? "not-allowed" : "pointer"
                 }}
               >
-                {sendBusy ? "Enviando..." : "Confirmar envío definitivo"}
+                {sendBusy ? "Enviando..." : sendRequiresCorrectionReason ? "Confirmar versión corregida" : "Confirmar envío definitivo"}
               </button>
             </div>
           </div>

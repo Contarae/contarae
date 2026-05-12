@@ -6,6 +6,7 @@ import {
 import {
   buildCertificateVerificationCode,
   buildCertificateVerificationUrl,
+  findIssuedCertificateByVerificationCode,
   formatCertificateHash,
   matchesCertificateVerificationCode
 } from "./utils/certificate-verification.js";
@@ -86,26 +87,39 @@ function formatCertificateStatus(status = "") {
   };
 }
 
-function buildPublicPayload(detail) {
+function buildPublicPayload(detail, matchedIssuedCertificate = null) {
   const summary = detail.summary || {};
   const certificateData = buildCertificateData(detail.record || {});
-  const verificationCode = buildCertificateVerificationCode(detail.record || {});
+  const verificationCode =
+    matchedIssuedCertificate?.verificationCode || buildCertificateVerificationCode(detail.record || {});
   const status = formatCertificateStatus(summary.certificationStatus);
+  const versionStatus = String(matchedIssuedCertificate?.status || "vigente").trim();
+  const isReplacedVersion = versionStatus === "reemplazada";
+  const effectiveStatus = isReplacedVersion
+    ? {
+        code: "version_reemplazada",
+        label: "Reemplazado",
+        tone: "warning",
+        description: "Este certificado corresponde a una versión anterior del expediente. Solicita o consulta la versión vigente antes de usarlo."
+      }
+    : status;
   const hasEventuals = Boolean(
     String(certificateData.total_ingresos_eventuales || summary.eventualIncomeTotal || "").trim()
   );
 
   return {
     found: true,
-    valid: status.code === "enviada",
-    status,
+    valid: status.code === "enviada" && !isReplacedVersion,
+    status: effectiveStatus,
     certificate: {
       reference: summary.reference || "",
       consecutive: summary.consecutive || "",
-      version: Number(detail.record?.certificateVersion || 0) || null,
+      version: Number(matchedIssuedCertificate?.version || detail.record?.certificateVersion || 0) || null,
+      versionStatus: versionStatus || "vigente",
       verificationCode,
-      verificationUrl: buildCertificateVerificationUrl(detail.record || {}),
+      verificationUrl: matchedIssuedCertificate?.verificationUrl || buildCertificateVerificationUrl(detail.record || {}),
       issuedAt:
+        matchedIssuedCertificate?.issuedAt ||
         detail.record?.certificateIssuedAt ||
         detail.record?.sentToClientAt ||
         summary.customerNotificationSentAt ||
@@ -118,8 +132,8 @@ function buildPublicPayload(detail) {
       totalRecurringPeriodIncome: certificateData.total_ingresos_periodo || summary.recurringPeriodTotal || "",
       totalEventualPeriodIncome: hasEventuals ? certificateData.total_ingresos_eventuales || summary.eventualIncomeTotal || "" : "",
       totalGlobalPeriodIncome: hasEventuals ? certificateData.total_ingresos_global_periodo || summary.globalPeriodIncomeTotal || "" : "",
-      hashSha256: detail.record?.certificateHash || "",
-      hashDisplay: formatCertificateHash(detail.record?.certificateHash || "")
+      hashSha256: matchedIssuedCertificate?.hash || detail.record?.certificateHash || "",
+      hashDisplay: formatCertificateHash(matchedIssuedCertificate?.hash || detail.record?.certificateHash || "")
     }
   };
 }
@@ -131,7 +145,11 @@ async function getCertificationByCode(code) {
   );
 
   if (!match?.reference) return null;
-  return getCertificationByReference(match.reference);
+  const result = await getCertificationByReference(match.reference);
+  return {
+    ...result,
+    matchedIssuedCertificate: findIssuedCertificateByVerificationCode(result.record || {}, code)
+  };
 }
 
 export default async (req) => {
@@ -183,6 +201,12 @@ export default async (req) => {
       });
     }
 
+    const matchedIssuedCertificate = lookupCode
+      ? findIssuedCertificateByVerificationCode(result.record || {}, lookupCode) ||
+        result.matchedIssuedCertificate ||
+        null
+      : null;
+
     if (lookupCode && !matchesCertificateVerificationCode(result.record, lookupCode)) {
       return jsonResponse({
         ...buildPublicPayload(result.detail),
@@ -197,7 +221,7 @@ export default async (req) => {
       });
     }
 
-    return jsonResponse(buildPublicPayload(result.detail));
+    return jsonResponse(buildPublicPayload(result.detail, matchedIssuedCertificate));
   } catch (error) {
     return jsonResponse(
       {

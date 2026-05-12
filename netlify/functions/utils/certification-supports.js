@@ -78,6 +78,18 @@ export function buildSupportBlobKey(reference, originalName) {
   return `supports/${normalizedReference}/${uniqueId}-${fileName}`;
 }
 
+export function buildIssuedCertificateBlobKey(reference, version, originalName) {
+  const normalizedReference = normalizeReference(reference);
+  const fileName = sanitizeFileName(originalName || `certificado-v${version}.pdf`);
+  const safeVersion = Math.max(1, Number(version || 1));
+  const uniqueId =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `issued/${normalizedReference}/v${safeVersion}-${uniqueId}-${fileName}`;
+}
+
 export function buildSupportRecord({
   reference,
   blobKey,
@@ -104,6 +116,12 @@ export function getSupportDownloadPath(reference, blobKey) {
   const normalizedReference = encodeURIComponent(normalizeReference(reference));
   const normalizedKey = encodeURIComponent(String(blobKey || ""));
   return `/api/admin-download-certification-support?reference=${normalizedReference}&key=${normalizedKey}`;
+}
+
+export function getIssuedCertificateDownloadPath(reference, blobKey) {
+  const normalizedReference = encodeURIComponent(normalizeReference(reference));
+  const normalizedKey = encodeURIComponent(String(blobKey || ""));
+  return `/api/admin-download-certification-issued?reference=${normalizedReference}&key=${normalizedKey}`;
 }
 
 export async function uploadIncomingSupportFiles(store, reference, files = []) {

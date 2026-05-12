@@ -1,5 +1,8 @@
 import { getStore } from "@netlify/blobs";
-import { getSupportDownloadPath } from "./certification-supports.js";
+import {
+  getIssuedCertificateDownloadPath,
+  getSupportDownloadPath
+} from "./certification-supports.js";
 import { authenticateAdminCredentials } from "./admin-auth.js";
 
 const FINAL_FAILED_STATUSES = new Set([
@@ -305,6 +308,7 @@ function summarizeRecord(record, source) {
     consecutive: record.consecutive || "",
     certificateVersion: Number(record.certificateVersion || 0) || null,
     certificateVerificationCode: record.certificateVerificationCode || "",
+    issuedCertificates: Array.isArray(record.issuedCertificates) ? record.issuedCertificates : [],
     certificateIssuedAt: record.certificateIssuedAt || "",
     supportFilesCount: supportFiles.length,
     createdAt: record.createdAt || "",
@@ -316,6 +320,22 @@ function summarizeRecord(record, source) {
     customerNotificationSentAt: record.customerNotificationSentAt || "",
     allyNotificationSentAt: record.allyNotificationSentAt || ""
   };
+}
+
+function buildIssuedCertificateHistory(record = {}) {
+  const certificates = Array.isArray(record.issuedCertificates)
+    ? record.issuedCertificates
+    : [];
+
+  return certificates
+    .filter((certificate) => certificate && typeof certificate === "object")
+    .map((certificate) => ({
+      ...certificate,
+      downloadPath: certificate.blobKey
+        ? getIssuedCertificateDownloadPath(record.reference, certificate.blobKey)
+        : ""
+    }))
+    .sort((left, right) => Number(right.version || 0) - Number(left.version || 0));
 }
 
 function buildDetail(record, source) {
@@ -341,6 +361,7 @@ function buildDetail(record, source) {
       ...file,
       downloadPath: getSupportDownloadPath(record.reference, file.blobKey)
     })),
+    issuedCertificates: buildIssuedCertificateHistory(record),
     contact: {
       email: customerEmail,
       rawPhone: certificateData.telefono || formData.telefono || "",

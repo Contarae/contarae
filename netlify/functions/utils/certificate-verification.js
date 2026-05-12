@@ -23,6 +23,9 @@ export function getCertificateVerifyRoute() {
 }
 
 export function buildCertificateVerificationCode(record = {}) {
+  const existingCode = String(record.certificateVerificationCode || "").trim().toUpperCase();
+  if (existingCode) return existingCode;
+
   const reference = String(record.reference || "").trim().toUpperCase();
   const referenceToken = reference.split("-").pop() || reference.slice(-5) || "CONT";
   const consecutiveToken = String(record.consecutive || "")
@@ -30,10 +33,14 @@ export function buildCertificateVerificationCode(record = {}) {
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(-6);
+  const version = Number(record.certificateVersion || 0);
+  const versionSuffix = version > 1 ? `-V${version}` : "";
 
-  return consecutiveToken
+  const baseCode = consecutiveToken
     ? `CTR-${consecutiveToken}-${referenceToken.slice(-5)}`
     : `CTR-${referenceToken.slice(-5)}`;
+
+  return `${baseCode}${versionSuffix}`;
 }
 
 export function buildCertificateVerificationPath(record = {}) {
@@ -63,6 +70,26 @@ export function formatCertificateHash(hash = "") {
   return raw.match(/.{1,4}/g)?.join(" ") || raw;
 }
 
+export function findIssuedCertificateByVerificationCode(record = {}, code = "") {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) return null;
+
+  const issuedCertificates = Array.isArray(record.issuedCertificates)
+    ? record.issuedCertificates
+    : [];
+
+  return issuedCertificates.find((certificate) => {
+    return String(certificate?.verificationCode || "").trim().toUpperCase() === normalizedCode;
+  }) || null;
+}
+
 export function matchesCertificateVerificationCode(record = {}, code = "") {
-  return buildCertificateVerificationCode(record) === String(code || "").trim().toUpperCase();
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) return false;
+
+  return (
+    buildCertificateVerificationCode(record) === normalizedCode ||
+    String(record.certificateVerificationCode || "").trim().toUpperCase() === normalizedCode ||
+    Boolean(findIssuedCertificateByVerificationCode(record, normalizedCode))
+  );
 }

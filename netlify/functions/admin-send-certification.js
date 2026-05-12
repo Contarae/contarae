@@ -1,6 +1,11 @@
-import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-auth.js";
+import {
+  authenticateAdminCredentials,
+  buildAdminHeaders,
+  getAdminSessionFromRequest
+} from "./utils/admin-auth.js";
 import { getCertificationByReference, mergeCertificationRecordUpdates } from "./utils/certification-admin.js";
 import { generateCertificationPdf } from "./utils/certification-pdf.js";
+import { buildIssuedCertificateBlobKey } from "./utils/certification-supports.js";
 import {
   getProfessionalDocumentBlob,
   getProfessionalDocumentsStatus,
@@ -14,6 +19,47 @@ import {
   buildCertificateVerificationUrl,
   computeCertificateSha256
 } from "./utils/certificate-verification.js";
+
+function normalizeIssuedCertificates(record = {}) {
+  const issuedCertificates = Array.isArray(record.issuedCertificates)
+    ? record.issuedCertificates
+    : [];
+  const legacyVersion =
+    Number(record.certificateVersion || 0) ||
+    (record.sentToClientAt || record.certificateHash || record.certificationStatus === "enviada" ? 1 : 0);
+
+  if (issuedCertificates.length || !legacyVersion) {
+    return issuedCertificates.filter((certificate) => certificate && typeof certificate === "object");
+  }
+
+  return [
+    {
+      id: `legacy-v${legacyVersion}`,
+      version: legacyVersion,
+      status: "vigente",
+      issuedAt: record.certificateIssuedAt || record.sentToClientAt || "",
+      sentAt: record.sentToClientAt || record.certificateIssuedAt || "",
+      sentBy: record.sentToClientBy || "",
+      emailId: record.sentCertificationEmailId || "",
+      fileName: record.certificateFileName || `certificacion-ingresos-v${legacyVersion}.pdf`,
+      verificationCode: record.certificateVerificationCode || buildCertificateVerificationCode(record),
+      verificationPath: record.certificateVerificationPath || buildCertificateVerificationPath(record),
+      verificationUrl: record.certificateVerificationUrl || buildCertificateVerificationUrl(record),
+      hash: record.certificateHash || "",
+      unavailable: true,
+      note: "Versión emitida antes de activar el historial de certificados. El archivo no quedó almacenado en el expediente."
+    }
+  ];
+}
+
+function getNextCertificateVersion(record = {}) {
+  const issuedCertificates = normalizeIssuedCertificates(record);
+  const versions = issuedCertificates
+    .map((certificate) => Number(certificate?.version || 0))
+    .filter((version) => Number.isFinite(version) && version > 0);
+  versions.push(Number(record.certificateVersion || 0) || 0);
+  return Math.max(0, ...versions) + 1;
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -29,6 +75,7 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
   const certificateData = detail.certificateData || {};
   const profile = getProfessionalProfile();
   const customerName = certificateData.nombre || summary.customerName || "";
+  const version = Number(detail.record?.certificateVersion || 0) || 1;
   const verificationCode =
     detail.record?.certificateVerificationCode || buildCertificateVerificationCode(detail.record || {});
   const verificationUrl =
@@ -46,6 +93,11 @@ function buildCustomerCertificationEmailHtml(detail, includeProfessionalCard, in
           <p style="margin:0 0 14px;color:#334155;line-height:1.8;">
             Hola ${escapeHtml(customerName)}, adjuntamos la certificación de ingresos correspondiente a su solicitud ${summary.consecutive ? `N° ${escapeHtml(summary.consecutive)}` : escapeHtml(summary.reference || "")}.
           </p>
+          ${version > 1 ? `
+            <div style="margin:0 0 14px;padding:14px 16px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;line-height:1.7;">
+              <strong>Versión corregida ${escapeHtml(version)}.</strong> Esta emisión reemplaza las versiones anteriores del expediente.
+            </div>
+          ` : ""}
           <div style="padding:16px 18px;border-radius:14px;background:#f8fbff;border:1px solid #dbe5f1;color:#334155;line-height:1.8;">
             <strong>Documento principal adjunto:</strong> Certificación de ingresos firmada por ${escapeHtml(profile.accountantName)}${profile.professionalCardNumber ? `, T.P. No. ${escapeHtml(profile.professionalCardNumber)}` : ""}.<br/>
             ${includeProfessionalCard ? "Incluye copia de la tarjeta profesional con marca de agua de uso exclusivo.<br/>" : ""}
@@ -64,6 +116,7 @@ function buildCustomerCertificationEmailText(detail, includeProfessionalCard, in
   const certificateData = detail.certificateData || {};
   const profile = getProfessionalProfile();
   const customerName = certificateData.nombre || summary.customerName || "";
+  const version = Number(detail.record?.certificateVersion || 0) || 1;
   const verificationCode =
     detail.record?.certificateVerificationCode || buildCertificateVerificationCode(detail.record || {});
   const verificationUrl =
@@ -73,6 +126,9 @@ function buildCustomerCertificationEmailText(detail, includeProfessionalCard, in
     `Hola ${customerName},`,
     "",
     `Adjuntamos la certificación de ingresos correspondiente a su solicitud ${summary.consecutive ? `N° ${summary.consecutive}` : summary.reference || ""}.`,
+    version > 1
+      ? `Versión corregida ${version}. Esta emisión reemplaza las versiones anteriores del expediente.`
+      : "",
     "",
     `Documento principal: Certificación de ingresos firmada por ${profile.accountantName}${profile.professionalCardNumber ? `, T.P. No. ${profile.professionalCardNumber}` : ""}.`,
     includeProfessionalCard ? "Incluye copia de la tarjeta profesional con marca de agua de uso exclusivo." : "",
@@ -125,6 +181,8 @@ export default async (req) => {
     const includeProfessionalCard = Boolean(body?.includeProfessionalCard);
     const includeJccBackground = Boolean(body?.includeJccBackground);
     const confirmedReview = Boolean(body?.confirmedReview);
+    const correctionReason = String(body?.correctionReason || "").trim();
+    const overridePassword = String(body?.overridePassword || "");
     const resendApiKey = process.env.RESEND_API_KEY;
     const resendFromEmail =
       process.env.RESEND_FROM_EMAIL || "CONTARAE <notificaciones@send.contarae.com>";
@@ -159,11 +217,31 @@ export default async (req) => {
       });
     }
 
-    if (["enviada", "rechazada", "pago_no_confirmado"].includes(result.detail.summary?.certificationStatus)) {
-      return new Response(JSON.stringify({ error: "Este expediente está cerrado y no permite un nuevo envío desde el panel." }), {
+    const currentCertificationStatus = result.detail.summary?.certificationStatus || "";
+    const isCorrection = currentCertificationStatus === "enviada";
+
+    if (["rechazada", "pago_no_confirmado"].includes(currentCertificationStatus)) {
+      return new Response(JSON.stringify({ error: "Este expediente está cerrado y no permite envío de certificado desde el panel." }), {
         status: 400,
         headers
       });
+    }
+
+    if (isCorrection) {
+      if (!correctionReason) {
+        return new Response(JSON.stringify({ error: "Para emitir una nueva versión corregida debes registrar el motivo del ajuste." }), {
+          status: 400,
+          headers
+        });
+      }
+
+      const auth = authenticateAdminCredentials(session.username, overridePassword);
+      if (!auth.ok) {
+        return new Response(JSON.stringify({ error: "Para emitir una corrección debes desbloquear el expediente con la contraseña del usuario." }), {
+          status: 401,
+          headers
+        });
+      }
     }
 
     const customerEmail = result.detail.contact?.email;
@@ -188,17 +266,64 @@ export default async (req) => {
       });
     }
 
+    const certificateVersion = getNextCertificateVersion(result.record || {});
+    const certificateVerificationCode = buildCertificateVerificationCode({
+      ...(result.record || {}),
+      certificateVersion,
+      certificateVerificationCode: ""
+    });
+    const certificateVerificationPath = buildCertificateVerificationPath({
+      ...(result.record || {}),
+      certificateVersion,
+      certificateVerificationCode
+    });
+    const certificateVerificationUrl = buildCertificateVerificationUrl({
+      ...(result.record || {}),
+      certificateVersion,
+      certificateVerificationCode
+    });
+
     const previewRecord = certificateOverrides
       ? {
           ...result.record,
+          certificateVersion,
+          certificateVerificationCode,
+          certificateVerificationPath,
+          certificateVerificationUrl,
+          certificateCorrectionReason: isCorrection ? correctionReason : "",
           certificateOverrides: {
             ...(result.record?.certificateOverrides || {}),
             ...certificateOverrides
           }
         }
-      : result.record;
+      : {
+          ...result.record,
+          certificateVersion,
+          certificateVerificationCode,
+          certificateVerificationPath,
+          certificateVerificationUrl,
+          certificateCorrectionReason: isCorrection ? correctionReason : ""
+        };
 
     const pdf = await generateCertificationPdf(previewRecord);
+    const now = new Date().toISOString();
+    const certificateHash = computeCertificateSha256(pdf.bytes);
+    const certificateBlobKey = buildIssuedCertificateBlobKey(reference, certificateVersion, pdf.fileName);
+    const pdfBuffer = Buffer.from(pdf.bytes);
+
+    await result.store.set(certificateBlobKey, pdfBuffer, {
+      metadata: {
+        reference,
+        version: certificateVersion,
+        originalName: pdf.fileName,
+        contentType: pdf.contentType,
+        size: pdfBuffer.byteLength,
+        issuedAt: now,
+        hash: certificateHash,
+        verificationCode: certificateVerificationCode
+      }
+    });
+
     const attachments = [
       {
         filename: pdf.fileName,
@@ -233,12 +358,6 @@ export default async (req) => {
       }
     }
 
-    const certificateVersion = Number(result.record?.certificateVersion || 0) + 1;
-    const certificateHash = computeCertificateSha256(pdf.bytes);
-    const certificateVerificationCode = buildCertificateVerificationCode(result.record || {});
-    const certificateVerificationPath = buildCertificateVerificationPath(result.record || {});
-    const certificateVerificationUrl = buildCertificateVerificationUrl(result.record || {});
-
     const detailForEmail = {
       ...result.detail,
       record: {
@@ -251,37 +370,71 @@ export default async (req) => {
       }
     };
 
+    const emailSubject = `${isCorrection ? "CONTARAE | Certificación de ingresos corregida" : "CONTARAE | Certificación de ingresos"} ${result.detail.summary.consecutive ? `N° ${result.detail.summary.consecutive}` : reference}${certificateVersion > 1 ? ` · Versión ${certificateVersion}` : ""}`;
     const emailResult = await sendResendEmail({
       apiKey: resendApiKey,
       from: resendFromEmail,
       to: customerEmail,
-      subject: `CONTARAE | Certificación de ingresos ${result.detail.summary.consecutive ? `N° ${result.detail.summary.consecutive}` : reference}`,
+      subject: emailSubject,
       html: buildCustomerCertificationEmailHtml(detailForEmail, includeProfessionalCard, includeJccBackground),
       text: buildCustomerCertificationEmailText(detailForEmail, includeProfessionalCard, includeJccBackground),
       replyTo: replyToBusinessEmail,
-      idempotencyKey: `${reference}:final-certificate`,
+      idempotencyKey: `${reference}:certificate-v${certificateVersion}`,
       attachments
     });
+
+    const previousIssuedCertificates = normalizeIssuedCertificates(result.record || {}).map((certificate) => ({
+      ...certificate,
+      status: certificate.status === "vigente" || !certificate.status ? "reemplazada" : certificate.status,
+      replacedAt: certificate.status === "vigente" || !certificate.status ? now : certificate.replacedAt || "",
+      replacedBy: certificate.status === "vigente" || !certificate.status ? session.username : certificate.replacedBy || "",
+      replacementReason: certificate.status === "vigente" || !certificate.status ? correctionReason : certificate.replacementReason || ""
+    }));
+    const issuedCertificates = [
+      ...previousIssuedCertificates,
+      {
+        id: `v${certificateVersion}-${Date.now()}`,
+        version: certificateVersion,
+        status: "vigente",
+        issuedAt: now,
+        sentAt: now,
+        sentBy: session.username,
+        emailId: emailResult.id || "",
+        fileName: pdf.fileName,
+        blobKey: certificateBlobKey,
+        contentType: pdf.contentType,
+        size: pdfBuffer.byteLength,
+        hash: certificateHash,
+        verificationCode: certificateVerificationCode,
+        verificationPath: certificateVerificationPath,
+        verificationUrl: certificateVerificationUrl,
+        includeProfessionalCard,
+        includeJccBackground,
+        correctionReason: isCorrection ? correctionReason : ""
+      }
+    ];
 
     const updated = await mergeCertificationRecordUpdates(reference, {
       ...(certificateOverrides ? { certificateOverrides } : {}),
       certificationStatus: "enviada",
-      sentToClientAt: new Date().toISOString(),
+      sentToClientAt: now,
       sentToClientBy: session.username,
       sentCertificationEmailId: emailResult.id || "",
       sentCertificationAttachments: {
         professionalCard: includeProfessionalCard,
         jccBackground: includeJccBackground
       },
+      issuedCertificates,
       certificateVersion,
       certificateHash,
       certificateVerificationCode,
       certificateVerificationPath,
       certificateVerificationUrl,
-      certificateIssuedAt: new Date().toISOString(),
+      certificateCorrectionReason: isCorrection ? correctionReason : "",
+      certificateIssuedAt: now,
       certificateFileName: pdf.fileName,
-      updatedAt: new Date().toISOString(),
-      lastReviewedAt: new Date().toISOString(),
+      updatedAt: now,
+      lastReviewedAt: now,
       lastReviewedBy: session.username
     });
 
