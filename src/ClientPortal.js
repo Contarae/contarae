@@ -10,6 +10,7 @@ const MODULES = [
   ["abonos", "Abonos"],
   ["cartera", "Cartera"],
   ["inventario", "Inventario"],
+  ["movimientos", "Movimientos"],
   ["ordenes", "Ordenes"],
   ["cargues", "Cargues masivos"],
   ["configuracion", "Configuracion"]
@@ -24,6 +25,59 @@ const CUSTOMER_SEARCH_TYPES = [
   ["alternateName", "Nombre alterno"],
   ["documentNumber", "Documento"]
 ];
+
+const CITY_DEPARTMENT_MAP = {
+  armenia: ["Armenia", "Quindio"],
+  barranquilla: ["Barranquilla", "Atlantico"],
+  bogota: ["Bogota D.C.", "Bogota D.C."],
+  "bogota dc": ["Bogota D.C.", "Bogota D.C."],
+  "bogota d c": ["Bogota D.C.", "Bogota D.C."],
+  bucaramanga: ["Bucaramanga", "Santander"],
+  cali: ["Cali", "Valle del Cauca"],
+  cartagena: ["Cartagena", "Bolivar"],
+  cucuta: ["Cucuta", "Norte de Santander"],
+  ibague: ["Ibague", "Tolima"],
+  manizales: ["Manizales", "Caldas"],
+  medellin: ["Medellin", "Antioquia"],
+  monteria: ["Monteria", "Cordoba"],
+  neiva: ["Neiva", "Huila"],
+  pasto: ["Pasto", "Narino"],
+  pereira: ["Pereira", "Risaralda"],
+  popayan: ["Popayan", "Cauca"],
+  riohacha: ["Riohacha", "La Guajira"],
+  "santa marta": ["Santa Marta", "Magdalena"],
+  sincelejo: ["Sincelejo", "Sucre"],
+  tunja: ["Tunja", "Boyaca"],
+  valledupar: ["Valledupar", "Cesar"],
+  villavicencio: ["Villavicencio", "Meta"],
+  yopal: ["Yopal", "Casanare"],
+  chia: ["Chia", "Cundinamarca"],
+  soacha: ["Soacha", "Cundinamarca"],
+  zipaquira: ["Zipaquira", "Cundinamarca"],
+  facatativa: ["Facatativa", "Cundinamarca"],
+  mosquera: ["Mosquera", "Cundinamarca"],
+  funza: ["Funza", "Cundinamarca"],
+  cajica: ["Cajica", "Cundinamarca"],
+  cota: ["Cota", "Cundinamarca"],
+  madrid: ["Madrid", "Cundinamarca"],
+  girardot: ["Girardot", "Cundinamarca"],
+  bello: ["Bello", "Antioquia"],
+  envigado: ["Envigado", "Antioquia"],
+  itagui: ["Itagui", "Antioquia"],
+  sabaneta: ["Sabaneta", "Antioquia"],
+  rionegro: ["Rionegro", "Antioquia"],
+  palmira: ["Palmira", "Valle del Cauca"],
+  buenaventura: ["Buenaventura", "Valle del Cauca"],
+  tulua: ["Tulua", "Valle del Cauca"],
+  jamundi: ["Jamundi", "Valle del Cauca"],
+  floridablanca: ["Floridablanca", "Santander"],
+  giron: ["Giron", "Santander"],
+  piedecuesta: ["Piedecuesta", "Santander"],
+  dosquebradas: ["Dosquebradas", "Risaralda"],
+  duitama: ["Duitama", "Boyaca"],
+  sogamoso: ["Sogamoso", "Boyaca"],
+  fusagasuga: ["Fusagasuga", "Cundinamarca"]
+};
 
 const input = {
   width: "100%",
@@ -64,6 +118,15 @@ const today = () => new Date().toISOString().slice(0, 10);
 const normalizeText = (value) => clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const invalidDocumentTokens = new Set(["", "por asignar", "sin documento", "pendiente", "pendiente por asignar", "n/a", "na", "0"]);
 
+function normalizeLookup(value = "") {
+  return clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 function formatCurrencyInput(value) {
   const amount = moneyValue(value);
   return amount ? money(amount) : "";
@@ -81,6 +144,19 @@ function titleCaseName(value) {
     .split(" ")
     .map((word) => word.split("-").map((part) => part ? `${part.charAt(0).toLocaleUpperCase("es-CO")}${part.slice(1)}` : "").join("-"))
     .join(" ");
+}
+
+function resolveCityDepartment(cityValue = "", fallbackDepartment = "") {
+  const rawCity = clean(cityValue);
+  const rawDepartment = clean(fallbackDepartment);
+  if (!rawCity) return { city: "", department: rawDepartment ? titleCaseName(rawDepartment) : "", geographyStatus: "" };
+  const match = CITY_DEPARTMENT_MAP[normalizeLookup(rawCity)];
+  if (match) return { city: match[0], department: match[1], geographyStatus: "validado" };
+  return {
+    city: titleCaseName(rawCity),
+    department: rawDepartment ? titleCaseName(rawDepartment) : "Por validar",
+    geographyStatus: "pendiente_validacion"
+  };
 }
 
 function csvEscape(value) {
@@ -191,8 +267,8 @@ function customerSearchMatches(customers = [], type = "name", query = "") {
 function buildRowsForExport(data, type) {
   if (type === "clientes") {
     return [
-      ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "saldo"],
-      ...(data.customerSummary || []).map((customer) => [customer.id, customer.name, customer.alternateName, customer.documentNumber, customer.phone, customer.email, customer.address, customer.balance])
+      ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "ciudad", "departamento", "zona", "estado_datos", "saldo"],
+      ...(data.customerSummary || []).map((customer) => [customer.id, customer.name, customer.alternateName, customer.documentNumber, customer.phone, customer.email, customer.address, customer.city, customer.department, customer.zone, customer.dataStatus, customer.balance])
     ];
   }
   if (type === "facturas") {
@@ -209,8 +285,14 @@ function buildRowsForExport(data, type) {
   }
   if (type === "inventario") {
     return [
-      ["sku", "nombre_producto", "precio_venta", "costo", "stock", "aplica_iva", "tarifa_iva"],
-      ...(data.inventory || []).map((item) => [item.sku, item.name, item.salePrice, item.cost, item.stock, item.taxable ? "SI" : "NO", item.taxRate])
+      ["sku", "nombre_producto", "precio_venta", "costo", "stock_actual", "aplica_iva", "tarifa_iva", "estado", "notas"],
+      ...(data.inventory || []).map((item) => [item.sku, item.name, item.salePrice, item.cost, item.stock, item.taxable ? "SI" : "NO", item.taxRate, item.status, item.notes])
+    ];
+  }
+  if (type === "movimientos") {
+    return [
+      ["id_movimiento", "fecha", "sku", "producto", "tipo", "cantidad", "efecto", "stock_antes", "stock_despues", "costo_unitario", "referencia", "origen", "notas"],
+      ...(data.inventoryMovements || []).map((movement) => [movement.id, movement.date, movement.sku, movement.productNameSnapshot, movement.type, movement.quantity, movement.effect, movement.stockBefore, movement.stockAfter, movement.unitCost, movement.reference, movement.sourceType, movement.notes])
     ];
   }
   if (type === "abonos") {
@@ -232,6 +314,7 @@ function buildWorkbookForExport(data, type) {
     abonos: "Abonos",
     cartera: "Cartera",
     inventario: "Inventario",
+    movimientos: "Movimientos",
     ordenes: "Ordenes"
   };
   const sheets = [{ name: labels[type] || "Reporte", rows: buildRowsForExport(data, type) }];
@@ -331,7 +414,9 @@ function lineToDraft(line = {}) {
 
 function exportTypeForModule(module) {
   if (module === "abonos") return "abonos";
+  if (module === "movimientos_inventario" || module === "movimientos") return "movimientos";
   if (module === "inventario") return "inventario";
+  if (module === "actualizacion_productos") return "inventario";
   if (module === "ordenes_detalladas" || module === "ordenes") return "ordenes";
   if (module === "facturas_historicas" || module === "facturas_detalladas" || module === "facturas") return "facturas";
   return "clientes";
@@ -793,14 +878,14 @@ function Dashboard({ data, setModule }) {
 }
 
 function Customers({ data, onSave, onExport }) {
-  const [draft, setDraft] = useState({ id: "", name: "", alternateName: "", documentNumber: "", phone: "", email: "", address: "", notes: "" });
+  const [draft, setDraft] = useState({ id: "", name: "", alternateName: "", documentNumber: "", phone: "", email: "", address: "", city: "", department: "", zone: "", notes: "" });
   const [selectedId, setSelectedId] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(null);
   const [busy, setBusy] = useState(false);
   const customers = data.customerSummary || [];
 
-  const blank = () => ({ id: "", name: "", alternateName: "", documentNumber: "", phone: "", email: "", address: "", notes: "" });
+  const blank = () => ({ id: "", name: "", alternateName: "", documentNumber: "", phone: "", email: "", address: "", city: "", department: "", zone: "", notes: "" });
 
   function edit(customer) {
     if (!customer) return;
@@ -813,6 +898,9 @@ function Customers({ data, onSave, onExport }) {
       phone: customer.phone || "",
       email: customer.email || "",
       address: customer.address || "",
+      city: customer.city || "",
+      department: customer.department || "",
+      zone: customer.zone || "",
       notes: customer.notes || ""
     });
     setModalOpen(true);
@@ -833,6 +921,8 @@ function Customers({ data, onSave, onExport }) {
       documentNumber: onlyDigits(draft.documentNumber),
       phone: onlyDigits(draft.phone),
       email: clean(draft.email).toLowerCase(),
+      ...resolveCityDepartment(draft.city, draft.department),
+      zone: titleCaseName(draft.zone),
       updateConfirmed: true
     };
     setConfirmSave({
@@ -840,7 +930,8 @@ function Customers({ data, onSave, onExport }) {
       details: [
         { label: "Cliente", value: payload.name || "Sin nombre" },
         { label: "ID", value: payload.id || data.nextCustomerId },
-        { label: "Documento", value: payload.documentNumber || "Por asignar" }
+        { label: "Documento", value: payload.documentNumber || "Por asignar" },
+        { label: "Ubicacion", value: payload.city ? `${payload.city} - ${payload.department}` : "Sin ciudad" }
       ]
     });
   }
@@ -879,13 +970,22 @@ function Customers({ data, onSave, onExport }) {
       </section>
       <PortalModal open={modalOpen} title={draft.id ? "Actualizar cliente" : "Crear cliente"} eyebrow={draft.id || data.nextCustomerId} onClose={() => { if (!busy) setModalOpen(false); }} wide={false}>
         <form onSubmit={submit} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
-          <Field label="ID cliente"><input style={input} placeholder={data.nextCustomerId} value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value.toUpperCase() }))} /></Field>
+          <Field label="ID cliente"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.id || `Automatico: ${data.nextCustomerId}`} /></Field>
           <Field label="Nombre"><input style={input} required value={draft.name} onBlur={() => setDraft((current) => ({ ...current, name: titleCaseName(current.name) }))} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></Field>
           <Field label="Nombre alterno"><input style={input} value={draft.alternateName} onBlur={() => setDraft((current) => ({ ...current, alternateName: titleCaseName(current.alternateName) }))} onChange={(event) => setDraft((current) => ({ ...current, alternateName: event.target.value }))} /></Field>
           <Field label="Documento"><input style={input} value={draft.documentNumber} onChange={(event) => setDraft((current) => ({ ...current, documentNumber: onlyDigits(event.target.value) }))} /></Field>
           <Field label="Telefono"><input style={input} value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: onlyDigits(event.target.value).slice(0, 10) }))} /></Field>
           <Field label="Correo"><input style={input} type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value.toLowerCase() }))} /></Field>
           <Field label="Direccion"><input style={input} value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} /></Field>
+          <Field label="Ciudad"><input style={input} list="client-city-list" value={draft.city} onBlur={() => setDraft((current) => ({ ...current, ...resolveCityDepartment(current.city, current.department) }))} onChange={(event) => {
+            const location = resolveCityDepartment(event.target.value, draft.department);
+            setDraft((current) => ({ ...current, city: event.target.value, department: location.geographyStatus === "validado" ? location.department : current.department }));
+          }} /></Field>
+          <Field label="Departamento automatico"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.department || (draft.city ? "Por validar" : "")} /></Field>
+          <Field label="Zona opcional"><input style={input} value={draft.zone} onBlur={() => setDraft((current) => ({ ...current, zone: titleCaseName(current.zone) }))} onChange={(event) => setDraft((current) => ({ ...current, zone: event.target.value }))} /></Field>
+          <datalist id="client-city-list">
+            {Object.entries(CITY_DEPARTMENT_MAP).map(([key, [city, department]]) => <option key={key} value={city}>{department}</option>)}
+          </datalist>
           <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 78, gridColumn: "1/-1" }} placeholder="Notas internas del cliente" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
           <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setModalOpen(false)} style={ghostButton}>Cancelar</button>
@@ -908,8 +1008,8 @@ function Customers({ data, onSave, onExport }) {
           {customers.map((customer) => (
             <div key={customer.id} className="client-portal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) repeat(3, minmax(90px,.4fr)) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
               <div>
-                <strong style={{ fontFamily: F }}>{customer.name || "Cliente sin nombre"}</strong>
-                <div style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.documentNumber || "Documento por asignar"} · {customer.phone || "Celular pendiente"}</div>
+                <strong style={{ fontFamily: F }}>{customer.name || "Cliente reservado pendiente por asignar"}</strong>
+                <div style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.documentNumber || "Documento por asignar"} · {customer.phone || "Celular pendiente"} · {customer.city || "Ciudad pendiente"}{customer.department ? `, ${customer.department}` : ""}</div>
               </div>
               <span style={{ fontFamily: F }}>{customer.billedLabel}</span>
               <span style={{ fontFamily: F }}>{customer.paidLabel}</span>
@@ -1002,7 +1102,7 @@ function Invoices({ data, onSave, onExport }) {
     setConfirmAction({
       type: "void",
       title: "Anular factura",
-      body: `La factura ${invoice.id} quedara marcada como anulada. No se elimina del historial.`,
+      body: `La factura ${invoice.id} quedara marcada como anulada. Si tenia productos de inventario, el sistema registrara la reversion automatica del stock sin borrar historial.`,
       danger: true,
       payload: {
         id: invoice.id,
@@ -1067,7 +1167,7 @@ function Invoices({ data, onSave, onExport }) {
                 <option value="anulada">Anulada</option>
               </select>
             </Field>
-            <Field label="ID factura"><input style={input} value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value.toUpperCase() }))} /></Field>
+            <Field label="Consecutivo"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.id || `Automatico: ${data.nextInvoiceId || "FAC-000001"}`} /></Field>
             <Field label="Fecha"><input required style={input} type="date" value={draft.date} onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))} /></Field>
             <Field label="Vencimiento"><input style={input} type="date" value={draft.dueDate} onChange={(event) => setDraft((current) => ({ ...current, dueDate: event.target.value }))} /></Field>
           </div>
@@ -1253,7 +1353,7 @@ function Payments({ data, onSave, onExport }) {
         />
         <form onSubmit={submit} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 14 }}>
           <Field label="Factura"><select style={input} value={draft.invoiceId} onChange={(event) => setDraft((current) => ({ ...current, invoiceId: event.target.value }))}><option value="">Sin aplicar a factura</option>{customerInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.id} - {invoice.totalLabel || money(invoice.total)}</option>)}</select></Field>
-          <Field label="ID abono"><input style={input} value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value.toUpperCase() }))} /></Field>
+          <Field label="Consecutivo"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.id || `Automatico: ${data.nextPaymentId || "ABO-000001"}`} /></Field>
           <Field label="Fecha"><input required type="date" style={input} value={draft.date} onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))} /></Field>
           <Field label="Medio"><select style={input} value={draft.method} onChange={(event) => setDraft((current) => ({ ...current, method: event.target.value }))}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
           <Field label="Estado"><select style={input} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}><option value="aplicado">Aplicado</option><option value="anulado">Anulado</option></select></Field>
@@ -1344,36 +1444,45 @@ function Portfolio({ data, onExport }) {
 }
 
 function Inventory({ data, onSave, onExport }) {
-  const [draft, setDraft] = useState({ sku: "", name: "", salePrice: "", cost: "", stock: "", taxable: true, taxRate: 19 });
+  const [draft, setDraft] = useState({ sku: "", name: "", salePrice: "", cost: "", taxable: true, taxRate: 19, status: "activo", notes: "" });
+  const [editingSku, setEditingSku] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(null);
   const [busy, setBusy] = useState(false);
-  const reset = () => setDraft({ sku: "", name: "", salePrice: "", cost: "", stock: "", taxable: true, taxRate: 19 });
+  const reset = () => setDraft({ sku: "", name: "", salePrice: "", cost: "", taxable: true, taxRate: 19, status: "activo", notes: "" });
   const openNew = () => {
     reset();
+    setEditingSku(false);
     setModalOpen(true);
   };
   const edit = (item) => {
+    setEditingSku(true);
     setDraft({
       sku: item.sku || "",
       name: item.name || "",
       salePrice: formatCurrencyInput(item.salePrice),
       cost: formatCurrencyInput(item.cost),
-      stock: item.stock ?? "",
       taxable: Boolean(item.taxable),
-      taxRate: Number(item.taxRate || 0)
+      taxRate: Number(item.taxRate || 0),
+      status: item.status || "activo",
+      notes: item.notes || ""
     });
     setModalOpen(true);
   };
 
   async function submit(event) {
     event.preventDefault();
+    if (!draft.sku.trim()) {
+      window.alert("Ingresa un SKU para identificar el producto o servicio.");
+      return;
+    }
     setConfirmSave({
       payload: draft,
       details: [
         { label: "Producto", value: draft.name },
-        { label: "SKU", value: draft.sku || "Automatico" },
-        { label: "Precio", value: formatCurrencyInput(draft.salePrice) || "$ 0" }
+        { label: "SKU", value: draft.sku },
+        { label: "Precio", value: formatCurrencyInput(draft.salePrice) || "Sin precio" },
+        { label: "Costo", value: formatCurrencyInput(draft.cost) || "Sin costo" }
       ]
     });
   }
@@ -1396,17 +1505,18 @@ function Inventory({ data, onSave, onExport }) {
   return (
     <ModuleWithForm title="Inventario" count={(data.inventory || []).length} onExport={() => onExport("inventario")}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Administra productos, servicios, precios, costos, stock e IVA.</p>
+        <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Administra el maestro de productos y servicios. El stock se controla desde movimientos.</p>
         <button type="button" onClick={openNew} style={button}>Nuevo producto</button>
       </div>
-      <PortalModal open={modalOpen} title={draft.sku ? "Editar inventario" : "Nuevo producto o servicio"} eyebrow={draft.sku || "INVENTARIO"} onClose={() => { if (!busy) setModalOpen(false); }} wide={false}>
+      <PortalModal open={modalOpen} title={editingSku ? "Editar inventario" : "Nuevo producto o servicio"} eyebrow={editingSku ? draft.sku : "INVENTARIO"} onClose={() => { if (!busy) setModalOpen(false); }} wide={false}>
         <form onSubmit={submit} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-          <Field label="SKU"><input style={input} value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value.toUpperCase() }))} /></Field>
+          <Field label="SKU"><input required style={{ ...input, background: editingSku ? "#F8FBFF" : "#fff" }} readOnly={editingSku} value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value.toUpperCase() }))} /></Field>
           <Field label="Producto / servicio"><input required style={input} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></Field>
           <Field label="Precio venta"><input style={input} value={draft.salePrice} onChange={(event) => setDraft((current) => ({ ...current, salePrice: formatCurrencyInput(event.target.value) }))} /></Field>
           <Field label="Costo"><input style={input} value={draft.cost} onChange={(event) => setDraft((current) => ({ ...current, cost: formatCurrencyInput(event.target.value) }))} /></Field>
-          <Field label="Stock"><input style={input} value={draft.stock} onChange={(event) => setDraft((current) => ({ ...current, stock: event.target.value.replace(/[^\d.-]/g, "") }))} /></Field>
           <Field label="IVA"><select style={input} value={draft.taxable ? draft.taxRate : "no"} onChange={(event) => setDraft((current) => ({ ...current, taxable: event.target.value !== "no", taxRate: event.target.value === "no" ? 0 : Number(event.target.value) }))}><option value="no">No aplica</option>{IVA_RATES.map((rate) => <option key={rate} value={rate}>{rate}%</option>)}</select></Field>
+          <Field label="Estado"><select style={input} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></Field>
+          <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 74, gridColumn: "1/-1" }} placeholder="Notas del producto o servicio" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
           <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button type="button" onClick={() => setModalOpen(false)} style={ghostButton}>Cancelar</button>
             <button type="submit" style={button}>Guardar inventario</button>
@@ -1423,7 +1533,76 @@ function Inventory({ data, onSave, onExport }) {
         onConfirm={confirmInventorySave}
         confirmLabel="Guardar"
       />
-      <RecordList rows={(data.inventory || []).map((item) => [item.sku, item.name, money(item.salePrice), item.stock, item.stock < 0 ? "Inventario negativo" : "OK", <button type="button" onClick={() => edit(item)} style={ghostButton}>Editar</button>])} headers={["SKU", "Nombre", "Precio", "Stock", "Alerta", "Accion"]} />
+      <RecordList rows={(data.inventory || []).map((item) => [item.sku, item.name, money(item.salePrice), money(item.cost), item.stock, item.stock < 0 ? "Inventario negativo" : item.status || "activo", <button type="button" onClick={() => edit(item)} style={ghostButton}>Editar</button>])} headers={["SKU", "Nombre", "Precio", "Costo", "Stock", "Estado", "Accion"]} />
+    </ModuleWithForm>
+  );
+}
+
+function InventoryMovements({ data, onSave, onExport }) {
+  const [draft, setDraft] = useState({ sku: "", type: "entrada", quantity: "", date: today(), unitCost: "", reference: "", notes: "" });
+  const [confirmSave, setConfirmSave] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const reset = () => setDraft({ sku: "", type: "entrada", quantity: "", date: today(), unitCost: "", reference: "", notes: "" });
+  const product = (data.inventory || []).find((item) => item.sku === draft.sku);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!draft.sku) {
+      window.alert("Selecciona un SKU.");
+      return;
+    }
+    if ((Number(draft.quantity) || 0) <= 0) {
+      window.alert("Ingresa una cantidad mayor a cero.");
+      return;
+    }
+    setConfirmSave({
+      payload: draft,
+      details: [
+        { label: "Producto", value: product ? `${product.sku} - ${product.name}` : draft.sku },
+        { label: "Movimiento", value: draft.type },
+        { label: "Cantidad", value: draft.quantity },
+        { label: "Stock actual", value: product?.stock ?? 0 }
+      ]
+    });
+  }
+
+  async function confirmMovementSave() {
+    if (!confirmSave) return;
+    setBusy(true);
+    try {
+      await onSave("inventoryMovement", confirmSave.payload);
+      setConfirmSave(null);
+      reset();
+    } catch (err) {
+      // El mensaje visible lo establece save() en el componente principal.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ModuleWithForm title="Movimientos de inventario" count={(data.inventoryMovements || []).length} onExport={() => onExport("movimientos")}>
+      <form onSubmit={submit} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
+        <Field label="SKU"><select required style={input} value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value }))}><option value="">Seleccionar producto</option>{(data.inventory || []).map((item) => <option key={item.sku} value={item.sku}>{item.sku} - {item.name}</option>)}</select></Field>
+        <Field label="Tipo"><select style={input} value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value }))}><option value="entrada">Entrada</option><option value="salida">Salida</option><option value="ajuste_positivo">Ajuste positivo</option><option value="ajuste_negativo">Ajuste negativo</option></select></Field>
+        <Field label="Cantidad"><input required style={input} value={draft.quantity} onChange={(event) => setDraft((current) => ({ ...current, quantity: event.target.value.replace(/[^\d.]/g, "") }))} /></Field>
+        <Field label="Fecha"><input required type="date" style={input} value={draft.date} onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))} /></Field>
+        <Field label="Costo unitario"><input style={input} value={draft.unitCost} onChange={(event) => setDraft((current) => ({ ...current, unitCost: formatCurrencyInput(event.target.value) }))} /></Field>
+        <Field label="Referencia"><input style={input} value={draft.reference} onChange={(event) => setDraft((current) => ({ ...current, reference: event.target.value }))} /></Field>
+        <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 74, gridColumn: "1/-1" }} placeholder="Notas del movimiento" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
+        <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", display: "flex", justifyContent: "flex-end" }}><button type="submit" style={button}>Registrar movimiento</button></div>
+      </form>
+      <ConfirmModal
+        open={Boolean(confirmSave)}
+        title="Registrar movimiento"
+        body="Confirma el movimiento. El stock del producto se actualizará y quedará trazado en el kardex."
+        details={confirmSave?.details || []}
+        busy={busy}
+        onCancel={() => setConfirmSave(null)}
+        onConfirm={confirmMovementSave}
+        confirmLabel="Registrar"
+      />
+      <RecordList rows={(data.inventoryMovements || []).map((movement) => [movement.id, movement.date, movement.sku, movement.type, movement.quantity, movement.effect, movement.stockAfter, movement.reference || movement.sourceId || ""]) } headers={["ID", "Fecha", "SKU", "Tipo", "Cantidad", "Efecto", "Stock final", "Referencia"]} />
     </ModuleWithForm>
   );
 }
@@ -1564,7 +1743,7 @@ function Orders({ data, onSave, onExport }) {
         />
         <form onSubmit={submit} style={{ display: "grid", gap: 14, marginTop: 14 }}>
           <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10 }}>
-            <Field label="ID orden"><input style={input} value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value.toUpperCase() }))} /></Field>
+            <Field label="Consecutivo"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.id || `Automatico: ${data.nextOrderId || "ORD-000001"}`} /></Field>
             <Field label="Fecha"><input required type="date" style={input} value={draft.date} onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))} /></Field>
             <Field label="Vencimiento"><input type="date" style={input} value={draft.dueDate} onChange={(event) => setDraft((current) => ({ ...current, dueDate: event.target.value }))} /></Field>
             <Field label="Estado">
@@ -1691,12 +1870,14 @@ function Imports({ data, onData }) {
 
   function downloadTemplate() {
     const examples = {
-      clientes: ["C0001", "Cliente Ejemplo SAS", "Cliente Alterno", "900123456", "3001234567", "cliente@correo.com", "Bogota", "Cliente cargado por plantilla"],
-      facturas_historicas: ["FAC-001", "C0001", "Cliente Ejemplo SAS", today(), today(), 1000000, "Cargue inicial sin detalle"],
-      facturas_detalladas: ["FAC-002", "C0001", "Cliente Ejemplo SAS", today(), today(), "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "Factura detallada"],
-      abonos: ["ABO-001", "C0001", "Cliente Ejemplo SAS", "FAC-001", today(), 500000, 0, 0, 0, 0, 500000, "Transferencia bancaria", "REF123", "Abono ejemplo"],
-      inventario: ["SKU-001", "Producto ejemplo", 100000, 70000, 10, "SI", 19],
-      ordenes_detalladas: ["ORD-001", "C0001", "Cliente Ejemplo SAS", today(), today(), "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "SI", "Orden ejemplo"]
+      clientes: ["", "Cliente Ejemplo SAS", "Cliente Alterno", "900123456", "3001234567", "cliente@correo.com", "Carrera 1 # 2-3", "Bogota", "Norte", "Cliente cargado por plantilla"],
+      facturas_historicas: ["FAC-EXT-001", "C0001", "Cliente Ejemplo SAS", today(), today(), 1000000, "Cargue inicial sin detalle"],
+      facturas_detalladas: ["FAC-EXT-002", "C0001", "Cliente Ejemplo SAS", today(), today(), "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "Factura detallada"],
+      abonos: ["C0001", "Cliente Ejemplo SAS", "FAC-000001", today(), 500000, 0, 0, 0, 0, 500000, "Transferencia bancaria", "REF123", "Abono ejemplo"],
+      inventario: ["SKU-001", "Producto ejemplo", "", "", "SI", 19, "activo", "Producto creado sin stock inicial"],
+      actualizacion_productos: ["SKU-001", "", 120000, 80000, "SI", 19, "activo", "Actualizacion por SKU"],
+      movimientos_inventario: [today(), "SKU-001", "entrada", 10, 80000, "CARGUE-INICIAL", "Saldo inicial"],
+      ordenes_detalladas: ["ORD-EXT-001", "C0001", "Cliente Ejemplo SAS", today(), today(), "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "SI", "Orden ejemplo"]
     };
     downloadExcelWorkbook(`plantilla-${module}.xls`, [
       { name: "Datos", rows: [template.headers, template.headers.map(() => "")] },
@@ -1707,7 +1888,10 @@ function Imports({ data, onData }) {
           ["tema", "detalle"],
           ["Formato", "Guarda el archivo como CSV para cargarlo al portal. Esta plantilla se descarga en Excel para facilitar la edicion."],
           ["Validacion", "Si existe un error bloqueante, no se importa ninguna fila. El portal indicara fila, campo y correccion sugerida."],
-          ["Clientes", `El siguiente ID sugerido es ${data.nextCustomerId}. No repitas IDs existentes.`],
+          ["Consecutivos", `Clientes, facturas, abonos, ordenes y movimientos se asignan automaticamente. En clientes puedes dejar id_cliente vacio; solo usalo si necesitas reservar un ID puntual. Siguiente cliente sugerido: ${data.nextCustomerId}.`],
+          ["Referencias", "En facturas y ordenes usa referencia_origen para conservar el numero del sistema anterior o agrupar varias lineas del mismo documento. El ID interno lo asigna el portal."],
+          ["Ubicacion", "En clientes diligencia ciudad y zona si aplica. El departamento se asigna automaticamente cuando la ciudad esta en el catalogo; si no se reconoce, quedara Por validar."],
+          ["Inventario", "Inventario maestro crea productos sin stock. Los saldos se cargan por movimientos_inventario. actualizacion_productos modifica datos existentes por SKU sin borrar campos vacios."],
           ["IVA", "Usa SI/NO en aplica_iva y tarifas 0, 5 o 19 segun corresponda."],
           ["Fechas", "Usa formato AAAA-MM-DD."]
         ]
@@ -1997,6 +2181,7 @@ export default function ClientPortal() {
         {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} /> : null}
         {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
+        {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "cargues" ? <Imports data={data} onData={setData} /> : null}
         {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}

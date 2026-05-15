@@ -8,32 +8,138 @@ const DEFAULT_CURRENCY = "COP";
 const IMPORT_TEMPLATES = {
   clientes: {
     label: "Clientes",
-    headers: ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "notas"]
+    headers: ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "ciudad", "zona", "notas"]
   },
   facturas_historicas: {
     label: "Facturas historicas",
-    headers: ["id_factura", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "valor_total", "notas"]
+    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "valor_total", "notas"]
   },
   facturas_detalladas: {
     label: "Facturas detalladas",
-    headers: ["id_factura", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "notas"]
+    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "notas"]
   },
   abonos: {
     label: "Abonos",
-    headers: ["id_abono", "id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "valor_neto", "medio_pago", "referencia", "notas"]
+    headers: ["id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "valor_neto", "medio_pago", "referencia", "notas"]
   },
   inventario: {
-    label: "Inventario",
-    headers: ["sku", "nombre_producto", "precio_venta", "costo", "stock", "aplica_iva", "tarifa_iva"]
+    label: "Inventario maestro",
+    headers: ["sku", "nombre_producto", "precio_venta", "costo", "aplica_iva", "tarifa_iva", "estado", "notas"]
+  },
+  actualizacion_productos: {
+    label: "Actualizacion de productos",
+    headers: ["sku", "nombre_producto", "precio_venta", "costo", "aplica_iva", "tarifa_iva", "estado", "notas"]
+  },
+  movimientos_inventario: {
+    label: "Movimientos de inventario",
+    headers: ["fecha", "sku", "tipo_movimiento", "cantidad", "costo_unitario", "referencia", "notas"]
   },
   ordenes_detalladas: {
     label: "Ordenes detalladas",
-    headers: ["id_orden", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "mostrar_descuento_pdf", "notas"]
+    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "mostrar_descuento_pdf", "notas"]
   }
+};
+
+const INVENTORY_MOVEMENT_TYPES = new Set(["entrada", "salida", "ajuste_positivo", "ajuste_negativo"]);
+
+const CITY_DEPARTMENT_MAP = {
+  armenia: ["Armenia", "Quindio"],
+  barranquilla: ["Barranquilla", "Atlantico"],
+  bogota: ["Bogota D.C.", "Bogota D.C."],
+  "bogota dc": ["Bogota D.C.", "Bogota D.C."],
+  "bogota d c": ["Bogota D.C.", "Bogota D.C."],
+  bucaramanga: ["Bucaramanga", "Santander"],
+  cali: ["Cali", "Valle del Cauca"],
+  cartagena: ["Cartagena", "Bolivar"],
+  cucuta: ["Cucuta", "Norte de Santander"],
+  ibague: ["Ibague", "Tolima"],
+  manizales: ["Manizales", "Caldas"],
+  medellin: ["Medellin", "Antioquia"],
+  monteria: ["Monteria", "Cordoba"],
+  neiva: ["Neiva", "Huila"],
+  pasto: ["Pasto", "Narino"],
+  pereira: ["Pereira", "Risaralda"],
+  popayan: ["Popayan", "Cauca"],
+  riohacha: ["Riohacha", "La Guajira"],
+  "santa marta": ["Santa Marta", "Magdalena"],
+  sincelejo: ["Sincelejo", "Sucre"],
+  tunja: ["Tunja", "Boyaca"],
+  valledupar: ["Valledupar", "Cesar"],
+  villavicencio: ["Villavicencio", "Meta"],
+  yopal: ["Yopal", "Casanare"],
+  chia: ["Chia", "Cundinamarca"],
+  soacha: ["Soacha", "Cundinamarca"],
+  zipaquira: ["Zipaquira", "Cundinamarca"],
+  facatativa: ["Facatativa", "Cundinamarca"],
+  mosquera: ["Mosquera", "Cundinamarca"],
+  funza: ["Funza", "Cundinamarca"],
+  cajica: ["Cajica", "Cundinamarca"],
+  cota: ["Cota", "Cundinamarca"],
+  madrid: ["Madrid", "Cundinamarca"],
+  girardot: ["Girardot", "Cundinamarca"],
+  bello: ["Bello", "Antioquia"],
+  envigado: ["Envigado", "Antioquia"],
+  itagui: ["Itagui", "Antioquia"],
+  sabaneta: ["Sabaneta", "Antioquia"],
+  rionegro: ["Rionegro", "Antioquia"],
+  palmira: ["Palmira", "Valle del Cauca"],
+  buenaventura: ["Buenaventura", "Valle del Cauca"],
+  tulua: ["Tulua", "Valle del Cauca"],
+  jamundi: ["Jamundi", "Valle del Cauca"],
+  floridablanca: ["Floridablanca", "Santander"],
+  giron: ["Giron", "Santander"],
+  piedecuesta: ["Piedecuesta", "Santander"],
+  dosquebradas: ["Dosquebradas", "Risaralda"],
+  duitama: ["Duitama", "Boyaca"],
+  sogamoso: ["Sogamoso", "Boyaca"],
+  fusagasuga: ["Fusagasuga", "Cundinamarca"]
 };
 
 function cleanText(value = "") {
   return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeLookup(value = "") {
+  return cleanText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function titleCaseText(value = "") {
+  return cleanText(value)
+    .toLocaleLowerCase("es-CO")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((word) => word.split("-").map((part) => part ? `${part.charAt(0).toLocaleUpperCase("es-CO")}${part.slice(1)}` : "").join("-"))
+    .join(" ");
+}
+
+function resolveCityDepartment(cityValue = "", fallbackDepartment = "") {
+  const rawCity = cleanText(cityValue);
+  const rawDepartment = cleanText(fallbackDepartment);
+  if (!rawCity) {
+    return {
+      city: "",
+      department: rawDepartment ? titleCaseText(rawDepartment) : "",
+      geographyStatus: ""
+    };
+  }
+  const match = CITY_DEPARTMENT_MAP[normalizeLookup(rawCity)];
+  if (match) {
+    return {
+      city: match[0],
+      department: match[1],
+      geographyStatus: "validado"
+    };
+  }
+  return {
+    city: titleCaseText(rawCity),
+    department: rawDepartment ? titleCaseText(rawDepartment) : "Por validar",
+    geographyStatus: "pendiente_validacion"
+  };
 }
 
 function randomId(prefix = "ID") {
@@ -95,6 +201,16 @@ function normalizeRecordId(value = "", prefix = "REG") {
   return cleanText(value).toUpperCase().replace(/[^A-Z0-9-_.]/g, "") || randomId(prefix);
 }
 
+function nextSequentialId(records = [], prefix = "REG", width = 6) {
+  const escapedPrefix = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^${escapedPrefix}-(\\d+)$`, "i");
+  const max = records.reduce((currentMax, record) => {
+    const match = String(record.id || "").match(pattern);
+    return match ? Math.max(currentMax, Number(match[1])) : currentMax;
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(width, "0")}`;
+}
+
 function compareExactName(left = "", right = "") {
   return cleanText(left) === cleanText(right);
 }
@@ -105,6 +221,22 @@ function nextCustomerId(customers = []) {
     return match ? Math.max(currentMax, Number(match[1])) : currentMax;
   }, 0);
   return `C${String(max + 1).padStart(4, "0")}`;
+}
+
+function nextInvoiceId(data = {}) {
+  return nextSequentialId(data.invoices || [], "FAC");
+}
+
+function nextPaymentId(data = {}) {
+  return nextSequentialId(data.payments || [], "ABO");
+}
+
+function nextOrderId(data = {}) {
+  return nextSequentialId(data.orders || [], "ORD");
+}
+
+function nextMovementId(data = {}) {
+  return nextSequentialId(data.inventoryMovements || [], "MOV");
 }
 
 function createAudit(action, actor = "portal", details = {}) {
@@ -162,26 +294,86 @@ function calculateInvoiceTotals(lines = [], totalOverride = 0) {
   return lineTotals;
 }
 
+function movementEffect(type = "", quantity = 0) {
+  const amount = Number(quantity || 0) || 0;
+  return ["entrada", "ajuste_positivo", "reversion_venta"].includes(type) ? amount : -amount;
+}
+
+function createInventoryMovement(data, payload = {}, actor = "portal") {
+  const sku = normalizeSku(payload.sku);
+  const index = data.inventory.findIndex((item) => item.sku === sku);
+  if (!sku || index < 0) return null;
+  const quantity = Math.abs(Number(payload.quantity || payload.cantidad || 0) || 0);
+  if (quantity <= 0) return null;
+  const now = new Date().toISOString();
+  const type = cleanText(payload.type || payload.tipo_movimiento || "entrada").toLowerCase();
+  const effect = movementEffect(type, quantity);
+  const current = data.inventory[index];
+  const nextStock = Number(current.stock || 0) + effect;
+  const movement = {
+    id: payload.id ? normalizeRecordId(payload.id, "MOV") : nextMovementId(data),
+    date: normalizeDate(payload.date || payload.fecha) || now.slice(0, 10),
+    sku,
+    productNameSnapshot: current.name,
+    type,
+    quantity,
+    effect,
+    stockBefore: Number(current.stock || 0),
+    stockAfter: nextStock,
+    unitCost: parseCurrency(payload.unitCost ?? payload.costo_unitario ?? current.cost ?? 0),
+    reference: cleanText(payload.reference || payload.referencia),
+    sourceType: cleanText(payload.sourceType || payload.source_type || "manual"),
+    sourceId: cleanText(payload.sourceId || payload.source_id),
+    notes: cleanText(payload.notes || payload.notas),
+    createdAt: now,
+    createdBy: actor,
+    auditTrail: [createAudit("inventory_movement_created", actor)]
+  };
+  data.inventory[index] = {
+    ...current,
+    stock: nextStock,
+    updatedAt: now,
+    updatedBy: actor,
+    lastMovement: {
+      type,
+      quantity,
+      effect,
+      sourceId: movement.sourceId,
+      at: now,
+      warning: nextStock < 0 ? "Inventario negativo permitido para no bloquear la venta." : ""
+    }
+  };
+  data.inventoryMovements.push(movement);
+  return movement;
+}
+
 function applyInventorySale(data, lines = [], actor = "portal", sourceId = "") {
   lines.forEach((line) => {
     if (!line.sku) return;
-    const index = data.inventory.findIndex((item) => item.sku === line.sku);
-    if (index < 0) return;
-    const current = data.inventory[index];
-    const nextStock = Number(current.stock || 0) - Number(line.quantity || 0);
-    data.inventory[index] = {
-      ...current,
-      stock: nextStock,
-      updatedAt: new Date().toISOString(),
-      updatedBy: actor,
-      lastMovement: {
-        type: "sale",
-        quantity: Number(line.quantity || 0),
-        sourceId,
-        at: new Date().toISOString(),
-        warning: nextStock < 0 ? "Inventario negativo permitido para no bloquear la venta." : ""
-      }
-    };
+    createInventoryMovement(data, {
+      sku: line.sku,
+      type: "venta",
+      quantity: line.quantity,
+      sourceType: "factura",
+      sourceId,
+      reference: sourceId,
+      notes: `Salida automatica por factura ${sourceId}.`
+    }, actor);
+  });
+}
+
+function reverseInventorySale(data, lines = [], actor = "portal", sourceId = "", reason = "Reversion de factura.") {
+  lines.forEach((line) => {
+    if (!line.sku) return;
+    createInventoryMovement(data, {
+      sku: line.sku,
+      type: "reversion_venta",
+      quantity: line.quantity,
+      sourceType: "factura",
+      sourceId,
+      reference: sourceId,
+      notes: reason
+    }, actor);
   });
 }
 
@@ -201,6 +393,7 @@ function defaultData(companyId, companyName = "") {
     invoices: [],
     payments: [],
     inventory: [],
+    inventoryMovements: [],
     orders: [],
     imports: [],
     auditTrail: [createAudit("company_initialized", "system", { note: "Empresa inicializada en el portal de clientes." })],
@@ -223,7 +416,13 @@ function normalizeData(data = {}, companyId, companyName = "") {
     customers: Array.isArray(data.customers) ? data.customers : [],
     invoices: Array.isArray(data.invoices) ? data.invoices : [],
     payments: Array.isArray(data.payments) ? data.payments : [],
-    inventory: Array.isArray(data.inventory) ? data.inventory : [],
+    inventory: Array.isArray(data.inventory) ? data.inventory.map((item) => ({
+      status: "activo",
+      notes: "",
+      ...item,
+      stock: Number(item.stock || 0) || 0
+    })) : [],
+    inventoryMovements: Array.isArray(data.inventoryMovements) ? data.inventoryMovements : [],
     orders: Array.isArray(data.orders) ? data.orders : [],
     imports: Array.isArray(data.imports) ? data.imports : [],
     auditTrail: Array.isArray(data.auditTrail) ? data.auditTrail : base.auditTrail
@@ -250,7 +449,17 @@ export async function loadCompanyData(companyId, companyName = "") {
 export async function saveCompanyData(companyId, data, actor = "portal") {
   const normalizedCompanyId = cleanText(companyId);
   if (!normalizedCompanyId) throw new Error("No se pudo identificar la empresa del portal.");
-  const { nextCustomerId: _nextCustomerId, templates: _templates, customerSummary: _customerSummary, dashboard: _dashboard, ...persistableData } = data || {};
+  const {
+    nextCustomerId: _nextCustomerId,
+    nextInvoiceId: _nextInvoiceId,
+    nextPaymentId: _nextPaymentId,
+    nextOrderId: _nextOrderId,
+    nextMovementId: _nextMovementId,
+    templates: _templates,
+    customerSummary: _customerSummary,
+    dashboard: _dashboard,
+    ...persistableData
+  } = data || {};
   const nextData = normalizeData({
     ...persistableData,
     updatedAt: new Date().toISOString(),
@@ -299,6 +508,10 @@ function ensureHistoricalCustomer(data, customerId, customerName, actor = "porta
     phone: "",
     email: "",
     address: "",
+    city: "",
+    department: "",
+    zone: "",
+    geographyStatus: "",
     notes: "Creado desde cargue historico.",
     dataStatus: "pendiente_actualizacion",
     updateAlertShownAt: "",
@@ -357,6 +570,7 @@ function buildDashboard(data = {}) {
     invoicesCount: invoices.length,
     paymentsCount: payments.length,
     inventoryCount: data.inventory.length,
+    inventoryMovementsCount: data.inventoryMovements.length,
     ordersCount: data.orders.length,
     totalBilled,
     totalPaid,
@@ -375,6 +589,10 @@ function withComputedFields(data = {}) {
   return {
     ...normalized,
     nextCustomerId: nextCustomerId(normalized.customers),
+    nextInvoiceId: nextInvoiceId(normalized),
+    nextPaymentId: nextPaymentId(normalized),
+    nextOrderId: nextOrderId(normalized),
+    nextMovementId: nextMovementId(normalized),
     templates: IMPORT_TEMPLATES,
     customerSummary: customerBalances(normalized),
     dashboard: buildDashboard(normalized)
@@ -409,6 +627,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       phone: cleanText(payload.phone),
       email: cleanText(payload.email).toLowerCase(),
       address: cleanText(payload.address),
+      ...resolveCityDepartment(payload.city, payload.department),
+      zone: cleanText(payload.zone),
       notes: cleanText(payload.notes),
       dataStatus: payload.updateConfirmed ? "actualizado" : existing.dataStatus || "pendiente_actualizacion",
       updateAlertShownAt: existing.updateAlertShownAt || (payload.alertShown ? now : ""),
@@ -424,7 +644,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       ? data.customers.map((item, index) => index === existingIndex ? customer : item)
       : [...data.customers, customer];
   } else if (type === "invoice") {
-    const id = normalizeRecordId(payload.id, "FAC");
+    const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "FAC") : nextInvoiceId(data);
     const existingIndex = data.invoices.findIndex((invoice) => invoice.id === id);
     const existing = existingIndex >= 0 ? data.invoices[existingIndex] : {};
     const customer = findCustomer(data, payload.customerId);
@@ -432,7 +652,11 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     const lines = (Array.isArray(payload.lines) ? payload.lines : []).map((line) => normalizeLine(line, data.inventory));
     const totalOverride = parseCurrency(payload.total);
     const totals = calculateInvoiceTotals(lines, totalOverride);
-    if (lines.length && existingIndex < 0) applyInventorySale(data, lines, actor, id);
+    const nextStatus = cleanText(payload.status) || "emitida";
+    if (existingIndex >= 0 && (existing.lines || []).length && existing.status !== "anulada") {
+      reverseInventorySale(data, existing.lines, actor, id, `Reversion automatica por actualizacion o anulacion de factura ${id}.`);
+    }
+    if (lines.length && nextStatus !== "anulada") applyInventorySale(data, lines, actor, id);
     const invoice = {
       ...existing,
       id,
@@ -440,9 +664,10 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       customerNameSnapshot: customer.name,
       date: normalizeDate(payload.date) || new Date().toISOString().slice(0, 10),
       dueDate: normalizeDate(payload.dueDate),
-      status: cleanText(payload.status) || "emitida",
+      status: nextStatus,
       source: lines.length ? "manual_detallada" : "manual_resumida",
       notes: cleanText(payload.notes),
+      externalReference: cleanText(payload.externalReference || existing.externalReference),
       lines,
       subtotal: totals.subtotal,
       discountTotal: totals.discount,
@@ -460,7 +685,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       ? data.invoices.map((item, index) => index === existingIndex ? invoice : item)
       : [...data.invoices, invoice];
   } else if (type === "order") {
-    const id = normalizeRecordId(payload.id, "ORD");
+    const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "ORD") : nextOrderId(data);
     const existingIndex = data.orders.findIndex((order) => order.id === id);
     const existing = existingIndex >= 0 ? data.orders[existingIndex] : {};
     const customer = findCustomer(data, payload.customerId);
@@ -477,6 +702,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       status: cleanText(payload.status) || "borrador",
       source: "manual_detallada",
       notes: cleanText(payload.notes),
+      externalReference: cleanText(payload.externalReference || existing.externalReference),
       showDiscountOnPdf: payload.showDiscountOnPdf !== false,
       showDiscountsOnPdf: payload.showDiscountOnPdf !== false,
       lines,
@@ -505,7 +731,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     }
     const customer = findCustomer(data, order.customerId);
     if (!customer) throw new Error("La orden no tiene un cliente valido asociado.");
-    const id = normalizeRecordId(payload.invoiceId || payload.id, "FAC");
+    const id = cleanText(payload.invoiceId || payload.id) ? normalizeRecordId(payload.invoiceId || payload.id, "FAC") : nextInvoiceId(data);
     if (data.invoices.some((invoice) => invoice.id === id)) throw new Error(`Ya existe una factura con el ID ${id}.`);
     const lines = (order.lines || []).map((line) => normalizeLine(line, data.inventory));
     const totals = calculateInvoiceTotals(lines, 0);
@@ -523,6 +749,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
         source: "orden_convertida",
         orderId: order.id,
         notes: cleanText(payload.notes) || `Factura generada desde la orden ${order.id}.`,
+        externalReference: cleanText(payload.externalReference),
         lines,
         subtotal: totals.subtotal,
         discountTotal: totals.discount,
@@ -546,7 +773,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       auditTrail: [...(order.auditTrail || []), createAudit("order_converted_to_invoice", actor, { invoiceId: id })]
     };
   } else if (type === "payment") {
-    const id = normalizeRecordId(payload.id, "ABO");
+    const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "ABO") : nextPaymentId(data);
     const existingIndex = data.payments.findIndex((payment) => payment.id === id);
     const existing = existingIndex >= 0 ? data.payments[existingIndex] : {};
     const customer = findCustomer(data, payload.customerId);
@@ -589,7 +816,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       ? data.payments.map((item, index) => index === existingIndex ? payment : item)
       : [...data.payments, payment];
   } else if (type === "inventory") {
-    const sku = normalizeSku(payload.sku) || randomId("SKU");
+    const sku = normalizeSku(payload.sku);
+    if (!sku) throw new Error("Ingresa el SKU del producto.");
     const existingIndex = data.inventory.findIndex((item) => item.sku === sku);
     const existing = existingIndex >= 0 ? data.inventory[existingIndex] : {};
     const item = {
@@ -598,9 +826,11 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       name: cleanText(payload.name),
       salePrice: parseCurrency(payload.salePrice),
       cost: parseCurrency(payload.cost),
-      stock: Number(payload.stock || 0) || 0,
+      stock: Number(existing.stock || 0) || 0,
       taxable: Boolean(payload.taxable),
       taxRate: Number(payload.taxRate || 0) || 0,
+      status: cleanText(payload.status) || existing.status || "activo",
+      notes: cleanText(payload.notes),
       updatedAt: now,
       updatedBy: actor,
       createdAt: existing.createdAt || now,
@@ -610,6 +840,24 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.inventory = existingIndex >= 0
       ? data.inventory.map((current, index) => index === existingIndex ? item : current)
       : [...data.inventory, item];
+  } else if (type === "inventoryMovement") {
+    const movementType = cleanText(payload.type || payload.tipo_movimiento).toLowerCase();
+    if (!INVENTORY_MOVEMENT_TYPES.has(movementType)) throw new Error("Selecciona un tipo de movimiento valido.");
+    const sku = normalizeSku(payload.sku);
+    if (!sku || !data.inventory.some((item) => item.sku === sku)) throw new Error("Selecciona un SKU existente.");
+    const quantity = Math.abs(Number(payload.quantity || payload.cantidad || 0) || 0);
+    if (quantity <= 0) throw new Error("Ingresa una cantidad valida para el movimiento.");
+    createInventoryMovement(data, {
+      id: cleanText(payload.id),
+      date: payload.date,
+      sku,
+      type: movementType,
+      quantity,
+      unitCost: payload.unitCost,
+      reference: payload.reference,
+      sourceType: "manual",
+      notes: payload.notes
+    }, actor);
   } else {
     throw new Error(`Tipo de operacion no soportado: ${cleanText(type) || "sin tipo"}.`);
   }
@@ -642,6 +890,16 @@ function validateCustomerMatch(data, row, rowNumber, errors, warnings) {
   return { id, name, customer };
 }
 
+function validateCustomerImportLocation(row, rowNumber, warnings) {
+  const city = cleanText(row.ciudad);
+  if (!city) return resolveCityDepartment("", "");
+  const location = resolveCityDepartment(city, row.departamento);
+  if (location.geographyStatus === "pendiente_validacion") {
+    addImportWarning(warnings, rowNumber, "ciudad", city, `No se reconocio la ciudad "${city}" en el catalogo. Se cargara con departamento "Por validar" para revision posterior.`);
+  }
+  return location;
+}
+
 export function validateImportRows(data, module, rows = []) {
   const errors = [];
   const warnings = [];
@@ -663,47 +921,46 @@ export function validateImportRows(data, module, rows = []) {
 
   const seenCustomers = new Set();
   const seenInventory = new Set();
+  const seenInventoryUpdates = new Set();
   const seenHistoricalInvoices = new Set();
-  const seenPayments = new Set();
   const detailedDocuments = new Map();
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     if (normalizedModule === "clientes") {
       const id = normalizeCustomerId(row.id_cliente);
       const name = cleanText(row.nombre_cliente);
-      if (!id) addImportError(errors, rowNumber, "id_cliente", row.id_cliente, "Falta el ID del cliente.", "Usa el consecutivo indicado por el sistema o deja que se genere manualmente.");
-      if (!name) addImportError(errors, rowNumber, "nombre_cliente", row.nombre_cliente, "Falta el nombre del cliente.", "Diligencia el nombre del cliente.");
+      if (!id && !name) addImportError(errors, rowNumber, "nombre_cliente", row.nombre_cliente, "Falta el nombre del cliente o un ID reservado.", "Diligencia el nombre para crear el cliente automaticamente o un ID para reservarlo.");
+      if (!name) addImportWarning(warnings, rowNumber, "nombre_cliente", row.nombre_cliente, `El ID ${id || "sin ID"} se cargara como reservado pendiente por asignar.`);
       if (id && findCustomer(data, id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} ya existe y no puede usarse para crear otro cliente.`, "Usa el siguiente consecutivo disponible o actualiza el cliente existente desde el formulario.");
       if (id && seenCustomers.has(id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} esta repetido dentro del archivo.`, "Cada cliente nuevo debe tener un ID unico.");
       if (id) seenCustomers.add(id);
+      validateCustomerImportLocation(row, rowNumber, warnings);
     }
 
     if (normalizedModule === "facturas_historicas" || normalizedModule === "facturas_detalladas" || normalizedModule === "ordenes_detalladas") {
       validateCustomerMatch(data, row, rowNumber, errors, warnings);
-      const recordId = cleanText(row.id_factura || row.id_orden);
-      if (!recordId) addImportError(errors, rowNumber, normalizedModule === "ordenes_detalladas" ? "id_orden" : "id_factura", recordId, "Falta el identificador del documento.", "Diligencia un ID de factura u orden.");
-      const prefix = normalizedModule === "ordenes_detalladas" ? "ORD" : "FAC";
-      const normalizedRecordId = recordId ? normalizeRecordId(recordId, prefix) : "";
+      const recordId = cleanText(row.referencia_origen || row.id_factura || row.id_orden);
       const target = normalizedModule === "ordenes_detalladas" ? data.orders : data.invoices;
-      if (normalizedRecordId && target.some((item) => item.id === normalizedRecordId)) {
-        addImportError(errors, rowNumber, normalizedModule === "ordenes_detalladas" ? "id_orden" : "id_factura", normalizedRecordId, `Ya existe un documento con el ID ${normalizedRecordId}.`, "Usa un ID nuevo o edita el documento existente desde el modulo correspondiente.");
+      if (recordId && target.some((item) => cleanText(item.externalReference) === recordId)) {
+        addImportError(errors, rowNumber, "referencia_origen", recordId, `Ya existe un documento con la referencia de origen ${recordId}.`, "Usa una referencia nueva o edita el documento existente.");
       }
-      if (normalizedModule === "facturas_historicas" && normalizedRecordId) {
-        if (seenHistoricalInvoices.has(normalizedRecordId)) addImportError(errors, rowNumber, "id_factura", normalizedRecordId, `La factura ${normalizedRecordId} esta repetida dentro del archivo.`, "Cada factura historica resumida debe tener una sola fila.");
-        seenHistoricalInvoices.add(normalizedRecordId);
+      if (normalizedModule === "facturas_historicas" && recordId) {
+        if (seenHistoricalInvoices.has(recordId)) addImportError(errors, rowNumber, "referencia_origen", recordId, `La referencia ${recordId} esta repetida dentro del archivo.`, "Cada factura historica resumida debe tener una sola fila por referencia.");
+        seenHistoricalInvoices.add(recordId);
       }
-      if ((normalizedModule === "facturas_detalladas" || normalizedModule === "ordenes_detalladas") && normalizedRecordId) {
+      if (normalizedModule === "facturas_detalladas" || normalizedModule === "ordenes_detalladas") {
+        const documentKey = recordId || `fila-${rowNumber}`;
         const signature = [
           normalizeCustomerId(row.id_cliente),
           cleanText(row.nombre_cliente),
           normalizeDate(row.fecha),
           normalizeDate(row.fecha_vencimiento)
         ].join("|");
-        const previous = detailedDocuments.get(`${normalizedModule}:${normalizedRecordId}`);
+        const previous = detailedDocuments.get(`${normalizedModule}:${documentKey}`);
         if (previous && previous !== signature) {
-          addImportError(errors, rowNumber, normalizedModule === "ordenes_detalladas" ? "id_orden" : "id_factura", normalizedRecordId, `El documento ${normalizedRecordId} tiene datos generales inconsistentes entre lineas.`, "Todas las lineas del mismo documento deben conservar cliente, nombre y fechas.");
+          addImportError(errors, rowNumber, "referencia_origen", documentKey, `El documento ${documentKey} tiene datos generales inconsistentes entre lineas.`, "Todas las lineas del mismo documento deben conservar cliente, nombre y fechas.");
         }
-        if (!previous) detailedDocuments.set(`${normalizedModule}:${normalizedRecordId}`, signature);
+        if (!previous) detailedDocuments.set(`${normalizedModule}:${documentKey}`, signature);
       }
       const total = normalizedModule === "facturas_historicas" ? parseCurrency(row.valor_total) : parseCurrency(row.precio_unitario) * (Number(row.cantidad || 0) || 0);
       if (total <= 0) addImportError(errors, rowNumber, normalizedModule === "facturas_historicas" ? "valor_total" : "precio_unitario", row.valor_total || row.precio_unitario, "El valor del documento debe ser mayor a cero.", "Revisa que el valor sea numerico.");
@@ -712,14 +969,6 @@ export function validateImportRows(data, module, rows = []) {
 
     if (normalizedModule === "abonos") {
       validateCustomerMatch(data, row, rowNumber, errors, warnings);
-      const paymentId = cleanText(row.id_abono);
-      const normalizedPaymentId = paymentId ? normalizeRecordId(paymentId, "ABO") : "";
-      if (!paymentId) addImportError(errors, rowNumber, "id_abono", row.id_abono, "Falta el ID del abono.", "Diligencia un ID unico para el abono.");
-      if (normalizedPaymentId && data.payments.some((payment) => payment.id === normalizedPaymentId)) {
-        addImportError(errors, rowNumber, "id_abono", normalizedPaymentId, `Ya existe un abono con el ID ${normalizedPaymentId}.`, "Usa un ID nuevo o edita el abono existente desde el modulo de abonos.");
-      }
-      if (normalizedPaymentId && seenPayments.has(normalizedPaymentId)) addImportError(errors, rowNumber, "id_abono", normalizedPaymentId, `El abono ${normalizedPaymentId} esta repetido dentro del archivo.`, "Cada abono debe tener un ID unico.");
-      if (normalizedPaymentId) seenPayments.add(normalizedPaymentId);
       const amount = parseCurrency(row.valor_bruto);
       if (amount <= 0) addImportError(errors, rowNumber, "valor_bruto", row.valor_bruto, "El valor bruto del abono debe ser mayor a cero.", "Revisa que el valor sea numerico.");
       if (!normalizeDate(row.fecha)) addImportError(errors, rowNumber, "fecha", row.fecha, "Fecha invalida.", "Usa formato AAAA-MM-DD.");
@@ -738,6 +987,25 @@ export function validateImportRows(data, module, rows = []) {
       if (sku && data.inventory.some((item) => item.sku === sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} ya existe.`, "Modifica el producto desde inventario o usa un SKU nuevo.");
       if (sku && seenInventory.has(sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} esta repetido dentro del archivo.`, "Cada producto debe tener un SKU unico.");
       if (sku) seenInventory.add(sku);
+    }
+
+    if (normalizedModule === "actualizacion_productos") {
+      const sku = normalizeSku(row.sku);
+      if (!sku) addImportError(errors, rowNumber, "sku", row.sku, "Falta el SKU o codigo del producto.", "Diligencia un SKU existente.");
+      if (sku && !data.inventory.some((item) => item.sku === sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} no existe.`, "Crea primero el producto en inventario maestro.");
+      if (sku && seenInventoryUpdates.has(sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} esta repetido dentro del archivo.`, "Cada producto debe actualizarse una sola vez por archivo.");
+      if (sku) seenInventoryUpdates.add(sku);
+    }
+
+    if (normalizedModule === "movimientos_inventario") {
+      const sku = normalizeSku(row.sku);
+      const type = cleanText(row.tipo_movimiento).toLowerCase();
+      const quantity = Math.abs(Number(row.cantidad || 0) || 0);
+      if (!normalizeDate(row.fecha)) addImportError(errors, rowNumber, "fecha", row.fecha, "Fecha invalida.", "Usa formato AAAA-MM-DD.");
+      if (!sku) addImportError(errors, rowNumber, "sku", row.sku, "Falta el SKU.", "Diligencia un SKU existente.");
+      if (sku && !data.inventory.some((item) => item.sku === sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} no existe.`, "Crea primero el producto en inventario maestro.");
+      if (!INVENTORY_MOVEMENT_TYPES.has(type)) addImportError(errors, rowNumber, "tipo_movimiento", row.tipo_movimiento, "Tipo de movimiento no valido.", "Usa entrada, salida, ajuste_positivo o ajuste_negativo.");
+      if (quantity <= 0) addImportError(errors, rowNumber, "cantidad", row.cantidad, "La cantidad debe ser mayor a cero.", "Diligencia una cantidad positiva.");
     }
   });
 
@@ -760,16 +1028,23 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
 
   if (module === "clientes") {
     rows.forEach((row) => {
+      const location = resolveCityDepartment(row.ciudad, row.departamento);
+      const name = cleanText(row.nombre_cliente);
+      const hasCoreContactData = cleanText(row.documento) || cleanText(row.telefono) || cleanText(row.correo);
       data.customers.push({
-        id: normalizeCustomerId(row.id_cliente),
-        name: cleanText(row.nombre_cliente),
+        id: normalizeCustomerId(row.id_cliente) || nextCustomerId(data.customers),
+        name,
         alternateName: cleanText(row.nombre_alterno),
         documentNumber: cleanText(row.documento),
         phone: cleanText(row.telefono),
         email: cleanText(row.correo).toLowerCase(),
         address: cleanText(row.direccion),
-        notes: cleanText(row.notas),
-        dataStatus: cleanText(row.documento) && cleanText(row.telefono) ? "actualizado" : "pendiente_actualizacion",
+        city: location.city,
+        department: location.department,
+        zone: cleanText(row.zona),
+        geographyStatus: location.geographyStatus,
+        notes: cleanText(row.notas) || (!name ? "Cliente reservado pendiente por asignar." : ""),
+        dataStatus: !name ? "pendiente_asignacion" : hasCoreContactData && cleanText(row.documento) && cleanText(row.telefono) ? "actualizado" : "pendiente_actualizacion",
         updateAlertShownAt: "",
         updateConfirmedAt: "",
         createdAt: now,
@@ -785,8 +1060,9 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
     rows.forEach((row) => {
       const customer = ensureHistoricalCustomer(data, row.id_cliente, row.nombre_cliente, actor, warnings);
       const total = parseCurrency(row.valor_total);
+      const id = nextInvoiceId(data);
       data.invoices.push({
-        id: normalizeRecordId(row.id_factura, "FAC"),
+        id,
         customerId: customer.id,
         customerNameSnapshot: customer.name,
         date: normalizeDate(row.fecha),
@@ -794,6 +1070,7 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
         status: "emitida",
         source: "cargue_inicial_resumido",
         notes: cleanText(row.notas),
+        externalReference: cleanText(row.referencia_origen || row.id_factura),
         lines: [],
         subtotal: total,
         discountTotal: 0,
@@ -811,7 +1088,7 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
 
   if (module === "facturas_detalladas" || module === "ordenes_detalladas") {
     const grouped = rows.reduce((acc, row) => {
-      const key = cleanText(row.id_factura || row.id_orden);
+      const key = cleanText(row.referencia_origen || row.id_factura || row.id_orden) || `fila-${Object.keys(acc).length + 1}`;
       acc[key] = acc[key] || [];
       acc[key].push(row);
       return acc;
@@ -829,10 +1106,11 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
         taxRate: row.tarifa_iva
       }, data.inventory));
       const totals = calculateInvoiceTotals(lines, 0);
-      if (module === "facturas_detalladas") applyInventorySale(data, lines, actor, id);
       const target = module === "ordenes_detalladas" ? data.orders : data.invoices;
+      const recordId = module === "ordenes_detalladas" ? nextOrderId(data) : nextInvoiceId(data);
+      if (module === "facturas_detalladas") applyInventorySale(data, lines, actor, recordId);
       target.push({
-        id: normalizeRecordId(id, module === "ordenes_detalladas" ? "ORD" : "FAC"),
+        id: recordId,
         customerId: customer.id,
         customerNameSnapshot: customer.name,
         date: normalizeDate(first.fecha),
@@ -840,6 +1118,7 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
         status: module === "ordenes_detalladas" ? "borrador" : "emitida",
         source: "cargue_detallado",
         notes: cleanText(first.notas),
+        externalReference: id,
         showDiscountsOnPdf: normalizeBoolean(first.mostrar_descuento_pdf),
         lines,
         subtotal: totals.subtotal,
@@ -869,7 +1148,7 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
       const retentionTotal = retentions.retefuente + retentions.reteica + retentions.reteiva + retentions.other;
       const netReceived = parseCurrency(row.valor_neto) || Math.max(grossAmount - retentionTotal, 0);
       data.payments.push({
-        id: normalizeRecordId(row.id_abono, "ABO"),
+        id: nextPaymentId(data),
         customerId: customer.id,
         customerNameSnapshot: customer.name,
         invoiceId: cleanText(row.id_factura),
@@ -899,14 +1178,53 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
         name: cleanText(row.nombre_producto),
         salePrice: parseCurrency(row.precio_venta),
         cost: parseCurrency(row.costo),
-        stock: Number(row.stock || 0) || 0,
+        stock: 0,
         taxable: normalizeBoolean(row.aplica_iva),
         taxRate: Number(row.tarifa_iva || 0) || 0,
+        status: cleanText(row.estado) || "activo",
+        notes: cleanText(row.notas),
         createdAt: now,
         createdBy: actor,
         updatedAt: now,
         updatedBy: actor
       });
+    });
+  }
+
+  if (module === "actualizacion_productos") {
+    rows.forEach((row) => {
+      const sku = normalizeSku(row.sku);
+      const index = data.inventory.findIndex((item) => item.sku === sku);
+      if (index < 0) return;
+      const current = data.inventory[index];
+      const patch = {
+        updatedAt: now,
+        updatedBy: actor,
+        auditTrail: [...(current.auditTrail || []), createAudit("inventory_item_updated_by_import", actor)]
+      };
+      if (cleanText(row.nombre_producto)) patch.name = cleanText(row.nombre_producto);
+      if (cleanText(row.precio_venta)) patch.salePrice = parseCurrency(row.precio_venta);
+      if (cleanText(row.costo)) patch.cost = parseCurrency(row.costo);
+      if (cleanText(row.aplica_iva)) patch.taxable = normalizeBoolean(row.aplica_iva);
+      if (cleanText(row.tarifa_iva)) patch.taxRate = Number(row.tarifa_iva || 0) || 0;
+      if (cleanText(row.estado)) patch.status = cleanText(row.estado);
+      if (cleanText(row.notas)) patch.notes = cleanText(row.notas);
+      data.inventory[index] = { ...current, ...patch };
+    });
+  }
+
+  if (module === "movimientos_inventario") {
+    rows.forEach((row) => {
+      createInventoryMovement(data, {
+        date: row.fecha,
+        sku: row.sku,
+        type: cleanText(row.tipo_movimiento).toLowerCase(),
+        quantity: row.cantidad,
+        unitCost: row.costo_unitario,
+        reference: row.referencia,
+        sourceType: "cargue_masivo",
+        notes: row.notas
+      }, actor);
     });
   }
 
