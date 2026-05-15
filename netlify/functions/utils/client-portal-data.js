@@ -340,6 +340,8 @@ function createInventoryMovement(data, payload = {}, actor = "portal") {
     reference: cleanText(payload.reference || payload.referencia),
     sourceType: cleanText(payload.sourceType || payload.source_type || "manual"),
     sourceId: cleanText(payload.sourceId || payload.source_id),
+    sourceImportId: cleanText(payload.sourceImportId || payload.source_import_id),
+    status: cleanText(payload.status) || "activo",
     notes: cleanText(payload.notes || payload.notas),
     createdAt: now,
     createdBy: actor,
@@ -363,7 +365,7 @@ function createInventoryMovement(data, payload = {}, actor = "portal") {
   return movement;
 }
 
-function applyInventorySale(data, lines = [], actor = "portal", sourceId = "") {
+function applyInventorySale(data, lines = [], actor = "portal", sourceId = "", sourceImportId = "") {
   lines.forEach((line) => {
     if (!line.sku) return;
     createInventoryMovement(data, {
@@ -372,6 +374,7 @@ function applyInventorySale(data, lines = [], actor = "portal", sourceId = "") {
       quantity: line.quantity,
       sourceType: "factura",
       sourceId,
+      sourceImportId,
       reference: sourceId,
       notes: `Salida automatica por factura ${sourceId}.`
     }, actor);
@@ -1317,6 +1320,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       sourceType: "manual",
       notes: payload.notes
     }, actor);
+  } else if (type === "revertImport") {
+    revertImportRows(data, payload.importId, actor);
   } else {
     throw new Error(`Tipo de operacion no soportado: ${cleanText(type) || "sin tipo"}.`);
   }
@@ -1515,6 +1520,19 @@ export function validateImportRows(data, module, rows = [], options = {}) {
 
 function commitRows(data, module, rows = [], actor = "portal", warnings = [], options = {}) {
   const now = new Date().toISOString();
+  const importId = randomId("IMP");
+  const affected = {
+    customers: [],
+    invoices: [],
+    payments: [],
+    inventory: [],
+    inventoryMovements: [],
+    orders: []
+  };
+  const track = (key, value) => {
+    const cleanValue = cleanText(value);
+    if (cleanValue && affected[key] && !affected[key].includes(cleanValue)) affected[key].push(cleanValue);
+  };
 
   if (module === "clientes") {
     const mergeChoices = options.mergeChoices || {};
@@ -1530,7 +1548,11 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
           ? groupRows.find((candidate) => normalizeCustomerId(candidate.id_cliente)) || groupRows[0]
           : groupRows.find((candidate) => normalizeCustomerId(candidate.id_cliente) === mergeChoice) || groupRows[0];
         const primaryId = mergeChoice === "__AUTO__" ? normalizeCustomerId(preferredRow.id_cliente) || nextCustomerId(data.customers) : mergeChoice;
-        const incoming = buildCustomerFromImportRow(preferredRow, primaryId, actor, now, true);
+        const incoming = {
+          ...buildCustomerFromImportRow(preferredRow, primaryId, actor, now, true),
+          sourceImportId: importId,
+          importModule: module
+        };
         const secondaryRows = groupRows.filter((candidate) => normalizeCustomerId(candidate.id_cliente) !== primaryId);
         secondaryRows.forEach((candidate) => {
           incoming.name = pickText(incoming.name, candidate.nombre_cliente);
@@ -1545,12 +1567,18 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
           .filter((customer) => customer.id !== primaryId && normalizeDocument(customer.documentNumber) === documentKey)
           .map((customer) => customer.id);
         const rowDuplicateIds = secondaryRows.map((candidate) => normalizeCustomerId(candidate.id_cliente)).filter(Boolean);
-        mergeCustomerRecords(data, primaryId, [...existingDuplicateIds, ...rowDuplicateIds], incoming, actor);
+        const merged = mergeCustomerRecords(data, primaryId, [...existingDuplicateIds, ...rowDuplicateIds], incoming, actor);
+        track("customers", merged.id);
         warnings.push({ row: "", field: "documento", value: documentKey, message: `Documento ${documentKey} unificado en el ID ${primaryId}. IDs no usados quedan disponibles para asignacion posterior.` });
         return;
       }
       const id = normalizeCustomerId(row.id_cliente) || nextCustomerId(data.customers);
-      data.customers.push(buildCustomerFromImportRow(row, id, actor, now, true));
+      data.customers.push({
+        ...buildCustomerFromImportRow(row, id, actor, now, true),
+        sourceImportId: importId,
+        importModule: module
+      });
+      track("customers", id);
     });
   }
 
@@ -1579,8 +1607,12 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         createdBy: actor,
         updatedAt: now,
         updatedBy: actor,
+        sourceImportId: importId,
+        importModule: module,
         auditTrail: [createAudit("invoice_imported_initial", actor)]
       });
+      track("invoices", id);
+      track("customers", customer.id);
     });
   }
 
@@ -1606,7 +1638,7 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
       const totals = calculateInvoiceTotals(lines, 0);
       const target = module === "ordenes_detalladas" ? data.orders : data.invoices;
       const recordId = module === "ordenes_detalladas" ? nextOrderId(data) : nextInvoiceId(data);
-      if (module === "facturas_detalladas") applyInventorySale(data, lines, actor, recordId);
+      if (module === "facturas_detalladas") applyInventorySale(data, lines, actor, recordId, importId);
       target.push({
         id: recordId,
         customerId: customer.id,
@@ -1628,8 +1660,12 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         createdBy: actor,
         updatedAt: now,
         updatedBy: actor,
+        sourceImportId: importId,
+        importModule: module,
         auditTrail: [createAudit(`${module}_imported`, actor)]
       });
+      track(module === "ordenes_detalladas" ? "orders" : "invoices", recordId);
+      track("customers", customer.id);
     });
   }
 
@@ -1645,8 +1681,9 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
       };
       const retentionTotal = retentions.retefuente + retentions.reteica + retentions.reteiva + retentions.other;
       const netReceived = parseCurrency(row.valor_neto) || Math.max(grossAmount - retentionTotal, 0);
+      const paymentId = nextPaymentId(data);
       data.payments.push({
-        id: nextPaymentId(data),
+        id: paymentId,
         customerId: customer.id,
         customerNameSnapshot: customer.name,
         invoiceId: cleanText(row.id_factura),
@@ -1664,15 +1701,20 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         createdBy: actor,
         updatedAt: now,
         updatedBy: actor,
+        sourceImportId: importId,
+        importModule: module,
         auditTrail: [createAudit("payment_imported", actor)]
       });
+      track("payments", paymentId);
+      track("customers", customer.id);
     });
   }
 
   if (module === "inventario") {
     rows.forEach((row) => {
+      const sku = normalizeSku(row.sku);
       data.inventory.push({
-        sku: normalizeSku(row.sku),
+        sku,
         name: cleanText(row.nombre_producto),
         salePrice: parseCurrency(row.precio_venta),
         cost: parseCurrency(row.costo),
@@ -1684,8 +1726,11 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         createdAt: now,
         createdBy: actor,
         updatedAt: now,
-        updatedBy: actor
+        updatedBy: actor,
+        sourceImportId: importId,
+        importModule: module
       });
+      track("inventory", sku);
     });
   }
 
@@ -1707,13 +1752,14 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
       if (cleanText(row.tarifa_iva)) patch.taxRate = Number(row.tarifa_iva || 0) || 0;
       if (cleanText(row.estado)) patch.status = cleanText(row.estado);
       if (cleanText(row.notas)) patch.notes = cleanText(row.notas);
-      data.inventory[index] = { ...current, ...patch };
+      data.inventory[index] = { ...current, ...patch, sourceImportId: importId, importModule: module };
+      track("inventory", sku);
     });
   }
 
   if (module === "movimientos_inventario") {
     rows.forEach((row) => {
-      createInventoryMovement(data, {
+      const movement = createInventoryMovement(data, {
         date: row.fecha,
         sku: row.sku,
         type: cleanText(row.tipo_movimiento).toLowerCase(),
@@ -1721,20 +1767,157 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         unitCost: row.costo_unitario,
         reference: row.referencia,
         sourceType: "cargue_masivo",
+        sourceImportId: importId,
         notes: row.notas
       }, actor);
+      if (movement) {
+        track("inventoryMovements", movement.id);
+        track("inventory", movement.sku);
+      }
     });
   }
 
   data.imports.unshift({
-    id: randomId("IMP"),
+    id: importId,
     module,
     rows: rows.length,
     warningsCount: warnings.length,
+    affected,
+    status: "activo",
     importedAt: now,
     importedBy: actor
   });
 
+  return data;
+}
+
+function revertImportRows(data, importId = "", actor = "portal") {
+  const id = cleanText(importId);
+  if (!id) throw new Error("Falta el ID del cargue a reversar.");
+  const now = new Date().toISOString();
+  const importIndex = (data.imports || []).findIndex((item) => cleanText(item.id) === id);
+  if (importIndex < 0) throw new Error(`No se encontro el cargue ${id}.`);
+  const importRecord = data.imports[importIndex];
+  if (importRecord.status === "revertido") throw new Error(`El cargue ${id} ya fue reversado.`);
+
+  const affected = importRecord.affected || {};
+  const invoiceIds = new Set((affected.invoices || []).map(cleanText).filter(Boolean));
+  const paymentIds = new Set((affected.payments || []).map(cleanText).filter(Boolean));
+  const orderIds = new Set((affected.orders || []).map(cleanText).filter(Boolean));
+  const inventorySkus = new Set((affected.inventory || []).map(normalizeSku).filter(Boolean));
+  const movementIds = new Set((affected.inventoryMovements || []).map(cleanText).filter(Boolean));
+  const customerIds = new Set((affected.customers || []).map(normalizeCustomerId).filter(Boolean));
+  const summary = { invoices: 0, payments: 0, orders: 0, inventory: 0, movements: 0, customers: 0 };
+
+  data.invoices = (data.invoices || []).map((invoice) => {
+    if (!invoiceIds.has(invoice.id)) return invoice;
+    if (invoice.status !== "anulada" && (invoice.lines || []).length) {
+      reverseInventorySale(data, invoice.lines, actor, invoice.id, `Reversion automatica por anulacion del cargue ${id}.`);
+    }
+    summary.invoices += 1;
+    return {
+      ...invoice,
+      status: "anulada",
+      notes: [invoice.notes, `Anulada por reversion del cargue ${id}.`].filter(Boolean).join(" | "),
+      importRevertedAt: now,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(invoice.auditTrail || []), createAudit("invoice_reverted_by_import", actor, { importId: id })]
+    };
+  });
+
+  data.payments = (data.payments || []).map((payment) => {
+    if (!paymentIds.has(payment.id)) return payment;
+    summary.payments += 1;
+    return {
+      ...payment,
+      status: "anulado",
+      notes: [payment.notes, `Anulado por reversion del cargue ${id}.`].filter(Boolean).join(" | "),
+      importRevertedAt: now,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(payment.auditTrail || []), createAudit("payment_reverted_by_import", actor, { importId: id })]
+    };
+  });
+
+  data.orders = (data.orders || []).map((order) => {
+    if (!orderIds.has(order.id)) return order;
+    summary.orders += 1;
+    return {
+      ...order,
+      status: "anulada",
+      notes: [order.notes, `Anulada por reversion del cargue ${id}.`].filter(Boolean).join(" | "),
+      importRevertedAt: now,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(order.auditTrail || []), createAudit("order_reverted_by_import", actor, { importId: id })]
+    };
+  });
+
+  (data.inventoryMovements || [])
+    .filter((movement) => movementIds.has(movement.id) && movement.status !== "revertido")
+    .forEach((movement) => {
+      createInventoryMovement(data, {
+        sku: movement.sku,
+        type: Number(movement.effect || 0) >= 0 ? "ajuste_negativo" : "ajuste_positivo",
+        quantity: Math.abs(Number(movement.effect || movement.quantity || 0)),
+        unitCost: movement.unitCost,
+        reference: `REV-${movement.id}`,
+        sourceType: "reversion_cargue",
+        sourceId: id,
+        notes: `Reversion del movimiento ${movement.id} del cargue ${id}.`
+      }, actor);
+      summary.movements += 1;
+      const originalIndex = data.inventoryMovements.findIndex((item) => item.id === movement.id);
+      if (originalIndex >= 0) {
+        data.inventoryMovements[originalIndex] = {
+          ...data.inventoryMovements[originalIndex],
+          status: "revertido",
+          importRevertedAt: now,
+          auditTrail: [...(data.inventoryMovements[originalIndex].auditTrail || []), createAudit("inventory_movement_reverted_by_import", actor, { importId: id })]
+        };
+      }
+    });
+
+  data.inventory = (data.inventory || []).map((item) => {
+    if (!inventorySkus.has(item.sku)) return item;
+    const importedAsNew = importRecord.module === "inventario" && item.sourceImportId === id;
+    summary.inventory += 1;
+    return {
+      ...item,
+      status: importedAsNew ? "inactivo" : item.status,
+      notes: [item.notes, importedAsNew ? `Producto inactivado por reversion del cargue ${id}.` : `Producto afectado por reversion del cargue ${id}; revisar datos maestros si el cargue era de actualizacion.`].filter(Boolean).join(" | "),
+      importRevertedAt: now,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(item.auditTrail || []), createAudit("inventory_item_reverted_by_import", actor, { importId: id })]
+    };
+  });
+
+  data.customers = (data.customers || []).map((customer) => {
+    if (!customerIds.has(customer.id)) return customer;
+    summary.customers += 1;
+    return {
+      ...customer,
+      notes: [customer.notes, `Cliente revisado por reversion del cargue ${id}; no se elimina para conservar trazabilidad.`].filter(Boolean).join(" | "),
+      importRevertedAt: now,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(customer.auditTrail || []), createAudit("customer_touched_by_import_reversion", actor, { importId: id })]
+    };
+  });
+
+  data.imports[importIndex] = {
+    ...importRecord,
+    status: "revertido",
+    revertedAt: now,
+    revertedBy: actor,
+    reversalSummary: summary
+  };
+  data.auditTrail = [
+    ...(data.auditTrail || []),
+    createAudit("import_reverted", actor, { importId: id, summary })
+  ];
   return data;
 }
 

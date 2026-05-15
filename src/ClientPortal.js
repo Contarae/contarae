@@ -13,6 +13,7 @@ const MODULES = [
   ["movimientos", "Movimientos"],
   ["ordenes", "Ordenes"],
   ["cargues", "Cargues masivos"],
+  ["cargues-historial", "Historial de cargues"],
   ["configuracion", "Configuracion"]
 ];
 
@@ -288,6 +289,15 @@ function buildRowsForExport(data, type) {
       ...(data.invoices || []).map((invoice) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, invoice.dueDate, invoice.subtotal, invoice.taxTotal, invoice.discountTotal, invoice.total, invoice.status, invoice.source])
     ];
   }
+  if (type === "detalle_facturas") {
+    return [
+      ["id_factura", "id_cliente", "nombre_cliente", "fecha", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
+      ...(data.invoices || []).flatMap((invoice) => (invoice.lines || []).length
+        ? (invoice.lines || []).map((line) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total])
+        : [[invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, "", "Factura resumida / cargue inicial", 1, invoice.total, 0, "NO", 0, invoice.total, 0, invoice.total]]
+      )
+    ];
+  }
   if (type === "ordenes") {
     return [
       ["id_orden", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "subtotal", "iva", "descuentos", "total", "estado"],
@@ -304,6 +314,28 @@ function buildRowsForExport(data, type) {
     return [
       ["id_movimiento", "fecha", "sku", "producto", "tipo", "cantidad", "efecto", "stock_antes", "stock_despues", "costo_unitario", "referencia", "origen", "notas"],
       ...(data.inventoryMovements || []).map((movement) => [movement.id, movement.date, movement.sku, movement.productNameSnapshot, movement.type, movement.quantity, movement.effect, movement.stockBefore, movement.stockAfter, movement.unitCost, movement.reference, movement.sourceType, movement.notes])
+    ];
+  }
+  if (type === "cargues_historial") {
+    return [
+      ["id_cargue", "modulo", "filas", "estado", "advertencias", "importado_por", "fecha_importacion", "revertido_por", "fecha_reversion", "clientes", "facturas", "abonos", "inventario", "movimientos", "ordenes"],
+      ...(data.imports || []).map((item) => [
+        item.id,
+        item.module,
+        item.rows,
+        item.status || "activo",
+        item.warningsCount || 0,
+        item.importedBy || "",
+        item.importedAt || "",
+        item.revertedBy || "",
+        item.revertedAt || "",
+        (item.affected?.customers || []).join(", "),
+        (item.affected?.invoices || []).join(", "),
+        (item.affected?.payments || []).join(", "),
+        (item.affected?.inventory || []).join(", "),
+        (item.affected?.inventoryMovements || []).join(", "),
+        (item.affected?.orders || []).join(", ")
+      ])
     ];
   }
   if (type === "abonos") {
@@ -334,6 +366,9 @@ function buildWorkbookForExport(data, type) {
     facturas: "Facturas",
     abonos: "Abonos",
     cartera: "Cartera",
+    cartera_detallada: "Cartera detallada",
+    detalle_facturas: "Detalle productos por factura",
+    cargues_historial: "Historial de cargues",
     inventario: "Inventario",
     movimientos: "Movimientos",
     ordenes: "Ordenes"
@@ -343,8 +378,11 @@ function buildWorkbookForExport(data, type) {
     sheets.push({
       name: "Detalle facturas",
       rows: [
-        ["id_factura", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
-        ...(data.invoices || []).flatMap((invoice) => (invoice.lines || []).map((line) => [invoice.id, line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total]))
+        ["id_factura", "id_cliente", "nombre_cliente", "fecha", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
+        ...(data.invoices || []).flatMap((invoice) => (invoice.lines || []).length
+          ? (invoice.lines || []).map((line) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total])
+          : [[invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, "", "Factura resumida / cargue inicial", 1, invoice.total, 0, "NO", 0, invoice.total, 0, invoice.total]]
+        )
       ]
     });
   }
@@ -357,7 +395,7 @@ function buildWorkbookForExport(data, type) {
       ]
     });
   }
-  if (type === "cartera") {
+  if (type === "cartera" || type === "cartera_detallada") {
     sheets.push({
       name: "Detalle facturas",
       rows: [
@@ -374,6 +412,13 @@ function buildWorkbookForExport(data, type) {
           invoice.ageLabel,
           invoice.daysOverdue || 0
         ]))
+      ]
+    });
+    sheets.push({
+      name: "Abonos registrados",
+      rows: [
+        ["id_cliente", "nombre_cliente", "id_abono", "id_factura", "fecha", "valor_bruto", "retenciones", "neto_recibido", "metodo", "referencia", "estado"],
+        ...(data.payments || []).map((payment) => [payment.customerId, payment.customerNameSnapshot, payment.id, payment.invoiceId || "Global FIFO", payment.date, payment.grossAmount, payment.retentionTotal, payment.netReceived, payment.method, payment.reference, payment.status])
       ]
     });
   }
@@ -461,6 +506,119 @@ function exportTypeForModule(module) {
   if (module === "ordenes_detalladas" || module === "ordenes") return "ordenes";
   if (module === "facturas_historicas" || module === "facturas_detalladas" || module === "facturas") return "facturas";
   return "clientes";
+}
+
+const DEFAULT_PAGE_SIZE = 25;
+const PERIOD_OPTIONS = [
+  ["today", "Hoy"],
+  ["yesterday", "Ayer"],
+  ["week", "Ultima semana"],
+  ["month", "Ultimo mes"],
+  ["custom", "Personalizado"],
+  ["all", "Todo"]
+];
+
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function periodRange(period = "month", customFrom = "", customTo = "") {
+  const now = new Date();
+  const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "today") return { from: isoDate(current), to: isoDate(current) };
+  if (period === "yesterday") {
+    const yesterday = addDays(current, -1);
+    return { from: isoDate(yesterday), to: isoDate(yesterday) };
+  }
+  if (period === "week") return { from: isoDate(addDays(current, -7)), to: isoDate(current) };
+  if (period === "month") return { from: isoDate(addDays(current, -30)), to: isoDate(current) };
+  if (period === "custom") return { from: customFrom || "", to: customTo || "" };
+  return { from: "", to: "" };
+}
+
+function dateInRange(value = "", range = {}) {
+  const date = clean(value);
+  if (!date) return false;
+  if (range.from && date < range.from) return false;
+  if (range.to && date > range.to) return false;
+  return true;
+}
+
+function customerLabelForRecord(record = {}, data = {}) {
+  return customerById(data, record.customerId)?.name || record.customerNameSnapshot || record.customerId || "";
+}
+
+function recordMatchesCustomer(record = {}, data = {}, type = "name", query = "") {
+  const q = normalizeText(query);
+  if (!q) return true;
+  const customer = customerById(data, record.customerId) || {};
+  if (type === "id") return normalizeText(record.customerId || customer.id).includes(q);
+  if (type === "documentNumber") return isValidDocumentSearch(customer.documentNumber) && onlyDigits(customer.documentNumber) === onlyDigits(query);
+  if (type === "alternateName") return normalizeText(customer.alternateName).includes(q);
+  return normalizeText(customer.name || record.customerNameSnapshot).includes(q);
+}
+
+function filterRecordsByQuery(records = [], data = {}, filters = {}, options = {}) {
+  const range = periodRange(filters.period || "all", filters.from, filters.to);
+  const dateField = options.dateField || "date";
+  return records.filter((record) => {
+    if (filters.status && clean(record.status) !== filters.status) return false;
+    if (filters.sku && normalizeText(record.sku).includes(normalizeText(filters.sku)) === false) return false;
+    if ((filters.period || "all") !== "all" && !dateInRange(record[dateField], range)) return false;
+    return recordMatchesCustomer(record, data, filters.customerSearchType || "name", filters.customerQuery || "");
+  });
+}
+
+function PeriodControls({ filters, setFilters, compact = false }) {
+  return (
+    <div className="client-period-controls" style={{ display: "grid", gridTemplateColumns: compact ? "minmax(160px,220px) repeat(2,minmax(130px,1fr))" : "minmax(160px,220px) repeat(2,minmax(130px,1fr))", gap: 10 }}>
+      <Field label="Periodo">
+        <select style={input} value={filters.period || "month"} onChange={(event) => setFilters((current) => ({ ...current, period: event.target.value }))}>
+          {PERIOD_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+      </Field>
+      {(filters.period || "month") === "custom" ? (
+        <>
+          <Field label="Desde"><input style={input} type="date" value={filters.from || ""} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></Field>
+          <Field label="Hasta"><input style={input} type="date" value={filters.to || ""} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></Field>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function QueryControls({ filters, setFilters, onSearch, onClear, statusOptions = [], placeholder = "Ej: JOSE" }) {
+  return (
+    <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10 }}>
+      <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(170px,220px) minmax(0,1fr) minmax(160px,220px)", gap: 10, alignItems: "end" }}>
+        <Field label="Buscar por">
+          <select style={input} value={filters.customerSearchType || "name"} onChange={(event) => setFilters((current) => ({ ...current, customerSearchType: event.target.value }))}>
+            {CUSTOMER_SEARCH_TYPES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </Field>
+        <Field label="Criterio"><input style={input} value={filters.customerQuery || ""} placeholder={placeholder} onChange={(event) => setFilters((current) => ({ ...current, customerQuery: event.target.value }))} /></Field>
+        {statusOptions.length ? (
+          <Field label="Estado">
+            <select style={input} value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+              <option value="">Todos</option>
+              {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </Field>
+        ) : <div />}
+      </div>
+      <PeriodControls filters={filters} setFilters={setFilters} />
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+        <button type="button" onClick={onClear} style={ghostButton}>Limpiar</button>
+        <button type="button" onClick={onSearch} style={button}>Buscar</button>
+      </div>
+    </section>
+  );
 }
 
 const smallButton = {
@@ -581,7 +739,7 @@ function Stat({ label, value, note, tone = "#1D4ED8" }) {
   return (
     <div style={card}>
       <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
-      <div style={{ fontFamily: FH, fontSize: 38, lineHeight: 1.15, color: tone, marginTop: 8 }}>{value}</div>
+      <div style={{ fontFamily: FH, fontSize: "clamp(24px,3vw,38px)", lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
       <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7, marginTop: 8 }}>{note}</div>
     </div>
   );
@@ -885,21 +1043,54 @@ function ChangePasswordRequired({ username, companyName, onChanged, onLogout }) 
 
 function Dashboard({ data, setModule }) {
   const dashboard = data.dashboard || {};
+  const [filters, setFilters] = useState({ period: "month", from: "", to: "" });
+  const range = periodRange(filters.period, filters.from, filters.to);
+  const periodActive = (filters.period || "month") !== "all";
+  const invoicesInPeriod = (data.invoices || []).filter((invoice) => invoice.status !== "anulada" && (!periodActive || dateInRange(invoice.date, range)));
+  const paymentsInPeriod = (data.payments || []).filter((payment) => payment.status !== "anulado" && (!periodActive || dateInRange(payment.date, range)));
+  const billedInPeriod = invoicesInPeriod.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const paidInPeriod = paymentsInPeriod.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.grossAmount || payment.netReceived || 0), 0);
+  const reviewCases = (data.customerSummary || []).filter((customer) => Number(customer.unappliedCredit || 0) > 0);
   const agingTotal = AGING_BUCKETS.reduce((sum, [key]) => sum + Number(dashboard.aging?.[key] || 0), 0);
   return (
     <div style={{ display: "grid", gap: 18 }}>
+      <section style={{ ...card, display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>RANGO DE ANALISIS</div>
+            <p style={{ margin: "4px 0 0", fontFamily: F, color: "#64748B" }}>Filtra las cifras operativas del dashboard sin alterar la cartera acumulada.</p>
+          </div>
+          <PeriodControls filters={filters} setFilters={setFilters} compact />
+        </div>
+      </section>
       <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
         <Stat label="CARTERA TOTAL" value={dashboard.pendingLabel || "$ 0"} note="Saldo pendiente por cobrar." tone="#C2410C" />
         <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" />
         <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" />
-        <Stat label="RECAUDADO" value={dashboard.totalPaidLabel || "$ 0"} note={`${dashboard.paymentsCount || 0} abono(s) registrados.`} tone="#15803D" />
+        <Stat label="RECAUDO DEL PERIODO" value={money(paidInPeriod)} note={`${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" />
       </div>
       <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-        <Stat label="FACTURADO" value={dashboard.totalBilledLabel || "$ 0"} note={`${dashboard.invoicesCount || 0} factura(s) registradas.`} />
+        <Stat label="FACTURADO PERIODO" value={money(billedInPeriod)} note={`${invoicesInPeriod.length} factura(s) en el rango.`} />
         <Stat label="NO VENCIDA" value={dashboard.currentLabel || "$ 0"} note="Saldo con vencimiento futuro o sin vencimiento." tone="#1D4ED8" />
-        <Stat label="CREDITOS SIN APLICAR" value={dashboard.unappliedCreditLabel || "$ 0"} note="Pagos que superan la cartera vigente." tone="#15803D" />
+        <Stat label="CREDITOS A REVISAR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#15803D" />
         <Stat label="ALERTAS" value={(dashboard.outdatedCustomersCount || 0) + (dashboard.negativeInventoryCount || 0)} note={`${dashboard.outdatedCustomersCount || 0} cliente(s) por actualizar · ${dashboard.negativeInventoryCount || 0} inventario(s) negativo(s).`} tone="#B45309" />
       </div>
+      {reviewCases.length ? (
+        <section style={card}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#B45309", fontWeight: 900, fontFamily: F }}>CASOS DE REVISION</div>
+              <h2 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A" }}>Cartera con credito o saldo a favor</h2>
+            </div>
+            <button type="button" onClick={() => setModule("cartera")} style={ghostButton}>Revisar cartera</button>
+          </div>
+          <PaginatedRecordList
+            headers={["Cliente", "ID", "Pagado", "Facturado", "Credito"]}
+            rows={reviewCases.map((customer) => [customer.name, customer.id, customer.paidLabel, customer.billedLabel, customer.unappliedCreditLabel])}
+            pageSize={8}
+          />
+        </section>
+      ) : null}
       <section style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
           <div>
@@ -957,7 +1148,12 @@ function Customers({ data, onSave, onExport }) {
   const [confirmSave, setConfirmSave] = useState(null);
   const [duplicateMerge, setDuplicateMerge] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [listQuery, setListQuery] = useState("");
   const customers = data.customerSummary || [];
+  const visibleCustomers = customers.filter((customer) => {
+    const q = normalizeText(listQuery);
+    return !q || normalizeText(`${customer.id} ${customer.name} ${customer.alternateName} ${customer.documentNumber} ${customer.phone}`).includes(q);
+  });
 
   const blank = () => ({ id: "", name: "", alternateName: "", documentNumber: "", phone: "", email: "", address: "", city: "", department: "", zone: "", notes: "" });
 
@@ -1135,20 +1331,22 @@ function Customers({ data, onSave, onExport }) {
         </div>
       </PortalModal>
       <section style={card}>
-        <div style={{ display: "grid", gap: 8 }}>
-          {customers.map((customer) => (
-            <div key={customer.id} className="client-portal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) repeat(3, minmax(90px,.4fr)) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
-              <div>
-                <strong style={{ fontFamily: F }}>{customer.name || "Cliente reservado pendiente por asignar"}</strong>
-                <div style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.documentNumber || "Documento por asignar"} · {customer.phone || "Celular pendiente"} · {customer.city || "Ciudad pendiente"}{customer.department ? `, ${customer.department}` : ""}</div>
-              </div>
-              <span style={{ fontFamily: F }}>{customer.billedLabel}</span>
-              <span style={{ fontFamily: F }}>{customer.paidLabel}</span>
-              <strong style={{ fontFamily: F, color: customer.balance > 0 ? "#C2410C" : "#15803D" }}>{customer.balanceLabel}</strong>
-              <button type="button" onClick={() => edit(customer)} style={{ ...button, padding: "9px 12px" }}>Editar</button>
-            </div>
-          ))}
+        <div style={{ marginBottom: 12 }}>
+          <Field label="Filtrar listado de clientes"><input style={input} value={listQuery} placeholder="ID, nombre, documento o telefono" onChange={(event) => setListQuery(event.target.value)} /></Field>
         </div>
+        <PaginatedRecordList
+          headers={["Cliente", "Facturado", "Pagado", "Saldo", "Accion"]}
+          rows={visibleCustomers.map((customer) => [
+            <div>
+              <strong style={{ fontFamily: F }}>{customer.name || "Cliente reservado pendiente por asignar"}</strong>
+              <div style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.documentNumber || "Documento por asignar"} · {customer.phone || "Celular pendiente"} · {customer.city || "Ciudad pendiente"}{customer.department ? `, ${customer.department}` : ""}</div>
+            </div>,
+            customer.billedLabel,
+            customer.paidLabel,
+            <strong style={{ fontFamily: F, color: customer.balance > 0 ? "#C2410C" : "#15803D" }}>{customer.balanceLabel}</strong>,
+            <button type="button" onClick={() => edit(customer)} style={{ ...button, padding: "9px 12px" }}>Editar</button>
+          ])}
+        />
       </section>
     </div>
   );
@@ -1163,7 +1361,11 @@ function Invoices({ data, onSave, onExport }) {
   const [viewRecord, setViewRecord] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
+  const [searched, setSearched] = useState(false);
   const totals = uiLineTotals(lines);
+  const invoices = data.invoices || [];
+  const visibleInvoices = searched ? filterRecordsByQuery(invoices, data, filters) : [];
 
   const reset = () => {
     setDraft({ id: "", customerId: "", date: today(), dueDate: "", total: "", status: "emitida", notes: "" });
@@ -1276,6 +1478,14 @@ function Invoices({ data, onSave, onExport }) {
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Registra facturas detalladas o cargues iniciales resumidos.</p>
         <button type="button" onClick={openNew} style={button}>Nueva factura</button>
       </div>
+      <QueryControls
+        filters={filters}
+        setFilters={setFilters}
+        statusOptions={["emitida", "pagada", "anulada"]}
+        onSearch={() => setSearched(true)}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" }); setSearched(false); }}
+        placeholder="Cliente, ID o documento"
+      />
       <PortalModal open={modalOpen} title={draft.id ? "Editar factura" : "Nueva factura"} eyebrow={draft.id || "FACTURA"} onClose={() => { if (!busy) setModalOpen(false); }}>
         <CustomerSearch
           customers={customers}
@@ -1350,13 +1560,13 @@ function Invoices({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <RecordList rows={(data.invoices || []).map((invoice) => [invoice.id, invoice.customerNameSnapshot, invoice.date, money(invoice.subtotal), money(invoice.taxTotal), invoice.totalLabel || money(invoice.total), invoice.status, <div className="client-action-group">
+      <PaginatedRecordList rows={visibleInvoices.map((invoice) => [invoice.id, invoice.customerNameSnapshot, invoice.date, money(invoice.subtotal), money(invoice.taxTotal), invoice.totalLabel || money(invoice.total), invoice.status, <div className="client-action-group">
         <button type="button" onClick={() => setViewRecord(invoice)} style={ghostButton}>Ver</button>
         <button type="button" onClick={() => edit(invoice)} style={ghostButton}>Editar</button>
         <button type="button" onClick={() => duplicate(invoice)} style={ghostButton}>Duplicar</button>
         <button type="button" onClick={() => printableDocument("invoice", invoice, data)} style={ghostButton}>PDF</button>
         {invoice.status !== "anulada" ? <button type="button" onClick={() => voidInvoice(invoice)} style={dangerGhostButton}>Anular</button> : null}
-      </div>])} headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} />
+      </div>])} headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron facturas con esos filtros." : "Usa los filtros para consultar facturas sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -1369,9 +1579,12 @@ function Payments({ data, onSave, onExport }) {
   const [viewRecord, setViewRecord] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
+  const [searched, setSearched] = useState(false);
   const customerInvoices = (data.invoices || []).filter((invoice) => !draft.customerId || invoice.customerId === draft.customerId);
   const retentionTotal = moneyValue(draft.retefuente) + moneyValue(draft.reteica) + moneyValue(draft.reteiva) + moneyValue(draft.otherRetentions);
   const calculatedNet = Math.max(moneyValue(draft.grossAmount) - retentionTotal, 0);
+  const visiblePayments = searched ? filterRecordsByQuery(data.payments || [], data, filters) : [];
 
   const openNew = () => {
     setDraft(blank());
@@ -1475,6 +1688,14 @@ function Payments({ data, onSave, onExport }) {
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Registra pagos, retenciones y medios de recaudo.</p>
         <button type="button" onClick={openNew} style={button}>Nuevo abono</button>
       </div>
+      <QueryControls
+        filters={filters}
+        setFilters={setFilters}
+        statusOptions={["aplicado", "anulado"]}
+        onSearch={() => setSearched(true)}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" }); setSearched(false); }}
+        placeholder="Cliente, ID o documento"
+      />
       <PortalModal open={modalOpen} title={draft.id ? "Editar abono" : "Nuevo abono"} eyebrow={draft.id || "ABONO"} onClose={() => { if (!busy) setModalOpen(false); }}>
         <CustomerSearch
           customers={customers}
@@ -1524,26 +1745,56 @@ function Payments({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <RecordList rows={(data.payments || []).map((payment) => [payment.id, payment.customerNameSnapshot, payment.invoiceId || "Sin factura", payment.date, money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method, <div className="client-action-group">
+      <PaginatedRecordList rows={visiblePayments.map((payment) => [payment.id, payment.customerNameSnapshot, payment.invoiceId || "Sin factura", payment.date, money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method, <div className="client-action-group">
         <button type="button" onClick={() => setViewRecord(payment)} style={ghostButton}>Ver</button>
         <button type="button" onClick={() => edit(payment)} style={ghostButton}>Editar</button>
         <button type="button" onClick={() => duplicate(payment)} style={ghostButton}>Duplicar</button>
         {payment.status !== "anulado" ? <button type="button" onClick={() => voidPayment(payment)} style={dangerGhostButton}>Anular</button> : null}
-      </div>])} headers={["ID", "Cliente", "Factura", "Fecha", "Bruto", "Retenciones", "Neto", "Medio", "Acciones"]} />
+      </div>])} headers={["ID", "Cliente", "Factura", "Fecha", "Bruto", "Retenciones", "Neto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
 
 function Portfolio({ data, onExport }) {
   const [selectedId, setSelectedId] = useState("");
+  const [tab, setTab] = useState("consulta");
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" });
+  const [searched, setSearched] = useState(false);
   const rows = data.customerSummary || [];
   const selected = rows.find((customer) => customer.id === selectedId);
   const selectedInvoices = selected?.receivableInvoices || [];
   const selectedPayments = (data.payments || []).filter((payment) => payment.customerId === selectedId && payment.status !== "anulado");
+  const range = periodRange(filters.period || "all", filters.from, filters.to);
+  const periodActive = (filters.period || "all") !== "all";
+  const reviewRows = rows.filter((customer) => Number(customer.unappliedCredit || 0) > 0);
+  const filteredRows = searched ? rows.filter((customer) => {
+    const q = normalizeText(filters.customerQuery);
+    const matchesText = !q
+      || (filters.customerSearchType === "id" && normalizeText(customer.id).includes(q))
+      || (filters.customerSearchType === "documentNumber" && isValidDocumentSearch(customer.documentNumber) && onlyDigits(customer.documentNumber) === onlyDigits(filters.customerQuery))
+      || (filters.customerSearchType === "alternateName" && normalizeText(customer.alternateName).includes(q))
+      || ((!filters.customerSearchType || filters.customerSearchType === "name") && normalizeText(customer.name).includes(q));
+    if (!matchesText) return false;
+    if (!periodActive) return true;
+    const hasInvoice = (customer.receivableInvoices || []).some((invoice) => dateInRange(invoice.date, range) || dateInRange(invoice.dueDate, range));
+    const hasPayment = (data.payments || []).some((payment) => payment.customerId === customer.id && dateInRange(payment.date, range));
+    return hasInvoice || hasPayment;
+  }) : [];
 
   return (
     <ModuleWithForm title="Cartera por cliente" count={rows.length} onExport={() => onExport("cartera")}>
-      <CustomerSearch customers={rows} selectedId={selectedId} onSelect={(customer) => setSelectedId(customer?.id || "")} title="Consultar cartera de cliente" />
+      <div className="client-action-group">
+        {[
+          ["consulta", "Consulta"],
+          ["revision", `Creditos a revisar (${reviewRows.length})`],
+          ["detalle", "Detalle del cliente"]
+        ].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setTab(id)} style={id === tab ? smallButton : ghostButton}>{label}</button>
+        ))}
+        <button type="button" onClick={() => onExport("cartera_detallada")} style={ghostButton}>Reporte cartera detallada</button>
+        <button type="button" onClick={() => onExport("detalle_facturas")} style={ghostButton}>Detalle productos por factura</button>
+      </div>
+      <CustomerSearch customers={rows} selectedId={selectedId} onSelect={(customer) => { setSelectedId(customer?.id || ""); setTab("detalle"); }} title="Consultar cartera de cliente" />
       {selected ? (
         <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
           <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
@@ -1567,22 +1818,50 @@ function Portfolio({ data, onExport }) {
           <RecordList rows={selectedPayments.map((payment) => [payment.id, payment.date, payment.invoiceId || "Global FIFO", money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Aplicacion", "Bruto", "Retenciones", "Neto", "Medio"]} />
         </section>
       ) : null}
-      <div style={{ display: "grid", gap: 8 }}>
-        {rows.map((customer) => {
-          const message = `Hola ${customer.name}, te saludamos cordialmente. A la fecha registramos un saldo pendiente de ${customer.balanceLabel}. Agradecemos revisar el estado de cuenta y confirmar la fecha estimada de pago.`;
-          const wa = customer.phone ? `https://wa.me/57${onlyDigits(customer.phone).slice(-10)}?text=${encodeURIComponent(message)}` : "";
-          return (
-            <div key={customer.id} className="client-portal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) repeat(4,130px) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
-              <div><strong style={{ fontFamily: F }}>{customer.name}</strong><div style={{ fontFamily: F, fontSize: 12, color: "#64748B" }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>
-              <span>{customer.billedLabel}</span>
-              <span>{customer.paidLabel}</span>
-              <strong style={{ color: customer.balance > 0 ? "#C2410C" : "#15803D" }}>{customer.balanceLabel}</strong>
-              <span style={{ color: customer.overdue > 0 ? "#B91C1C" : "#64748B", fontWeight: 900 }}>{customer.overdueLabel || "$ 0"}</span>
-              {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...button, textDecoration: "none", background: "#25D366" }}>Cobrar</a> : <span style={{ fontFamily: F, color: "#B45309", fontSize: 12 }}>Sin WhatsApp</span>}
-            </div>
-          );
-        })}
-      </div>
+      {tab === "consulta" ? (
+        <>
+          <QueryControls
+            filters={filters}
+            setFilters={setFilters}
+            onSearch={() => setSearched(true)}
+            onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" }); setSearched(false); }}
+            placeholder="Cliente, ID o documento"
+          />
+          <PaginatedRecordList
+            headers={["Cliente", "Facturado", "Pagado", "Saldo", "Vencido", "Accion"]}
+            rows={filteredRows.map((customer) => {
+              const message = `Hola ${customer.name}, te saludamos cordialmente. A la fecha registramos un saldo pendiente de ${customer.balanceLabel}. Agradecemos revisar el estado de cuenta y confirmar la fecha estimada de pago.`;
+              const wa = customer.phone ? `https://wa.me/57${onlyDigits(customer.phone).slice(-10)}?text=${encodeURIComponent(message)}` : "";
+              return [
+                <div><strong>{customer.name}</strong><div style={{ color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>,
+                customer.billedLabel,
+                customer.paidLabel,
+                <strong style={{ color: customer.balance > 0 ? "#C2410C" : "#15803D" }}>{customer.balanceLabel}</strong>,
+                <span style={{ color: customer.overdue > 0 ? "#B91C1C" : "#64748B", fontWeight: 900 }}>{customer.overdueLabel || "$ 0"}</span>,
+                <div className="client-action-group">
+                  <button type="button" onClick={() => { setSelectedId(customer.id); setTab("detalle"); }} style={ghostButton}>Ver</button>
+                  {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...smallButton, textDecoration: "none", background: "#25D366" }}>Cobrar</a> : <span style={{ fontFamily: F, color: "#B45309", fontSize: 12 }}>Sin WhatsApp</span>}
+                </div>
+              ];
+            })}
+            emptyMessage={searched ? "No se encontraron clientes con esos filtros." : "Usa los filtros para consultar cartera sin cargar todos los clientes."}
+          />
+        </>
+      ) : null}
+      {tab === "revision" ? (
+        <PaginatedRecordList
+          headers={["Cliente", "ID", "Facturado", "Pagado", "Credito a favor", "Accion"]}
+          rows={reviewRows.map((customer) => [
+            customer.name,
+            customer.id,
+            customer.billedLabel,
+            customer.paidLabel,
+            <strong style={{ color: "#15803D" }}>{customer.unappliedCreditLabel}</strong>,
+            <button type="button" onClick={() => { setSelectedId(customer.id); setTab("detalle"); }} style={ghostButton}>Revisar</button>
+          ])}
+          emptyMessage="No hay creditos sin aplicar o saldos a favor por revisar."
+        />
+      ) : null}
     </ModuleWithForm>
   );
 }
@@ -1593,6 +1872,11 @@ function Inventory({ data, onSave, onExport }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const visibleItems = (data.inventory || []).filter((item) => {
+    const q = normalizeText(query);
+    return !q || normalizeText(item.sku).includes(q) || normalizeText(item.name).includes(q) || normalizeText(item.status).includes(q);
+  });
   const reset = () => setDraft({ sku: "", name: "", salePrice: "", cost: "", taxable: true, taxRate: 19, status: "activo", notes: "" });
   const openNew = () => {
     reset();
@@ -1652,6 +1936,9 @@ function Inventory({ data, onSave, onExport }) {
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Administra el maestro de productos y servicios. El stock se controla desde movimientos.</p>
         <button type="button" onClick={openNew} style={button}>Nuevo producto</button>
       </div>
+      <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+        <Field label="Buscar producto por SKU, nombre o estado"><input style={input} value={query} placeholder="Ej: SKU-001" onChange={(event) => setQuery(event.target.value)} /></Field>
+      </section>
       <PortalModal open={modalOpen} title={editingSku ? "Editar inventario" : "Nuevo producto o servicio"} eyebrow={editingSku ? draft.sku : "INVENTARIO"} onClose={() => { if (!busy) setModalOpen(false); }} wide={false}>
         <form onSubmit={submit} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
           <Field label="SKU"><input required style={{ ...input, background: editingSku ? "#F8FBFF" : "#fff" }} readOnly={editingSku} value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value.toUpperCase() }))} /></Field>
@@ -1677,7 +1964,7 @@ function Inventory({ data, onSave, onExport }) {
         onConfirm={confirmInventorySave}
         confirmLabel="Guardar"
       />
-      <RecordList rows={(data.inventory || []).map((item) => [item.sku, item.name, money(item.salePrice), money(item.cost), item.stock, item.stock < 0 ? "Inventario negativo" : item.status || "activo", <button type="button" onClick={() => edit(item)} style={ghostButton}>Editar</button>])} headers={["SKU", "Nombre", "Precio", "Costo", "Stock", "Estado", "Accion"]} />
+      <PaginatedRecordList rows={visibleItems.map((item) => [item.sku, item.name, money(item.salePrice), money(item.cost), item.stock, item.stock < 0 ? "Inventario negativo" : item.status || "activo", <button type="button" onClick={() => edit(item)} style={ghostButton}>Editar</button>])} headers={["SKU", "Nombre", "Precio", "Costo", "Stock", "Estado", "Accion"]} />
     </ModuleWithForm>
   );
 }
@@ -1686,6 +1973,14 @@ function InventoryMovements({ data, onSave, onExport }) {
   const [draft, setDraft] = useState({ sku: "", type: "entrada", quantity: "", date: today(), unitCost: "", reference: "", notes: "" });
   const [confirmSave, setConfirmSave] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState({ period: "month", from: "", to: "", sku: "" });
+  const range = periodRange(filters.period || "month", filters.from, filters.to);
+  const visibleMovements = (data.inventoryMovements || []).filter((movement) => {
+    const q = normalizeText(filters.sku);
+    if (q && !normalizeText(`${movement.sku} ${movement.productNameSnapshot} ${movement.type} ${movement.reference}`).includes(q)) return false;
+    if ((filters.period || "month") !== "all" && !dateInRange(movement.date, range)) return false;
+    return true;
+  });
   const reset = () => setDraft({ sku: "", type: "entrada", quantity: "", date: today(), unitCost: "", reference: "", notes: "" });
   const product = (data.inventory || []).find((item) => item.sku === draft.sku);
 
@@ -1726,6 +2021,12 @@ function InventoryMovements({ data, onSave, onExport }) {
 
   return (
     <ModuleWithForm title="Movimientos de inventario" count={(data.inventoryMovements || []).length} onExport={() => onExport("movimientos")}>
+      <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10 }}>
+        <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(220px,420px)", gap: 10 }}>
+          <Field label="Buscar por SKU, producto, tipo o referencia"><input style={input} value={filters.sku} placeholder="Ej: SKU-001" onChange={(event) => setFilters((current) => ({ ...current, sku: event.target.value }))} /></Field>
+          <PeriodControls filters={filters} setFilters={setFilters} compact />
+        </div>
+      </section>
       <form onSubmit={submit} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
         <Field label="SKU"><select required style={input} value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value }))}><option value="">Seleccionar producto</option>{(data.inventory || []).map((item) => <option key={item.sku} value={item.sku}>{item.sku} - {item.name}</option>)}</select></Field>
         <Field label="Tipo"><select style={input} value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value }))}><option value="entrada">Entrada</option><option value="salida">Salida</option><option value="ajuste_positivo">Ajuste positivo</option><option value="ajuste_negativo">Ajuste negativo</option></select></Field>
@@ -1746,7 +2047,7 @@ function InventoryMovements({ data, onSave, onExport }) {
         onConfirm={confirmMovementSave}
         confirmLabel="Registrar"
       />
-      <RecordList rows={(data.inventoryMovements || []).map((movement) => [movement.id, movement.date, movement.sku, movement.type, movement.quantity, movement.effect, movement.stockAfter, movement.reference || movement.sourceId || ""]) } headers={["ID", "Fecha", "SKU", "Tipo", "Cantidad", "Efecto", "Stock final", "Referencia"]} />
+      <PaginatedRecordList rows={visibleMovements.map((movement) => [movement.id, movement.date, movement.sku, movement.type, movement.quantity, movement.effect, movement.stockAfter, movement.reference || movement.sourceId || ""]) } headers={["ID", "Fecha", "SKU", "Tipo", "Cantidad", "Efecto", "Stock final", "Referencia"]} />
     </ModuleWithForm>
   );
 }
@@ -1759,7 +2060,10 @@ function Orders({ data, onSave, onExport }) {
   const [viewRecord, setViewRecord] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
+  const [searched, setSearched] = useState(false);
   const totals = uiLineTotals(lines);
+  const visibleOrders = searched ? filterRecordsByQuery(data.orders || [], data, filters) : [];
   const reset = () => {
     setDraft({ id: "", customerId: "", date: today(), dueDate: "", status: "borrador", showDiscountOnPdf: true, notes: "" });
     setLines([blankLine()]);
@@ -1878,6 +2182,14 @@ function Orders({ data, onSave, onExport }) {
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Crea cotizaciones tipo factura y conviertelas cuando el cliente apruebe.</p>
         <button type="button" onClick={openNew} style={button}>Nueva orden</button>
       </div>
+      <QueryControls
+        filters={filters}
+        setFilters={setFilters}
+        statusOptions={["borrador", "enviada", "aprobada", "facturada", "anulada"]}
+        onSearch={() => setSearched(true)}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" }); setSearched(false); }}
+        placeholder="Cliente, ID o documento"
+      />
       <PortalModal open={modalOpen} title={draft.id ? "Editar orden / cotizacion" : "Nueva orden / cotizacion"} eyebrow={draft.id || "ORDEN"} onClose={() => { if (!busy) setModalOpen(false); }}>
         <CustomerSearch
           customers={customers}
@@ -1938,7 +2250,7 @@ function Orders({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <RecordList rows={(data.orders || []).map((order) => [
+      <PaginatedRecordList rows={visibleOrders.map((order) => [
         order.id,
         order.customerNameSnapshot,
         order.date,
@@ -1954,7 +2266,7 @@ function Orders({ data, onSave, onExport }) {
           {order.status !== "facturada" && order.status !== "anulada" ? <button type="button" onClick={() => convert(order)} style={{ ...smallButton, background: "linear-gradient(135deg,#15803D,#22C55E)" }}>Convertir</button> : null}
           {order.status !== "anulada" && order.status !== "facturada" ? <button type="button" onClick={() => voidOrder(order)} style={dangerGhostButton}>Anular</button> : null}
         </div>
-      ])} headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} />
+      ])} headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron ordenes con esos filtros." : "Usa los filtros para consultar ordenes sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -1962,10 +2274,10 @@ function Orders({ data, onSave, onExport }) {
 function ModuleWithForm({ title, count, onExport, children }) {
   return (
     <section style={card}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>MODULO</div>
-          <h2 style={{ margin: 0, fontFamily: FH, fontSize: 34, color: "#0B1D3A" }}>{title}</h2>
+          <h2 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(26px,3vw,34px)", color: "#0B1D3A", lineHeight: 1.05 }}>{title}</h2>
           <p style={{ fontFamily: F, color: "#64748B", margin: "6px 0 0" }}>{count} registro(s)</p>
         </div>
         {onExport ? <button type="button" onClick={onExport} style={button}>Descargar Excel</button> : null}
@@ -2004,12 +2316,40 @@ function RecordList({ headers, rows }) {
   );
 }
 
-function Imports({ data, onData }) {
+function PaginatedRecordList({ headers, rows, pageSize = DEFAULT_PAGE_SIZE, emptyMessage = "No hay registros para la consulta." }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil((rows.length || 0) / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const visibleRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows.length, pageSize]);
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {rows.length ? (
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", fontFamily: F, color: "#64748B", fontSize: 13 }}>
+          <span>Mostrando {visibleRows.length} de {rows.length} registro(s).</span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button type="button" disabled={safePage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} style={{ ...ghostButton, opacity: safePage <= 1 ? .5 : 1 }}>Anterior</button>
+            <strong style={{ color: "#0B1D3A" }}>{safePage} / {totalPages}</strong>
+            <button type="button" disabled={safePage >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} style={{ ...ghostButton, opacity: safePage >= totalPages ? .5 : 1 }}>Siguiente</button>
+          </div>
+        </div>
+      ) : <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", color: "#64748B", fontFamily: F }}>{emptyMessage}</div>}
+      {rows.length ? <RecordList headers={headers} rows={visibleRows} /> : null}
+    </div>
+  );
+}
+
+function Imports({ data, onData, onGoHistory }) {
   const [module, setModule] = useState("clientes");
   const [rows, setRows] = useState([]);
   const [result, setResult] = useState(null);
   const [mergeChoices, setMergeChoices] = useState({});
   const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(null);
   const templates = data.templates || {};
   const template = templates[module];
 
@@ -2077,7 +2417,14 @@ function Imports({ data, onData }) {
           return next;
         });
       }
-      if (payload.committed && payload.data) onData(payload.data);
+      if (payload.committed && payload.data) {
+        onData(payload.data);
+        setSuccess({
+          title: "Cargue importado correctamente",
+          body: `${payload.summary?.rows || rows.length} fila(s) procesada(s). El cargue quedo registrado en el historial para consulta o reversion controlada.`,
+          warnings: payload.summary?.warnings || 0
+        });
+      }
     } catch (error) {
       setResult({ ok: false, errors: [{ row: 0, field: "sistema", message: error.message }], warnings: [] });
     } finally {
@@ -2159,7 +2506,109 @@ function Imports({ data, onData }) {
           {(result.warnings || []).slice(0, 6).map((warning, index) => <div key={index} style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", fontFamily: F, color: "#92400E" }}>Fila {warning.row} · {warning.field}: {warning.message}</div>)}
         </div>
       ) : null}
+      <PortalModal open={Boolean(success)} title={success?.title || "Operacion exitosa"} eyebrow="CARGUE COMPLETADO" onClose={() => setSuccess(null)} wide={false}>
+        <div style={{ display: "grid", gap: 14, fontFamily: F }}>
+          <p style={{ margin: 0, color: "#52647F", lineHeight: 1.75 }}>{success?.body}</p>
+          {success?.warnings ? <div style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", color: "#92400E", fontWeight: 800 }}>{success.warnings} advertencia(s) quedaron documentadas.</div> : null}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => { setRows([]); setResult(null); setMergeChoices({}); setSuccess(null); }} style={ghostButton}>Cargar otro</button>
+            <button type="button" onClick={() => { setSuccess(null); onGoHistory?.(); }} style={button}>Ver historial</button>
+            <button type="button" onClick={() => setSuccess(null)} style={ghostButton}>Cerrar</button>
+          </div>
+        </div>
+      </PortalModal>
     </section>
+  );
+}
+
+function ImportHistory({ data, onSave, onExport }) {
+  const [selected, setSelected] = useState(null);
+  const [confirmRevert, setConfirmRevert] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const imports = data.imports || [];
+  const moduleLabels = Object.fromEntries(Object.entries(data.templates || {}).map(([key, value]) => [key, value.label]));
+
+  async function revert() {
+    if (!confirmRevert) return;
+    setBusy(true);
+    try {
+      await onSave("revertImport", { importId: confirmRevert.id });
+      setConfirmRevert(null);
+      setSelected(null);
+    } catch (err) {
+      // El mensaje visible lo establece save() en el componente principal.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function affectedCount(importRecord = {}) {
+    return Object.values(importRecord.affected || {}).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0);
+  }
+
+  return (
+    <ModuleWithForm title="Historial de cargues" count={imports.length} onExport={() => onExport("cargues_historial")}>
+      <p style={{ margin: 0, color: "#64748B", fontFamily: F, lineHeight: 1.75 }}>
+        Consulta los archivos planos importados y reversa cargues recientes si fueron duplicados o quedaron mal. La reversion no borra registros: anula documentos y conserva trazabilidad.
+      </p>
+      <PaginatedRecordList
+        headers={["ID", "Modulo", "Filas", "Estado", "Afectados", "Fecha", "Acciones"]}
+        rows={imports.map((item) => [
+          item.id,
+          moduleLabels[item.module] || item.module,
+          item.rows || 0,
+          item.status === "revertido" ? "Revertido" : "Activo",
+          affectedCount(item),
+          item.importedAt ? new Date(item.importedAt).toLocaleString("es-CO") : "",
+          <div className="client-action-group">
+            <button type="button" onClick={() => setSelected(item)} style={ghostButton}>Ver</button>
+            {item.status !== "revertido" && affectedCount(item) ? <button type="button" onClick={() => setConfirmRevert(item)} style={dangerGhostButton}>Reversar</button> : null}
+          </div>
+        ])}
+        emptyMessage="Aun no hay cargues importados."
+      />
+      <PortalModal open={Boolean(selected)} title={selected?.id || ""} eyebrow="DETALLE DEL CARGUE" onClose={() => setSelected(null)} wide={false}>
+        {selected ? (
+          <div style={{ display: "grid", gap: 12, fontFamily: F }}>
+            <RecordList
+              headers={["Campo", "Valor"]}
+              rows={[
+                ["Modulo", moduleLabels[selected.module] || selected.module],
+                ["Estado", selected.status === "revertido" ? "Revertido" : "Activo"],
+                ["Filas", selected.rows || 0],
+                ["Advertencias", selected.warningsCount || 0],
+                ["Importado por", selected.importedBy || ""],
+                ["Fecha", selected.importedAt ? new Date(selected.importedAt).toLocaleString("es-CO") : ""],
+                ["Revertido por", selected.revertedBy || "-"],
+                ["Fecha reversion", selected.revertedAt ? new Date(selected.revertedAt).toLocaleString("es-CO") : "-"]
+              ]}
+            />
+            <RecordList
+              headers={["Tipo", "Registros"]}
+              rows={Object.entries(selected.affected || {}).map(([key, values]) => [key, Array.isArray(values) && values.length ? values.join(", ") : "-"])}
+            />
+            {selected.status !== "revertido" && affectedCount(selected) ? (
+              <button type="button" onClick={() => setConfirmRevert(selected)} style={dangerGhostButton}>Reversar cargue</button>
+            ) : null}
+          </div>
+        ) : null}
+      </PortalModal>
+      <ConfirmModal
+        open={Boolean(confirmRevert)}
+        title="Reversar cargue"
+        body="Esta accion anulara documentos creados por el cargue y registrara reversos de inventario cuando aplique. No elimina historia ni clientes."
+        details={[
+          { label: "Cargue", value: confirmRevert?.id || "" },
+          { label: "Modulo", value: moduleLabels[confirmRevert?.module] || confirmRevert?.module || "" },
+          { label: "Registros afectados", value: affectedCount(confirmRevert || {}) }
+        ]}
+        busy={busy}
+        danger
+        onCancel={() => setConfirmRevert(null)}
+        onConfirm={revert}
+        confirmLabel="Reversar"
+      />
+    </ModuleWithForm>
   );
 }
 
@@ -2209,6 +2658,7 @@ export default function ClientPortal() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [operationSuccess, setOperationSuccess] = useState(null);
 
   async function loadData() {
     setLoading(true);
@@ -2255,7 +2705,25 @@ export default function ClientPortal() {
         throw saveError;
       }
       setData(result.data);
+      const labels = {
+        company: "Configuracion guardada",
+        customer: "Cliente guardado",
+        mergeCustomers: "Clientes unificados",
+        invoice: "Factura guardada",
+        order: "Orden guardada",
+        invoiceFromOrder: "Orden convertida en factura",
+        payment: "Abono guardado",
+        inventory: "Inventario guardado",
+        inventoryMovement: "Movimiento registrado",
+        revertImport: "Cargue reversado"
+      };
       setNotice("Informacion guardada correctamente.");
+      setOperationSuccess({
+        title: labels[type] || "Operacion completada",
+        body: type === "revertImport"
+          ? "El cargue fue reversado con trazabilidad. Revisa el historial y los reportes antes de continuar."
+          : "La informacion quedo actualizada en el portal."
+      });
       return result;
     } catch (err) {
       const message = err.message || "No fue posible guardar.";
@@ -2326,7 +2794,7 @@ export default function ClientPortal() {
         .client-record-cards{display:none}
         .client-action-group{display:flex;gap:8px;flex-wrap:wrap}
         @media(max-width:980px){
-          .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals{grid-template-columns:1fr!important}
+          .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls{grid-template-columns:1fr!important}
           .client-portal-row{grid-template-columns:1fr!important}
           .client-aging-row{grid-template-columns:1fr!important}
           .client-aging-row span,.client-aging-row strong{text-align:left!important}
@@ -2343,12 +2811,12 @@ export default function ClientPortal() {
           .client-action-group button{width:100%}
         }
       `}</style>
-      <div className="client-portal-shell" style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 18 }}>
-        <header className="client-portal-header" style={{ ...card, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 18, alignItems: "center" }}>
+      <div className="client-portal-shell" style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 14 }}>
+        <header className="client-portal-header" style={{ ...card, padding: 16, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 16, alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PORTAL PARA CLIENTES</div>
-            <h1 style={{ margin: "4px 0 6px", fontFamily: FH, fontSize: "clamp(34px,5vw,58px)", color: "#0B1D3A", lineHeight: 1.02 }}>{data?.company?.name || session.companyName}</h1>
-            <p style={{ margin: 0, fontFamily: F, color: "#52647F" }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
+            <h1 style={{ margin: "2px 0 4px", fontFamily: FH, fontSize: "clamp(28px,4vw,44px)", color: "#0B1D3A", lineHeight: 1.02, overflowWrap: "anywhere" }}>{data?.company?.name || session.companyName}</h1>
+            <p style={{ margin: 0, fontFamily: F, color: "#52647F", fontSize: 14 }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
           </div>
           <div className="client-portal-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
             <select style={{ ...input, minWidth: 220 }} value={activeModule} onChange={(event) => setActiveModule(event.target.value)}>
@@ -2380,8 +2848,18 @@ export default function ClientPortal() {
         {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "cargues" ? <Imports data={data} onData={setData} /> : null}
+        {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
+        {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
+        <PortalModal open={Boolean(operationSuccess)} title={operationSuccess?.title || "Operacion completada"} eyebrow="LISTO" onClose={() => setOperationSuccess(null)} wide={false}>
+          <div style={{ display: "grid", gap: 14, fontFamily: F }}>
+            <p style={{ margin: 0, color: "#52647F", lineHeight: 1.75 }}>{operationSuccess?.body}</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => { setOperationSuccess(null); loadData(); }} style={button}>Actualizar vista</button>
+              <button type="button" onClick={() => setOperationSuccess(null)} style={ghostButton}>Cerrar</button>
+            </div>
+          </div>
+        </PortalModal>
       </div>
     </main>
   );
