@@ -393,7 +393,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       phone: cleanText(payload.phone),
       email: cleanText(payload.email).toLowerCase(),
       address: cleanText(payload.address),
-      logoDataUrl: String(payload.logoDataUrl || data.company.logoDataUrl || ""),
+      logoDataUrl: Object.prototype.hasOwnProperty.call(payload, "logoDataUrl") ? String(payload.logoDataUrl || "") : String(data.company.logoDataUrl || ""),
       color: cleanText(payload.color) || data.company.color
     };
   } else if (type === "customer") {
@@ -429,11 +429,11 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     const existing = existingIndex >= 0 ? data.invoices[existingIndex] : {};
     const customer = findCustomer(data, payload.customerId);
     if (!customer) throw new Error("Selecciona un cliente valido para la factura.");
-      const lines = (Array.isArray(payload.lines) ? payload.lines : []).map((line) => normalizeLine(line, data.inventory));
-      const totalOverride = parseCurrency(payload.total);
-      const totals = calculateInvoiceTotals(lines, totalOverride);
-      if (lines.length && existingIndex < 0) applyInventorySale(data, lines, actor, id);
-      const invoice = {
+    const lines = (Array.isArray(payload.lines) ? payload.lines : []).map((line) => normalizeLine(line, data.inventory));
+    const totalOverride = parseCurrency(payload.total);
+    const totals = calculateInvoiceTotals(lines, totalOverride);
+    if (lines.length && existingIndex < 0) applyInventorySale(data, lines, actor, id);
+    const invoice = {
       ...existing,
       id,
       customerId: customer.id,
@@ -459,6 +459,92 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.invoices = existingIndex >= 0
       ? data.invoices.map((item, index) => index === existingIndex ? invoice : item)
       : [...data.invoices, invoice];
+  } else if (type === "order") {
+    const id = normalizeRecordId(payload.id, "ORD");
+    const existingIndex = data.orders.findIndex((order) => order.id === id);
+    const existing = existingIndex >= 0 ? data.orders[existingIndex] : {};
+    const customer = findCustomer(data, payload.customerId);
+    if (!customer) throw new Error("Selecciona un cliente valido para la orden.");
+    const lines = (Array.isArray(payload.lines) ? payload.lines : []).map((line) => normalizeLine(line, data.inventory));
+    const totals = calculateInvoiceTotals(lines, 0);
+    const order = {
+      ...existing,
+      id,
+      customerId: customer.id,
+      customerNameSnapshot: customer.name,
+      date: normalizeDate(payload.date) || new Date().toISOString().slice(0, 10),
+      dueDate: normalizeDate(payload.dueDate),
+      status: cleanText(payload.status) || "borrador",
+      source: "manual_detallada",
+      notes: cleanText(payload.notes),
+      showDiscountOnPdf: payload.showDiscountOnPdf !== false,
+      showDiscountsOnPdf: payload.showDiscountOnPdf !== false,
+      lines,
+      subtotal: totals.subtotal,
+      discountTotal: totals.discount,
+      taxTotal: totals.tax,
+      total: totals.total,
+      totalLabel: formatMoney(totals.total),
+      createdAt: existing.createdAt || now,
+      createdBy: existing.createdBy || actor,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(existing.auditTrail || []), createAudit(existingIndex >= 0 ? "order_updated" : "order_created", actor)]
+    };
+    if (!lines.length || order.total <= 0) throw new Error("Agrega al menos una linea valida a la orden.");
+    data.orders = existingIndex >= 0
+      ? data.orders.map((item, index) => index === existingIndex ? order : item)
+      : [...data.orders, order];
+  } else if (type === "invoiceFromOrder") {
+    const orderId = normalizeRecordId(payload.orderId, "ORD");
+    const orderIndex = data.orders.findIndex((order) => order.id === orderId);
+    if (orderIndex < 0) throw new Error("No se encontro la orden indicada.");
+    const order = data.orders[orderIndex];
+    if (order.status === "facturada" && order.convertedInvoiceId) {
+      throw new Error(`La orden ya fue convertida en la factura ${order.convertedInvoiceId}.`);
+    }
+    const customer = findCustomer(data, order.customerId);
+    if (!customer) throw new Error("La orden no tiene un cliente valido asociado.");
+    const id = normalizeRecordId(payload.invoiceId || payload.id, "FAC");
+    if (data.invoices.some((invoice) => invoice.id === id)) throw new Error(`Ya existe una factura con el ID ${id}.`);
+    const lines = (order.lines || []).map((line) => normalizeLine(line, data.inventory));
+    const totals = calculateInvoiceTotals(lines, 0);
+    if (!lines.length || totals.total <= 0) throw new Error("La orden no tiene lineas validas para facturar.");
+    applyInventorySale(data, lines, actor, id);
+    data.invoices = [
+      ...data.invoices,
+      {
+        id,
+        customerId: customer.id,
+        customerNameSnapshot: customer.name,
+        date: normalizeDate(payload.date) || new Date().toISOString().slice(0, 10),
+        dueDate: normalizeDate(order.dueDate),
+        status: "emitida",
+        source: "orden_convertida",
+        orderId: order.id,
+        notes: cleanText(payload.notes) || `Factura generada desde la orden ${order.id}.`,
+        lines,
+        subtotal: totals.subtotal,
+        discountTotal: totals.discount,
+        taxTotal: totals.tax,
+        total: totals.total,
+        totalLabel: formatMoney(totals.total),
+        createdAt: now,
+        createdBy: actor,
+        updatedAt: now,
+        updatedBy: actor,
+        auditTrail: [createAudit("invoice_created_from_order", actor, { orderId: order.id })]
+      }
+    ];
+    data.orders[orderIndex] = {
+      ...order,
+      status: "facturada",
+      convertedInvoiceId: id,
+      convertedAt: now,
+      updatedAt: now,
+      updatedBy: actor,
+      auditTrail: [...(order.auditTrail || []), createAudit("order_converted_to_invoice", actor, { invoiceId: id })]
+    };
   } else if (type === "payment") {
     const id = normalizeRecordId(payload.id, "ABO");
     const existingIndex = data.payments.findIndex((payment) => payment.id === id);
@@ -524,6 +610,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.inventory = existingIndex >= 0
       ? data.inventory.map((current, index) => index === existingIndex ? item : current)
       : [...data.inventory, item];
+  } else {
+    throw new Error(`Tipo de operacion no soportado: ${cleanText(type) || "sin tipo"}.`);
   }
 
   return saveCompanyData(companyId, data, actor);
@@ -573,7 +661,11 @@ export function validateImportRows(data, module, rows = []) {
     if (!headers.has(header)) addImportError(errors, 1, header, "", `Falta la columna obligatoria ${header}.`, "Descarga la plantilla oficial y conserva los encabezados.");
   });
 
-  const seen = new Set();
+  const seenCustomers = new Set();
+  const seenInventory = new Set();
+  const seenHistoricalInvoices = new Set();
+  const seenPayments = new Set();
+  const detailedDocuments = new Map();
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     if (normalizedModule === "clientes") {
@@ -582,14 +674,37 @@ export function validateImportRows(data, module, rows = []) {
       if (!id) addImportError(errors, rowNumber, "id_cliente", row.id_cliente, "Falta el ID del cliente.", "Usa el consecutivo indicado por el sistema o deja que se genere manualmente.");
       if (!name) addImportError(errors, rowNumber, "nombre_cliente", row.nombre_cliente, "Falta el nombre del cliente.", "Diligencia el nombre del cliente.");
       if (id && findCustomer(data, id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} ya existe y no puede usarse para crear otro cliente.`, "Usa el siguiente consecutivo disponible o actualiza el cliente existente desde el formulario.");
-      if (id && seen.has(id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} esta repetido dentro del archivo.`, "Cada cliente nuevo debe tener un ID unico.");
-      if (id) seen.add(id);
+      if (id && seenCustomers.has(id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} esta repetido dentro del archivo.`, "Cada cliente nuevo debe tener un ID unico.");
+      if (id) seenCustomers.add(id);
     }
 
     if (normalizedModule === "facturas_historicas" || normalizedModule === "facturas_detalladas" || normalizedModule === "ordenes_detalladas") {
       validateCustomerMatch(data, row, rowNumber, errors, warnings);
       const recordId = cleanText(row.id_factura || row.id_orden);
       if (!recordId) addImportError(errors, rowNumber, normalizedModule === "ordenes_detalladas" ? "id_orden" : "id_factura", recordId, "Falta el identificador del documento.", "Diligencia un ID de factura u orden.");
+      const prefix = normalizedModule === "ordenes_detalladas" ? "ORD" : "FAC";
+      const normalizedRecordId = recordId ? normalizeRecordId(recordId, prefix) : "";
+      const target = normalizedModule === "ordenes_detalladas" ? data.orders : data.invoices;
+      if (normalizedRecordId && target.some((item) => item.id === normalizedRecordId)) {
+        addImportError(errors, rowNumber, normalizedModule === "ordenes_detalladas" ? "id_orden" : "id_factura", normalizedRecordId, `Ya existe un documento con el ID ${normalizedRecordId}.`, "Usa un ID nuevo o edita el documento existente desde el modulo correspondiente.");
+      }
+      if (normalizedModule === "facturas_historicas" && normalizedRecordId) {
+        if (seenHistoricalInvoices.has(normalizedRecordId)) addImportError(errors, rowNumber, "id_factura", normalizedRecordId, `La factura ${normalizedRecordId} esta repetida dentro del archivo.`, "Cada factura historica resumida debe tener una sola fila.");
+        seenHistoricalInvoices.add(normalizedRecordId);
+      }
+      if ((normalizedModule === "facturas_detalladas" || normalizedModule === "ordenes_detalladas") && normalizedRecordId) {
+        const signature = [
+          normalizeCustomerId(row.id_cliente),
+          cleanText(row.nombre_cliente),
+          normalizeDate(row.fecha),
+          normalizeDate(row.fecha_vencimiento)
+        ].join("|");
+        const previous = detailedDocuments.get(`${normalizedModule}:${normalizedRecordId}`);
+        if (previous && previous !== signature) {
+          addImportError(errors, rowNumber, normalizedModule === "ordenes_detalladas" ? "id_orden" : "id_factura", normalizedRecordId, `El documento ${normalizedRecordId} tiene datos generales inconsistentes entre lineas.`, "Todas las lineas del mismo documento deben conservar cliente, nombre y fechas.");
+        }
+        if (!previous) detailedDocuments.set(`${normalizedModule}:${normalizedRecordId}`, signature);
+      }
       const total = normalizedModule === "facturas_historicas" ? parseCurrency(row.valor_total) : parseCurrency(row.precio_unitario) * (Number(row.cantidad || 0) || 0);
       if (total <= 0) addImportError(errors, rowNumber, normalizedModule === "facturas_historicas" ? "valor_total" : "precio_unitario", row.valor_total || row.precio_unitario, "El valor del documento debe ser mayor a cero.", "Revisa que el valor sea numerico.");
       if (!normalizeDate(row.fecha)) addImportError(errors, rowNumber, "fecha", row.fecha, "Fecha invalida.", "Usa formato AAAA-MM-DD.");
@@ -597,12 +712,21 @@ export function validateImportRows(data, module, rows = []) {
 
     if (normalizedModule === "abonos") {
       validateCustomerMatch(data, row, rowNumber, errors, warnings);
+      const paymentId = cleanText(row.id_abono);
+      const normalizedPaymentId = paymentId ? normalizeRecordId(paymentId, "ABO") : "";
+      if (!paymentId) addImportError(errors, rowNumber, "id_abono", row.id_abono, "Falta el ID del abono.", "Diligencia un ID unico para el abono.");
+      if (normalizedPaymentId && data.payments.some((payment) => payment.id === normalizedPaymentId)) {
+        addImportError(errors, rowNumber, "id_abono", normalizedPaymentId, `Ya existe un abono con el ID ${normalizedPaymentId}.`, "Usa un ID nuevo o edita el abono existente desde el modulo de abonos.");
+      }
+      if (normalizedPaymentId && seenPayments.has(normalizedPaymentId)) addImportError(errors, rowNumber, "id_abono", normalizedPaymentId, `El abono ${normalizedPaymentId} esta repetido dentro del archivo.`, "Cada abono debe tener un ID unico.");
+      if (normalizedPaymentId) seenPayments.add(normalizedPaymentId);
       const amount = parseCurrency(row.valor_bruto);
       if (amount <= 0) addImportError(errors, rowNumber, "valor_bruto", row.valor_bruto, "El valor bruto del abono debe ser mayor a cero.", "Revisa que el valor sea numerico.");
       if (!normalizeDate(row.fecha)) addImportError(errors, rowNumber, "fecha", row.fecha, "Fecha invalida.", "Usa formato AAAA-MM-DD.");
       const invoiceId = cleanText(row.id_factura);
-      if (invoiceId && !data.invoices.some((invoice) => invoice.id === invoiceId)) {
-        addImportWarning(warnings, rowNumber, "id_factura", invoiceId, "La factura indicada aun no existe. El abono se cargara al cliente, pero quedara pendiente de conciliacion con factura.");
+      const normalizedInvoiceId = invoiceId ? normalizeRecordId(invoiceId, "FAC") : "";
+      if (normalizedInvoiceId && !data.invoices.some((invoice) => invoice.id === normalizedInvoiceId)) {
+        addImportWarning(warnings, rowNumber, "id_factura", normalizedInvoiceId, "La factura indicada aun no existe. El abono se cargara al cliente, pero quedara pendiente de conciliacion con factura.");
       }
     }
 
@@ -612,8 +736,8 @@ export function validateImportRows(data, module, rows = []) {
       if (!sku) addImportError(errors, rowNumber, "sku", row.sku, "Falta el SKU o codigo del producto.", "Diligencia un SKU unico.");
       if (!name) addImportError(errors, rowNumber, "nombre_producto", row.nombre_producto, "Falta el nombre del producto.", "Diligencia el nombre.");
       if (sku && data.inventory.some((item) => item.sku === sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} ya existe.`, "Modifica el producto desde inventario o usa un SKU nuevo.");
-      if (sku && seen.has(sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} esta repetido dentro del archivo.`, "Cada producto debe tener un SKU unico.");
-      if (sku) seen.add(sku);
+      if (sku && seenInventory.has(sku)) addImportError(errors, rowNumber, "sku", sku, `El SKU ${sku} esta repetido dentro del archivo.`, "Cada producto debe tener un SKU unico.");
+      if (sku) seenInventory.add(sku);
     }
   });
 
