@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import AdminPanel from "./AdminPanel";
+import ClientPortal from "./ClientPortal";
 import CertificateVerificationPage from "./CertificateVerificationPage";
 
 const WA="573001432008",WL=`https://wa.me/${WA}`,EM="info@contarae.com",F="'Outfit',sans-serif",FH="'Libre Baskerville',serif";
@@ -61,6 +62,8 @@ const PAYMENT_ROUTE="/pago-solicitud";
 const PAYMENT_ROUTE_ALIASES=new Set([PAYMENT_ROUTE,"/pagar-solicitud"]);
 const PAYMENTS_PORTAL_ROUTE="/portal-pagos";
 const PAYMENTS_PORTAL_ROUTE_ALIASES=new Set([PAYMENTS_PORTAL_ROUTE,"/pagos","/portal-de-pagos"]);
+const CLIENT_PORTAL_ROUTE="/portal-clientes";
+const CLIENT_PORTAL_ROUTE_ALIASES=new Set([CLIENT_PORTAL_ROUTE,"/sistema-clientes","/clientes-portal"]);
 const OPEN_CERT_FORM_EVENT="contarae:open-certification-form";
 const SITE_URL="https://contarae.com";
 const CERTIFICATION_SUPPORT_ROUTES=[
@@ -581,6 +584,7 @@ const isAdminPath=p=>ADMIN_ROUTE_ALIASES.has(normPath(p));
 const isVerifyPath=p=>VERIFY_ROUTE_ALIASES.has(normPath(p));
 const isPaymentPath=p=>PAYMENT_ROUTE_ALIASES.has(normPath(p));
 const isPaymentsPortalPath=p=>PAYMENTS_PORTAL_ROUTE_ALIASES.has(normPath(p));
+const isClientPortalPath=p=>CLIENT_PORTAL_ROUTE_ALIASES.has(normPath(p));
 const getToolRouteConfig=p=>TOOL_ROUTE_BY_PATH.get(normPath(p))||null;
 const getCertificationSupportRouteConfig=p=>CERTIFICATION_SUPPORT_ROUTE_BY_PATH.get(normPath(p))||null;
 const getServiceSeoRouteConfig=p=>SERVICE_SEO_ROUTE_BY_PATH.get(normPath(p))||null;
@@ -644,11 +648,12 @@ const syncAlternateSeoLinks=canonical=>{
   upsertAlternateLink("es-CO",canonical);
   upsertAlternateLink("x-default",canonical);
 };
-const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig})=>{
+const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig})=>{
   if(adminRoute)return{title:"Panel interno | CONTARAE",description:"Panel interno de revisión de CONTARAE.",canonical:canonicalUrlForPath("/admin"),noindex:true};
   if(verifyRoute)return{title:"Validación de certificados | CONTARAE",description:"Verifique la validez de un certificado emitido por CONTARAE mediante referencia, código o QR.",canonical:canonicalUrlForPath(VERIFY_ROUTE),noindex:true};
   if(paymentRoute)return{title:"Pago de solicitud | CONTARAE",description:"Portal de pago seguro para solicitudes de servicios CONTARAE.",canonical:canonicalUrlForPath(PAYMENT_ROUTE),noindex:true};
   if(paymentsPortalRoute)return{title:"Portal de pagos | CONTARAE",description:"Consulte y pague saldos pendientes de solicitudes CONTARAE con su número de documento.",canonical:canonicalUrlForPath(PAYMENTS_PORTAL_ROUTE),noindex:true};
+  if(clientPortalRoute)return{title:"Portal para clientes | CONTARAE",description:"Sistema privado para clientes CONTARAE con control de cartera, facturas, abonos, inventario, órdenes y cargues masivos.",canonical:canonicalUrlForPath(CLIENT_PORTAL_ROUTE),noindex:true};
   if(toolRoute)return{title:toolConfig.metaTitle,description:toolConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
   if(certSupportConfig)return{title:certSupportConfig.metaTitle,description:certSupportConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
   if(serviceSeoConfig)return{title:serviceSeoConfig.metaTitle,description:serviceSeoConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
@@ -788,6 +793,7 @@ function Nav({path}){
     {l:"Herramientas",id:"herramientas",sub:[{l:"Introducción herramientas",id:"herramientas"},{l:"¿Debo declarar renta?",id:"tool-renta"},{l:"Retención en la fuente",id:"tool-retencion"},{l:"Planilla independientes",id:"tool-planilla"},{l:"Liquidador de nómina",id:"tool-nomina"},{l:"Liquidador de IVA",id:"tool-iva"},{l:"Precio antes de IVA",id:"tool-precio"},{l:"Calendario tributario",id:"calendario"}]},
     {l:"Recursos",id:"blog",sub:[{l:"Blog",id:"blog"},{l:"Descargas",id:"descargas"},{l:"Preguntas frecuentes",id:"faq"},{l:"Alertas tributarias",id:"alertas"}]},
     {l:"Nosotros",id:"whyus",sub:[{l:"¿Por qué elegirnos?",id:"whyus"},{l:"Sobre CONTARAE",id:"nosotros"}]},
+    {l:"Portal clientes",id:"portal-clientes",href:CLIENT_PORTAL_ROUTE},
     {l:"Portal de pagos",id:"portal-pagos",href:PAYMENTS_PORTAL_ROUTE},
     {l:"Contacto",id:"contacto",sub:[{l:"Contacto",id:"contacto"}]}
   ];
@@ -2930,6 +2936,7 @@ export default function App(){
   const verifyRoute=isVerifyPath(path);
   const paymentRoute=isPaymentPath(path);
   const paymentsPortalRoute=isPaymentsPortalPath(path);
+  const clientPortalRoute=isClientPortalPath(path);
   const toolConfig=getToolRouteConfig(path);
   const toolRoute=!!toolConfig;
   const certSupportConfig=getCertificationSupportRouteConfig(path);
@@ -2938,17 +2945,17 @@ export default function App(){
   const serviceSeoRoute=!!serviceSeoConfig;
 
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
-  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
-  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
-  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
+  useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
   useEffect(()=>{
-    const meta=getClientSeoMeta({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig});
+    const meta=getClientSeoMeta({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig});
     syncSeoTags(meta,path,toolConfig,certSupportConfig,serviceSeoConfig);
-  },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,serviceSeoRoute,serviceSeoConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute]);
+  },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,serviceSeoRoute,serviceSeoConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}.lead-form-grid,.renta-lead-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:calc(14px + env(safe-area-inset-bottom,0px))!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:calc(66px + env(safe-area-inset-bottom,0px))!important;font-size:14px!important;opacity:.78!important;}}`}</style>
-    {adminRoute?<AdminPanel/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
+    {adminRoute?<AdminPanel/>:clientPortalRoute?<ClientPortal/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <ServicePaymentPage/>
     </>:<>

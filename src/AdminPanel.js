@@ -40,6 +40,12 @@ const ADMIN_MODULES = [
     description: "Consulta clientes reales sin duplicados por documento, servicios asociados, pagos y cartera."
   },
   {
+    id: "usuariosPortal",
+    label: "Usuarios portal",
+    title: "Usuarios del portal",
+    description: "Crea accesos para clientes, administra claves temporales y realiza soporte con acceso asistido auditado."
+  },
+  {
     id: "potenciales",
     label: "Clientes potenciales",
     title: "Clientes potenciales",
@@ -273,6 +279,12 @@ function formatProperName(value = "") {
         .join("-");
     })
     .join(" ");
+}
+
+function generateTemporaryPassword() {
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const numberPart = String(Math.floor(1000 + Math.random() * 9000));
+  return `Contarae-${randomPart}${numberPart}*`;
 }
 
 function buildClientIdentityKey(values = {}) {
@@ -2654,6 +2666,254 @@ function ClientsModule({
   );
 }
 
+function PortalUsersModule({
+  users = [],
+  clients = [],
+  loading,
+  error,
+  onSave,
+  onExport,
+  onResetPassword,
+  onRevealPassword,
+  onImpersonate,
+  onCopyTemporaryPassword
+}) {
+  const [draft, setDraft] = useState({
+    id: "",
+    username: "",
+    email: "",
+    companyId: "",
+    companyName: "",
+    temporaryPassword: "",
+    status: "active"
+  });
+
+  const activeUsers = users.filter((user) => user.status !== "suspended").length;
+  const temporaryUsers = users.filter((user) => user.mustChangePassword).length;
+  const suspendedUsers = users.filter((user) => user.status === "suspended").length;
+
+  const resetDraft = () => setDraft({
+    id: "",
+    username: "",
+    email: "",
+    companyId: "",
+    companyName: "",
+    temporaryPassword: "",
+    status: "active"
+  });
+
+  const editUser = (user) => {
+    setDraft({
+      id: user.id || "",
+      username: user.username || "",
+      email: user.email || "",
+      companyId: user.companyId || "",
+      companyName: user.companyName || "",
+      temporaryPassword: "",
+      status: user.status || "active"
+    });
+  };
+
+  const useClient = (client) => {
+    const cleanName = formatProperName(client.name || "");
+    const documentKey = normalizeDocumentIdentity(client.documentNumber);
+    setDraft((current) => ({
+      ...current,
+      username: current.username || (client.email || documentKey || cleanName).toLowerCase().replace(/[^a-z0-9._-]/g, ""),
+      email: current.email || client.email || "",
+      companyId: current.companyId || `cliente-${documentKey || String(client.key || "").replace(/[^a-z0-9]/gi, "").toLowerCase()}`,
+      companyName: current.companyName || cleanName || "Cliente CONTARAE"
+    }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const created = await onSave({
+      ...draft,
+      companyName: formatProperName(draft.companyName)
+    });
+    if (created) resetDraft();
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+        <StatCard label="USUARIOS PORTAL" value={users.length} note="Accesos creados para clientes." tone="#1D4ED8" />
+        <StatCard label="ACTIVOS" value={activeUsers} note="Pueden iniciar sesión." tone="#15803D" />
+        <StatCard label="CLAVE TEMPORAL" value={temporaryUsers} note="Pendientes de cambio por el cliente." tone="#B45309" />
+        <StatCard label="SUSPENDIDOS" value={suspendedUsers} note="Accesos bloqueados." tone="#C2410C" />
+      </div>
+
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>ACCESOS AL PORTAL PARA CLIENTES</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>{draft.id ? "Editar usuario" : "Crear usuario"}</h2>
+          </div>
+          <button type="button" onClick={onExport} disabled={!users.length} style={{ padding: "10px 13px", borderRadius: 13, border: "none", background: users.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: users.length ? "pointer" : "not-allowed" }}>
+            Descargar Excel
+          </button>
+        </div>
+
+        {error ? <div style={{ padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, marginBottom: 14 }}>{error}</div> : null}
+
+        <form onSubmit={submit} className="admin-request-filter-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+          <input style={inputStyle} placeholder="Usuario de acceso" value={draft.username} onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value.toLowerCase() }))} required />
+          <input style={inputStyle} type="email" placeholder="Correo del cliente" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value.toLowerCase() }))} />
+          <select style={inputStyle} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}>
+            <option value="active">Activo</option>
+            <option value="suspended">Suspendido</option>
+          </select>
+          <input style={inputStyle} placeholder="ID interno empresa, ej: cliente-001" value={draft.companyId} onChange={(event) => setDraft((current) => ({ ...current, companyId: event.target.value.toLowerCase() }))} required />
+          <input style={inputStyle} placeholder="Nombre empresa / cliente" value={draft.companyName} onChange={(event) => setDraft((current) => ({ ...current, companyName: event.target.value }))} required />
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
+            <input style={inputStyle} placeholder={draft.id ? "Nueva clave temporal opcional" : "Clave temporal"} value={draft.temporaryPassword} onChange={(event) => setDraft((current) => ({ ...current, temporaryPassword: event.target.value }))} required={!draft.id} />
+            <button type="button" onClick={() => setDraft((current) => ({ ...current, temporaryPassword: generateTemporaryPassword() }))} style={{ padding: "10px 12px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Generar
+            </button>
+          </div>
+          <div style={{ gridColumn: "1/-1", display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "space-between" }}>
+            <select style={{ ...inputStyle, maxWidth: 460 }} defaultValue="" onChange={(event) => {
+              const client = clients.find((item) => item.key === event.target.value);
+              if (client) useClient(client);
+              event.target.value = "";
+            }}>
+              <option value="">Autocompletar desde cliente existente</option>
+              {clients.map((client) => (
+                <option key={client.key} value={client.key}>{formatProperName(client.name)} · {client.documentNumber || "sin documento"}</option>
+              ))}
+            </select>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {draft.id ? <button type="button" onClick={resetDraft} style={{ padding: "10px 13px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>Nuevo</button> : null}
+              <button type="submit" style={{ padding: "10px 13px", borderRadius: 13, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                {draft.id ? "Guardar cambios" : "Crear usuario"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 12 }}>USUARIOS CREADOS</div>
+        {loading ? <div style={{ fontFamily: F, color: "#64748B" }}>Cargando usuarios del portal...</div> : null}
+        <div style={{ display: "grid", gap: 10 }}>
+          {users.map((user) => {
+            const active = user.status !== "suspended";
+            return (
+              <div key={user.id} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) repeat(3,minmax(120px,.35fr)) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+                <div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}>
+                    <div style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#0F172A" }}>{formatProperName(user.companyName) || user.companyId}</div>
+                    <Badge meta={active ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#C2410C", bg: "rgba(220,38,38,.10)" }}>{active ? "Activo" : "Suspendido"}</Badge>
+                    {user.mustChangePassword ? <Badge meta={{ tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>Clave temporal</Badge> : null}
+                  </div>
+                  <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6 }}>
+                    {user.username} · {user.email || "sin correo"} · {user.companyId}
+                  </div>
+                  {user.mustChangePassword ? (
+                    <div style={{ marginTop: 8, fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+                      Hay una clave temporal vigente. Para verla, usa la consulta protegida con contraseña de funcionario.
+                    </div>
+                  ) : null}
+                </div>
+                <InfoTile label="Último ingreso" value={formatDate(user.lastLoginAt) || "Sin ingreso"} />
+                <InfoTile label="Último soporte" value={formatDate(user.lastImpersonatedAt) || "Sin soporte"} />
+                <InfoTile label="Cambio clave" value={formatDate(user.lastPasswordChangeAt) || "Pendiente"} />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button type="button" onClick={() => editUser(user)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Editar
+                  </button>
+                  <button type="button" onClick={() => onResetPassword(user)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(245,158,11,.24)", background: "#fff", color: "#B45309", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Restablecer
+                  </button>
+                  <button type="button" onClick={() => onRevealPassword(user)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                    Ver clave
+                  </button>
+                  <button type="button" onClick={() => onImpersonate(user)} disabled={!active} style={{ padding: "9px 12px", borderRadius: 12, border: "none", background: active ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: active ? "pointer" : "not-allowed" }}>
+                    Ingresar como cliente
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {!users.length && !loading ? (
+            <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+              Aún no hay usuarios del portal. Crea el primero con una clave temporal.
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PortalUserActionDialog({
+  dialog,
+  draft,
+  busy,
+  error,
+  onChange,
+  onCancel,
+  onConfirm,
+  onCopy
+}) {
+  if (!dialog || typeof document === "undefined") return null;
+  const isReset = dialog.type === "reset";
+  const isReveal = dialog.type === "reveal";
+  const user = dialog.user || {};
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.68)", zIndex: 16000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !busy && onCancel()}>
+      <div className="admin-modal-card" style={{ width: "min(560px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ fontSize: 12, letterSpacing: "1.8px", color: isReset ? "#B45309" : "#1D4ED8", fontWeight: 900, fontFamily: F, marginBottom: 10 }}>
+          {isReset ? "RESTABLECER CLAVE TEMPORAL" : isReveal ? "CONSULTA PROTEGIDA DE CLAVE" : "ACCESO ASISTIDO AUDITADO"}
+        </div>
+        <h3 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A", lineHeight: 1.1 }}>
+          {isReset ? "Nueva clave temporal" : isReveal ? "Ver clave vigente" : "Ingresar como cliente"}
+        </h3>
+        <p style={{ fontFamily: F, color: "#52647F", lineHeight: 1.8, margin: "10px 0 16px" }}>
+          {isReset
+            ? `Se invalidará la clave anterior de ${user.companyName || user.username} y el cliente deberá cambiarla al ingresar.`
+            : isReveal
+              ? `Para revelar la clave de ${user.companyName || user.username}, confirma tu contraseña de funcionario. Esta consulta queda auditada.`
+              : `Se abrirá el portal de ${user.companyName || user.username} como soporte. Esta acción queda registrada en auditoría.`}
+        </p>
+        <div style={{ display: "grid", gap: 10 }}>
+          {isReset ? (
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
+              <input style={inputStyle} placeholder="Clave temporal nueva" value={draft.temporaryPassword} onChange={(event) => onChange("temporaryPassword", event.target.value)} />
+              <button type="button" onClick={() => onChange("temporaryPassword", generateTemporaryPassword())} style={{ padding: "10px 12px", borderRadius: 13, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                Generar
+              </button>
+            </div>
+          ) : isReveal ? null : (
+            <textarea style={{ ...inputStyle, minHeight: 86 }} placeholder="Motivo del acceso asistido" value={draft.reason} onChange={(event) => onChange("reason", event.target.value)} />
+          )}
+          <input style={inputStyle} type="password" placeholder="Contraseña del funcionario" value={draft.adminPassword} onChange={(event) => onChange("adminPassword", event.target.value)} />
+        </div>
+        {isReveal && draft.revealedPassword ? (
+          <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.14)", display: "grid", gap: 10 }}>
+            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900 }}>CLAVE VIGENTE</div>
+            <code style={{ display: "block", padding: "10px 12px", borderRadius: 12, background: "#fff", border: "1px solid rgba(37,99,235,.12)", color: "#0B1D3A", fontSize: 14, overflowWrap: "anywhere" }}>{draft.revealedPassword}</code>
+            <button type="button" onClick={() => onCopy(draft.revealedPassword)} style={{ justifySelf: "start", padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Copiar clave
+            </button>
+          </div>
+        ) : null}
+        {error ? <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 800 }}>{error}</div> : null}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
+          <button type="button" onClick={onCancel} disabled={busy} style={{ padding: "11px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: busy ? "not-allowed" : "pointer" }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: busy ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: busy ? "not-allowed" : "pointer" }}>
+            {busy ? "Procesando..." : isReset ? "Restablecer clave" : isReveal ? "Consultar clave" : "Ingresar como cliente"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ClientDetailDialog({
   detail,
   records = [],
@@ -3337,6 +3597,13 @@ export default function AdminPanel() {
   const [clientLeads, setClientLeads] = useState([]);
   const [clientLeadsLoading, setClientLeadsLoading] = useState(false);
   const [clientLeadsError, setClientLeadsError] = useState("");
+  const [portalUsers, setPortalUsers] = useState([]);
+  const [portalUsersLoading, setPortalUsersLoading] = useState(false);
+  const [portalUsersError, setPortalUsersError] = useState("");
+  const [portalUserActionDialog, setPortalUserActionDialog] = useState(null);
+  const [portalUserActionDraft, setPortalUserActionDraft] = useState({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+  const [portalUserActionBusy, setPortalUserActionBusy] = useState(false);
+  const [portalUserActionError, setPortalUserActionError] = useState("");
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
   const [clientDetailDialog, setClientDetailDialog] = useState(null);
   const [deleteDialog, setDeleteDialog] = useState(null);
@@ -3567,6 +3834,26 @@ export default function AdminPanel() {
     }
   };
 
+  const loadPortalUsers = async () => {
+    setPortalUsersLoading(true);
+    setPortalUsersError("");
+
+    try {
+      const response = await fetch("/api/admin-list-client-portal-users");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar usuarios del portal.");
+      }
+
+      setPortalUsers(data.users || []);
+    } catch (error) {
+      setPortalUsersError(error.message);
+    } finally {
+      setPortalUsersLoading(false);
+    }
+  };
+
   const loadDetail = async (reference) => {
     if (!reference) return;
     const requestId = certificationDetailRequestRef.current + 1;
@@ -3618,6 +3905,7 @@ export default function AdminPanel() {
       loadServiceRecords();
       loadServicePayments();
       loadClientLeads();
+      loadPortalUsers();
     }
   }, [session.authenticated]);
 
@@ -3737,6 +4025,10 @@ export default function AdminPanel() {
     setServiceRecords([]);
     setServicePayments([]);
     setClientLeads([]);
+    setPortalUsers([]);
+    setPortalUserActionDialog(null);
+    setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "" });
+    setPortalUserActionError("");
     setSelectedLeadIds(new Set());
     setClientDetailDialog(null);
     setDeleteDialog(null);
@@ -4623,11 +4915,137 @@ export default function AdminPanel() {
     }
   };
 
+  const handleSavePortalUser = async (payload = {}) => {
+    setPortalUsersError("");
+    try {
+      const response = await fetch("/api/admin-upsert-client-portal-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "No fue posible guardar el usuario del portal.");
+      await loadPortalUsers();
+      setNotice(payload.id ? "Usuario del portal actualizado." : "Usuario del portal creado con clave temporal.");
+      return data.user;
+    } catch (error) {
+      setPortalUsersError(error.message);
+      return null;
+    }
+  };
+
+  const handleOpenPortalUserAction = (type, user) => {
+    setPortalUserActionDialog({ type, user });
+    setPortalUserActionDraft({
+      adminPassword: "",
+      temporaryPassword: type === "reset" ? generateTemporaryPassword() : "",
+      reason: type === "impersonate" ? "Soporte solicitado por el cliente." : "",
+      revealedPassword: ""
+    });
+    setPortalUserActionError("");
+  };
+
+  const handlePortalUserActionDraftChange = (field, value) => {
+    setPortalUserActionDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const handleCancelPortalUserAction = () => {
+    if (portalUserActionBusy) return;
+    setPortalUserActionDialog(null);
+    setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+    setPortalUserActionError("");
+  };
+
+  const handleConfirmPortalUserAction = async () => {
+    if (!portalUserActionDialog?.user?.id) return;
+    setPortalUserActionBusy(true);
+    setPortalUserActionError("");
+
+    try {
+      const isReset = portalUserActionDialog.type === "reset";
+      const isReveal = portalUserActionDialog.type === "reveal";
+      const endpoint = isReset
+        ? "/api/admin-reset-client-portal-password"
+        : isReveal
+          ? "/api/admin-reveal-client-portal-password"
+          : "/api/admin-impersonate-client-portal-user";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: portalUserActionDialog.user.id,
+          adminPassword: portalUserActionDraft.adminPassword,
+          temporaryPassword: portalUserActionDraft.temporaryPassword,
+          reason: portalUserActionDraft.reason
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "No fue posible completar la acción.");
+
+      await loadPortalUsers();
+      if (isReveal) {
+        setPortalUserActionDraft((current) => ({
+          ...current,
+          adminPassword: "",
+          revealedPassword: data.password || ""
+        }));
+        setNotice("Clave consultada de forma protegida. La acción quedó registrada en auditoría.");
+      } else if (isReset) {
+        setNotice("Clave temporal restablecida. Puedes copiarla desde la tarjeta del usuario.");
+        setPortalUserActionDialog(null);
+        setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+        setPortalUserActionError("");
+      } else {
+        setNotice("Acceso asistido iniciado. Se abrió el portal del cliente en una nueva pestaña.");
+        window.open(data.portalUrl || "/portal-clientes", "_blank", "noopener,noreferrer");
+        setPortalUserActionDialog(null);
+        setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+        setPortalUserActionError("");
+      }
+    } catch (error) {
+      setPortalUserActionError(error.message);
+    } finally {
+      setPortalUserActionBusy(false);
+    }
+  };
+
+  const handleExportPortalUsers = () => {
+    const rows = portalUsers.map((user) => ({
+      usuario: user.username,
+      correo: user.email,
+      empresa_id: user.companyId,
+      empresa: user.companyName,
+      estado: user.status,
+      clave_temporal: user.mustChangePassword ? "Sí" : "No",
+      ultimo_ingreso: formatDate(user.lastLoginAt),
+      ultimo_soporte: formatDate(user.lastImpersonatedAt)
+    }));
+    downloadCsvFile(`usuarios-portal-clientes-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(
+      ["usuario", "correo", "empresa_id", "empresa", "estado", "clave_temporal", "ultimo_ingreso", "ultimo_soporte"],
+      rows
+    ));
+    setNotice("Usuarios del portal exportados.");
+  };
+
+  const handleCopyPortalTempPassword = async (password = "") => {
+    if (!password) return;
+    try {
+      await navigator.clipboard.writeText(password);
+      setNotice("Clave temporal copiada.");
+    } catch {
+      setNotice("No fue posible copiar automáticamente. Puedes seleccionarla manualmente.");
+    }
+  };
+
   const handleRefreshPanel = () => {
     loadRecords();
     loadServiceRecords();
     loadServicePayments();
     loadClientLeads();
+    loadPortalUsers();
     if (selectedServiceReference) {
       loadServiceDetail(selectedServiceReference);
     }
@@ -4947,6 +5365,7 @@ export default function AdminPanel() {
               counts={{
                 solicitudes: serviceRecords.length,
                 clientes: clientRows.length,
+                usuariosPortal: portalUsers.length,
                 potenciales: clientLeadRows.length,
                 pagos: servicePayments.length,
                 certificaciones: records.length
@@ -5047,6 +5466,21 @@ export default function AdminPanel() {
             records={serviceRecords}
             onOpenClientDetail={(client) => setClientDetailDialog({ type: "client", client })}
             onExportClients={handleExportClients}
+          />
+        ) : null}
+
+        {activeModule === "usuariosPortal" ? (
+          <PortalUsersModule
+            users={portalUsers}
+            clients={clientRows}
+            loading={portalUsersLoading}
+            error={portalUsersError}
+            onSave={handleSavePortalUser}
+            onExport={handleExportPortalUsers}
+            onResetPassword={(user) => handleOpenPortalUserAction("reset", user)}
+            onRevealPassword={(user) => handleOpenPortalUserAction("reveal", user)}
+            onImpersonate={(user) => handleOpenPortalUserAction("impersonate", user)}
+            onCopyTemporaryPassword={handleCopyPortalTempPassword}
           />
         ) : null}
 
@@ -6036,6 +6470,16 @@ export default function AdminPanel() {
         onCreateRequest={handleCreateRequestFromClient}
         onDeleteLead={handleRequestLeadDelete}
         onDeleteServiceRequest={handleRequestServiceDelete}
+      />
+      <PortalUserActionDialog
+        dialog={portalUserActionDialog}
+        draft={portalUserActionDraft}
+        busy={portalUserActionBusy}
+        error={portalUserActionError}
+        onChange={handlePortalUserActionDraftChange}
+        onCancel={handleCancelPortalUserAction}
+        onConfirm={handleConfirmPortalUserAction}
+        onCopy={handleCopyPortalTempPassword}
       />
       <ProtectedDeleteDialog
         dialog={deleteDialog}
