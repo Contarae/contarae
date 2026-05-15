@@ -19,6 +19,17 @@ const MODULES = [
 const PAYMENT_METHODS = ["Transferencia bancaria", "Nequi", "Daviplata", "Efectivo", "PSE", "Tarjeta", "Otro"];
 const IVA_RATES = [0, 5, 19];
 const DISCOUNT_PERCENTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+const AGING_BUCKETS = [
+  ["current", "No vencida"],
+  ["dueToday", "Vence hoy"],
+  ["upcoming7", "Vence 1 a 7 dias"],
+  ["upcoming15", "Vence 8 a 15 dias"],
+  ["upcoming30", "Vence 16 a 30 dias"],
+  ["overdue0To30", "Vencida 1 a 30 dias"],
+  ["overdue31To60", "Vencida 31 a 60 dias"],
+  ["overdue61To90", "Vencida 61 a 90 dias"],
+  ["overdueOver90", "Vencida mas de 90 dias"]
+];
 const CUSTOMER_SEARCH_TYPES = [
   ["id", "ID cliente"],
   ["name", "Nombre principal"],
@@ -267,8 +278,8 @@ function customerSearchMatches(customers = [], type = "name", query = "") {
 function buildRowsForExport(data, type) {
   if (type === "clientes") {
     return [
-      ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "ciudad", "departamento", "zona", "estado_datos", "saldo"],
-      ...(data.customerSummary || []).map((customer) => [customer.id, customer.name, customer.alternateName, customer.documentNumber, customer.phone, customer.email, customer.address, customer.city, customer.department, customer.zone, customer.dataStatus, customer.balance])
+      ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "ciudad", "departamento", "zona", "estado_datos", "facturado", "pagado", "saldo", "cartera_vencida"],
+      ...(data.customerSummary || []).map((customer) => [customer.id, customer.name, customer.alternateName, customer.documentNumber, customer.phone, customer.email, customer.address, customer.city, customer.department, customer.zone, customer.dataStatus, customer.billed, customer.paid, customer.balance, customer.overdue || 0])
     ];
   }
   if (type === "facturas") {
@@ -302,8 +313,18 @@ function buildRowsForExport(data, type) {
     ];
   }
   return [
-    ["id_cliente", "nombre_cliente", "facturado", "pagado", "saldo"],
-    ...(data.customerSummary || []).map((customer) => [customer.id, customer.name, customer.billed, customer.paid, customer.balance])
+    ["id_cliente", "nombre_cliente", "facturado", "pagado", "saldo", "cartera_vencida", "proxima_a_vencer", "credito_sin_aplicar", ...AGING_BUCKETS.map(([, label]) => label.toLowerCase().replace(/\s+/g, "_"))],
+    ...(data.customerSummary || []).map((customer) => [
+      customer.id,
+      customer.name,
+      customer.billed,
+      customer.paid,
+      customer.balance,
+      customer.overdue || 0,
+      customer.upcoming || 0,
+      customer.unappliedCredit || 0,
+      ...AGING_BUCKETS.map(([key]) => customer.aging?.[key] || 0)
+    ])
   ];
 }
 
@@ -333,6 +354,26 @@ function buildWorkbookForExport(data, type) {
       rows: [
         ["id_orden", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
         ...(data.orders || []).flatMap((order) => (order.lines || []).map((line) => [order.id, line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total]))
+      ]
+    });
+  }
+  if (type === "cartera") {
+    sheets.push({
+      name: "Detalle facturas",
+      rows: [
+        ["id_cliente", "nombre_cliente", "id_factura", "fecha", "fecha_vencimiento", "total", "aplicado", "saldo", "edad", "dias_mora"],
+        ...(data.customerSummary || []).flatMap((customer) => (customer.receivableInvoices || []).map((invoice) => [
+          customer.id,
+          customer.name,
+          invoice.id,
+          invoice.date,
+          invoice.dueDate,
+          invoice.total,
+          invoice.paid,
+          invoice.balance,
+          invoice.ageLabel,
+          invoice.daysOverdue || 0
+        ]))
       ]
     });
   }
@@ -844,14 +885,46 @@ function ChangePasswordRequired({ username, companyName, onChanged, onLogout }) 
 
 function Dashboard({ data, setModule }) {
   const dashboard = data.dashboard || {};
+  const agingTotal = AGING_BUCKETS.reduce((sum, [key]) => sum + Number(dashboard.aging?.[key] || 0), 0);
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
         <Stat label="CARTERA TOTAL" value={dashboard.pendingLabel || "$ 0"} note="Saldo pendiente por cobrar." tone="#C2410C" />
-        <Stat label="FACTURADO" value={dashboard.totalBilledLabel || "$ 0"} note={`${dashboard.invoicesCount || 0} factura(s) registradas.`} />
+        <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" />
+        <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" />
         <Stat label="RECAUDADO" value={dashboard.totalPaidLabel || "$ 0"} note={`${dashboard.paymentsCount || 0} abono(s) registrados.`} tone="#15803D" />
+      </div>
+      <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+        <Stat label="FACTURADO" value={dashboard.totalBilledLabel || "$ 0"} note={`${dashboard.invoicesCount || 0} factura(s) registradas.`} />
+        <Stat label="NO VENCIDA" value={dashboard.currentLabel || "$ 0"} note="Saldo con vencimiento futuro o sin vencimiento." tone="#1D4ED8" />
+        <Stat label="CREDITOS SIN APLICAR" value={dashboard.unappliedCreditLabel || "$ 0"} note="Pagos que superan la cartera vigente." tone="#15803D" />
         <Stat label="ALERTAS" value={(dashboard.outdatedCustomersCount || 0) + (dashboard.negativeInventoryCount || 0)} note={`${dashboard.outdatedCustomersCount || 0} cliente(s) por actualizar · ${dashboard.negativeInventoryCount || 0} inventario(s) negativo(s).`} tone="#B45309" />
       </div>
+      <section style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>EDADES DE CARTERA</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A" }}>Distribucion del saldo pendiente</h2>
+          </div>
+          <button type="button" onClick={() => setModule("cartera")} style={ghostButton}>Analizar cartera</button>
+        </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          {AGING_BUCKETS.map(([key, label]) => {
+            const value = Number(dashboard.aging?.[key] || 0);
+            const width = agingTotal > 0 ? Math.max(4, Math.round((value / agingTotal) * 100)) : 0;
+            const isOverdue = key.startsWith("overdue");
+            return (
+              <div key={key} className="client-aging-row" style={{ display: "grid", gridTemplateColumns: "170px minmax(0,1fr) 110px", gap: 10, alignItems: "center", fontFamily: F }}>
+                <strong style={{ color: isOverdue ? "#B91C1C" : "#334155", fontSize: 13 }}>{label}</strong>
+                <div style={{ height: 12, borderRadius: 999, background: "#EAF1FF", overflow: "hidden" }}>
+                  <div style={{ width: `${width}%`, height: "100%", borderRadius: 999, background: isOverdue ? "linear-gradient(135deg,#B91C1C,#F97316)" : "linear-gradient(135deg,#0B1D3A,#2563EB)" }} />
+                </div>
+                <span style={{ color: "#0F172A", fontWeight: 900, textAlign: "right" }}>{money(value)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
       <section style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
           <div>
@@ -882,6 +955,7 @@ function Customers({ data, onSave, onExport }) {
   const [selectedId, setSelectedId] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(null);
+  const [duplicateMerge, setDuplicateMerge] = useState(null);
   const [busy, setBusy] = useState(false);
   const customers = data.customerSummary || [];
 
@@ -946,6 +1020,37 @@ function Customers({ data, onSave, onExport }) {
       setDraft(blank());
       setModalOpen(false);
     } catch (err) {
+      if (err.code === "DUPLICATE_CUSTOMER_DOCUMENT" && err.duplicate) {
+        setDuplicateMerge({ ...err.duplicate, incoming: confirmSave.payload });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function mergeDuplicateCustomer(primaryId) {
+    if (!duplicateMerge?.incoming || !primaryId) return;
+    setBusy(true);
+    try {
+      const incomingId = duplicateMerge.incoming.id || data.nextCustomerId;
+      const existingIds = (duplicateMerge.candidates || []).map((candidate) => candidate.id).filter(Boolean);
+      const secondaryIds = existingIds.filter((id) => id !== primaryId);
+      if (incomingId && incomingId !== primaryId) secondaryIds.push(incomingId);
+      await onSave("mergeCustomers", {
+        primaryId,
+        secondaryIds: [...new Set(secondaryIds)],
+        documentNumber: duplicateMerge.documentNumber,
+        incomingCustomer: {
+          ...duplicateMerge.incoming,
+          id: primaryId === incomingId ? incomingId : primaryId
+        }
+      });
+      setDuplicateMerge(null);
+      setConfirmSave(null);
+      setSelectedId("");
+      setDraft(blank());
+      setModalOpen(false);
+    } catch (err) {
       // El mensaje visible lo establece save() en el componente principal.
     } finally {
       setBusy(false);
@@ -1003,6 +1108,32 @@ function Customers({ data, onSave, onExport }) {
         onConfirm={confirmCustomerSave}
         confirmLabel="Guardar cliente"
       />
+      <PortalModal open={Boolean(duplicateMerge)} title="Documento duplicado" eyebrow="CONCILIACION" onClose={() => { if (!busy) setDuplicateMerge(null); }} wide={false}>
+        <div style={{ display: "grid", gap: 12, fontFamily: F }}>
+          <p style={{ margin: 0, color: "#475569", lineHeight: 1.7 }}>
+            El documento <strong>{duplicateMerge?.documentNumber}</strong> ya esta asociado a otro cliente. Revisa los registros y elige en que ID debe quedar unificada la informacion.
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {(duplicateMerge?.candidates || []).map((candidate) => (
+              <div key={candidate.id} style={{ padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", display: "grid", gap: 4 }}>
+                <strong>{candidate.id} · {candidate.name}</strong>
+                <span style={{ color: "#64748B", fontSize: 13 }}>{candidate.phone || "Sin telefono"} · {candidate.email || "Sin correo"} · Saldo {candidate.balanceLabel || "$ 0"}</span>
+              </div>
+            ))}
+            <div style={{ padding: 12, borderRadius: 16, border: "1px solid rgba(245,158,11,.22)", background: "rgba(245,158,11,.08)", display: "grid", gap: 4 }}>
+              <strong>{duplicateMerge?.incoming?.id || data.nextCustomerId} · {duplicateMerge?.incoming?.name}</strong>
+              <span style={{ color: "#92400E", fontSize: 13 }}>Datos que intentas guardar ahora.</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <button type="button" disabled={busy} onClick={() => setDuplicateMerge(null)} style={ghostButton}>Cancelar</button>
+            {(duplicateMerge?.candidates || []).map((candidate) => (
+              <button key={candidate.id} type="button" disabled={busy} onClick={() => mergeDuplicateCustomer(candidate.id)} style={button}>Unificar en {candidate.id}</button>
+            ))}
+            <button type="button" disabled={busy} onClick={() => mergeDuplicateCustomer(duplicateMerge?.incoming?.id || data.nextCustomerId)} style={{ ...button, background: "linear-gradient(135deg,#15803D,#22C55E)" }}>Unificar en nuevo/actual</button>
+          </div>
+        </div>
+      </PortalModal>
       <section style={card}>
         <div style={{ display: "grid", gap: 8 }}>
           {customers.map((customer) => (
@@ -1407,7 +1538,7 @@ function Portfolio({ data, onExport }) {
   const [selectedId, setSelectedId] = useState("");
   const rows = data.customerSummary || [];
   const selected = rows.find((customer) => customer.id === selectedId);
-  const selectedInvoices = (data.invoices || []).filter((invoice) => invoice.customerId === selectedId && invoice.status !== "anulada");
+  const selectedInvoices = selected?.receivableInvoices || [];
   const selectedPayments = (data.payments || []).filter((payment) => payment.customerId === selectedId && payment.status !== "anulado");
 
   return (
@@ -1415,13 +1546,25 @@ function Portfolio({ data, onExport }) {
       <CustomerSearch customers={rows} selectedId={selectedId} onSelect={(customer) => setSelectedId(customer?.id || "")} title="Consultar cartera de cliente" />
       {selected ? (
         <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
-          <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+          <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
             <Stat label="FACTURADO" value={selected.billedLabel} note={`${selectedInvoices.length} factura(s).`} />
             <Stat label="PAGADO" value={selected.paidLabel} note={`${selectedPayments.length} abono(s).`} tone="#15803D" />
             <Stat label="SALDO" value={selected.balanceLabel} note="Pendiente a la fecha de corte." tone={selected.balance > 0 ? "#C2410C" : "#15803D"} />
+            <Stat label="VENCIDO" value={selected.overdueLabel || "$ 0"} note={`${selected.overdueInvoicesCount || 0} factura(s) vencida(s).`} tone="#B91C1C" />
           </div>
-          <RecordList rows={selectedInvoices.map((invoice) => [invoice.id, invoice.date, invoice.dueDate || "Sin vencimiento", invoice.totalLabel || money(invoice.total), invoice.status])} headers={["Factura", "Fecha", "Vence", "Total", "Estado"]} />
-          <RecordList rows={selectedPayments.map((payment) => [payment.id, payment.date, money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Bruto", "Retenciones", "Neto", "Medio"]} />
+          <div style={{ display: "grid", gap: 8 }}>
+            {AGING_BUCKETS.filter(([key]) => Number(selected.aging?.[key] || 0) > 0).map(([key, label]) => (
+              <div key={key} className="client-aging-row" style={{ display: "grid", gridTemplateColumns: "170px minmax(0,1fr) 110px", gap: 10, alignItems: "center", fontFamily: F, fontSize: 13 }}>
+                <strong style={{ color: key.startsWith("overdue") ? "#B91C1C" : "#334155" }}>{label}</strong>
+                <div style={{ height: 10, borderRadius: 999, background: "#EAF1FF", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.min(100, Math.max(8, (Number(selected.aging?.[key] || 0) / Math.max(Number(selected.balance || 1), 1)) * 100))}%`, height: "100%", background: key.startsWith("overdue") ? "#DC2626" : "#2563EB" }} />
+                </div>
+                <strong style={{ textAlign: "right" }}>{money(selected.aging?.[key] || 0)}</strong>
+              </div>
+            ))}
+          </div>
+          <RecordList rows={selectedInvoices.map((invoice) => [invoice.id, invoice.date, invoice.dueDate || "Sin vencimiento", invoice.totalLabel || money(invoice.total), invoice.paidLabel || money(invoice.paid), invoice.balanceLabel || money(invoice.balance), invoice.ageLabel || invoice.status])} headers={["Factura", "Fecha", "Vence", "Total", "Aplicado", "Saldo", "Edad"]} />
+          <RecordList rows={selectedPayments.map((payment) => [payment.id, payment.date, payment.invoiceId || "Global FIFO", money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Aplicacion", "Bruto", "Retenciones", "Neto", "Medio"]} />
         </section>
       ) : null}
       <div style={{ display: "grid", gap: 8 }}>
@@ -1429,11 +1572,12 @@ function Portfolio({ data, onExport }) {
           const message = `Hola ${customer.name}, te saludamos cordialmente. A la fecha registramos un saldo pendiente de ${customer.balanceLabel}. Agradecemos revisar el estado de cuenta y confirmar la fecha estimada de pago.`;
           const wa = customer.phone ? `https://wa.me/57${onlyDigits(customer.phone).slice(-10)}?text=${encodeURIComponent(message)}` : "";
           return (
-            <div key={customer.id} className="client-portal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) repeat(3,130px) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
+            <div key={customer.id} className="client-portal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) repeat(4,130px) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, border: "1px solid rgba(37,99,235,.10)", background: "#fff" }}>
               <div><strong style={{ fontFamily: F }}>{customer.name}</strong><div style={{ fontFamily: F, fontSize: 12, color: "#64748B" }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>
               <span>{customer.billedLabel}</span>
               <span>{customer.paidLabel}</span>
               <strong style={{ color: customer.balance > 0 ? "#C2410C" : "#15803D" }}>{customer.balanceLabel}</strong>
+              <span style={{ color: customer.overdue > 0 ? "#B91C1C" : "#64748B", fontWeight: 900 }}>{customer.overdueLabel || "$ 0"}</span>
               {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...button, textDecoration: "none", background: "#25D366" }}>Cobrar</a> : <span style={{ fontFamily: F, color: "#B45309", fontSize: 12 }}>Sin WhatsApp</span>}
             </div>
           );
@@ -1864,6 +2008,7 @@ function Imports({ data, onData }) {
   const [module, setModule] = useState("clientes");
   const [rows, setRows] = useState([]);
   const [result, setResult] = useState(null);
+  const [mergeChoices, setMergeChoices] = useState({});
   const [busy, setBusy] = useState(false);
   const templates = data.templates || {};
   const template = templates[module];
@@ -1889,6 +2034,7 @@ function Imports({ data, onData }) {
           ["Formato", "Guarda el archivo como CSV para cargarlo al portal. Esta plantilla se descarga en Excel para facilitar la edicion."],
           ["Validacion", "Si existe un error bloqueante, no se importa ninguna fila. El portal indicara fila, campo y correccion sugerida."],
           ["Consecutivos", `Clientes, facturas, abonos, ordenes y movimientos se asignan automaticamente. En clientes puedes dejar id_cliente vacio; solo usalo si necesitas reservar un ID puntual. Siguiente cliente sugerido: ${data.nextCustomerId}.`],
+          ["Documentos duplicados", "Si varios IDs tienen el mismo documento, el portal mostrara una conciliacion para escoger el ID principal antes de importar."],
           ["Referencias", "En facturas y ordenes usa referencia_origen para conservar el numero del sistema anterior o agrupar varias lineas del mismo documento. El ID interno lo asigna el portal."],
           ["Ubicacion", "En clientes diligencia ciudad y zona si aplica. El departamento se asigna automaticamente cuando la ciudad esta en el catalogo; si no se reconoce, quedara Por validar."],
           ["Inventario", "Inventario maestro crea productos sin stock. Los saldos se cargan por movimientos_inventario. actualizacion_productos modifica datos existentes por SKU sin borrar campos vacios."],
@@ -1904,9 +2050,10 @@ function Imports({ data, onData }) {
     const parsed = parseCsv(text);
     setRows(parsed);
     setResult(null);
+    setMergeChoices({});
   }
 
-  async function validate(commit = false) {
+  async function validate(commit = false, withMergeChoices = false) {
     if (!rows.length) {
       setResult({ ok: false, errors: [{ row: 0, field: "archivo", message: "Primero carga un archivo CSV." }], warnings: [] });
       return;
@@ -1917,10 +2064,19 @@ function Imports({ data, onData }) {
       const response = await fetch("/api/client-portal-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ module, rows, commit })
+        body: JSON.stringify({ module, rows, commit, mergeChoices: withMergeChoices ? mergeChoices : {} })
       });
       const payload = await response.json();
       setResult(payload);
+      if (payload.duplicateCustomerDocuments?.length) {
+        setMergeChoices((current) => {
+          const next = { ...current };
+          payload.duplicateCustomerDocuments.forEach((group) => {
+            if (!next[group.documentNumber]) next[group.documentNumber] = group.recommendedPrimaryId || "__AUTO__";
+          });
+          return next;
+        });
+      }
       if (payload.committed && payload.data) onData(payload.data);
     } catch (error) {
       setResult({ ok: false, errors: [{ row: 0, field: "sistema", message: error.message }], warnings: [] });
@@ -1945,7 +2101,7 @@ function Imports({ data, onData }) {
         La plantilla se descarga en Excel para diligenciarla con facilidad. Para cargarla al portal, guardala como <strong>CSV UTF-8</strong> desde Excel o Google Sheets y sube ese archivo CSV.
       </div>
       <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(220px,320px) auto auto minmax(0,1fr)", gap: 10, alignItems: "end" }}>
-        <Field label="Plantilla"><select style={input} value={module} onChange={(event) => { setModule(event.target.value); setRows([]); setResult(null); }}>{Object.entries(templates).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></Field>
+        <Field label="Plantilla"><select style={input} value={module} onChange={(event) => { setModule(event.target.value); setRows([]); setResult(null); setMergeChoices({}); }}>{Object.entries(templates).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></Field>
         <button type="button" onClick={downloadTemplate} style={{ ...button, background: "#fff", color: "#1D4ED8", border: "1px solid rgba(37,99,235,.14)" }}>Descargar plantilla Excel</button>
         <button type="button" onClick={() => downloadExcelWorkbook(`export-${module}.xls`, buildWorkbookForExport(data, exportTypeForModule(module)))} style={{ ...button, background: "#fff", color: "#1D4ED8", border: "1px solid rgba(37,99,235,.14)" }}>Exportar base</button>
         <Field label="Archivo CSV para cargar">
@@ -1955,6 +2111,7 @@ function Imports({ data, onData }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
         <button type="button" disabled={busy || !rows.length} onClick={() => validate(false)} style={{ ...button, opacity: busy || !rows.length ? .55 : 1 }}>Validar archivo</button>
         <button type="button" disabled={busy || !result?.ok} onClick={() => validate(true)} style={{ ...button, background: result?.ok ? "linear-gradient(135deg,#15803D,#22C55E)" : "#CBD5E1" }}>Importar validado</button>
+        {result?.requiresCustomerMerge ? <button type="button" disabled={busy} onClick={() => validate(true, true)} style={{ ...button, background: "linear-gradient(135deg,#B45309,#F59E0B)" }}>Importar unificando documentos</button> : null}
         {result?.errors?.length ? <button type="button" onClick={downloadErrors} style={{ ...button, background: "#B91C1C" }}>Descargar errores</button> : null}
       </div>
       {rows.length ? <p style={{ fontFamily: F, color: "#64748B", marginTop: 12 }}>{rows.length} fila(s) leida(s).</p> : null}
@@ -1963,6 +2120,41 @@ function Imports({ data, onData }) {
           <div style={{ padding: 14, borderRadius: 16, background: result.ok ? "rgba(34,197,94,.10)" : "rgba(220,38,38,.08)", color: result.ok ? "#15803D" : "#991B1B", fontFamily: F, fontWeight: 900 }}>
             {result.ok ? `Archivo validado: ${result.summary?.rows || 0} fila(s), ${result.summary?.warnings || 0} advertencia(s).` : `Archivo rechazado: ${result.errors?.length || 0} error(es). No se importo ninguna fila.`}
           </div>
+          {(result.duplicateCustomerDocuments || []).length ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ padding: 14, borderRadius: 16, background: "rgba(245,158,11,.10)", color: "#92400E", fontFamily: F, lineHeight: 1.7 }}>
+                Se detectaron documentos repetidos o ya existentes. Elige el ID principal para cada documento. Al unificar, las facturas, abonos y ordenes pasan al ID principal y los otros IDs quedan libres para asignacion posterior.
+              </div>
+              {(result.duplicateCustomerDocuments || []).map((group) => (
+                <div key={group.documentNumber} style={{ padding: 14, borderRadius: 18, background: "#fff", border: "1px solid rgba(245,158,11,.20)", display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <div>
+                      <strong style={{ fontFamily: F, color: "#0F172A" }}>Documento {group.documentNumber}</strong>
+                      <div style={{ fontFamily: F, color: "#64748B", fontSize: 13 }}>{group.reason}</div>
+                    </div>
+                    <Field label="ID principal">
+                      <select style={{ ...input, minWidth: 220 }} value={mergeChoices[group.documentNumber] || group.recommendedPrimaryId || "__AUTO__"} onChange={(event) => setMergeChoices((current) => ({ ...current, [group.documentNumber]: event.target.value }))}>
+                        {!group.candidates.some((candidate) => candidate.source === "sistema") ? <option value="__AUTO__">Asignar siguiente ID automatico</option> : null}
+                        {group.candidates.filter((candidate) => candidate.id).map((candidate) => <option key={`${group.documentNumber}-${candidate.source}-${candidate.id}-${candidate.row || ""}`} value={candidate.id}>{candidate.id} · {candidate.name}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                  <RecordList
+                    headers={["Origen", "Fila", "ID", "Nombre", "Telefono", "Correo", "Saldo"]}
+                    rows={group.candidates.map((candidate) => [
+                      candidate.source === "sistema" ? "Sistema" : "Archivo",
+                      candidate.row || "-",
+                      candidate.id || "Automatico",
+                      candidate.name,
+                      candidate.phone || "-",
+                      candidate.email || "-",
+                      candidate.balanceLabel || "$ 0"
+                    ])}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : null}
           {(result.errors || []).slice(0, 8).map((error, index) => <div key={index} style={{ padding: 12, borderRadius: 14, background: "#fff", border: "1px solid rgba(220,38,38,.14)", fontFamily: F, color: "#7F1D1D" }}>Fila {error.row} · {error.field}: {error.message} {error.fix ? `(${error.fix})` : ""}</div>)}
           {(result.warnings || []).slice(0, 6).map((warning, index) => <div key={index} style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", fontFamily: F, color: "#92400E" }}>Fila {warning.row} · {warning.field}: {warning.message}</div>)}
         </div>
@@ -2057,7 +2249,10 @@ export default function ClientPortal() {
       if (!response.ok) {
         const message = result.error || "No fue posible guardar.";
         setError(message);
-        throw new Error(message);
+        const saveError = new Error(message);
+        saveError.code = result.code || "";
+        saveError.duplicate = result.duplicate || null;
+        throw saveError;
       }
       setData(result.data);
       setNotice("Informacion guardada correctamente.");
@@ -2133,6 +2328,8 @@ export default function ClientPortal() {
         @media(max-width:980px){
           .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals{grid-template-columns:1fr!important}
           .client-portal-row{grid-template-columns:1fr!important}
+          .client-aging-row{grid-template-columns:1fr!important}
+          .client-aging-row span,.client-aging-row strong{text-align:left!important}
           .client-portal-shell{padding:16px!important}
           .client-portal-header{grid-template-columns:1fr!important}
           .client-portal-actions{justify-content:stretch!important}

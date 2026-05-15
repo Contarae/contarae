@@ -41,6 +41,7 @@ const IMPORT_TEMPLATES = {
 };
 
 const INVENTORY_MOVEMENT_TYPES = new Set(["entrada", "salida", "ajuste_positivo", "ajuste_negativo"]);
+const INVALID_DOCUMENT_TOKENS = new Set(["", "por asignar", "sin documento", "pendiente", "pendiente por asignar", "n/a", "na", "0"]);
 
 const CITY_DEPARTMENT_MAP = {
   armenia: ["Armenia", "Quindio"],
@@ -97,6 +98,21 @@ const CITY_DEPARTMENT_MAP = {
 
 function cleanText(value = "") {
   return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function onlyDigits(value = "") {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function normalizeDocument(value = "") {
+  const digits = onlyDigits(value);
+  if (digits) return INVALID_DOCUMENT_TOKENS.has(digits) ? "" : digits;
+  const normalized = cleanText(value).toLowerCase();
+  return INVALID_DOCUMENT_TOKENS.has(normalized) ? "" : "";
+}
+
+function hasRealDocument(value = "") {
+  return Boolean(normalizeDocument(value));
 }
 
 function normalizeLookup(value = "") {
@@ -527,28 +543,430 @@ function ensureHistoricalCustomer(data, customerId, customerName, actor = "porta
   return customer;
 }
 
+function paymentAmount(payment = {}) {
+  return Number(payment.totalApplied || payment.netReceived || payment.grossAmount || 0) || 0;
+}
+
+function parseDateOnly(value = "") {
+  const normalized = normalizeDate(value);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function daysBetweenDates(left, right) {
+  if (!left || !right) return 0;
+  return Math.round((left.getTime() - right.getTime()) / 86400000);
+}
+
+function cutoffDateOnly(value = new Date()) {
+  if (value instanceof Date) {
+    return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  }
+  return parseDateOnly(value) || cutoffDateOnly(new Date());
+}
+
+function emptyAgingBuckets() {
+  return {
+    current: 0,
+    dueToday: 0,
+    upcoming7: 0,
+    upcoming15: 0,
+    upcoming30: 0,
+    overdue0To30: 0,
+    overdue31To60: 0,
+    overdue61To90: 0,
+    overdueOver90: 0
+  };
+}
+
+function agingBucketForInvoice(invoice = {}, cutoff = cutoffDateOnly()) {
+  const dueDate = parseDateOnly(invoice.dueDate);
+  if (!dueDate) {
+    return { bucket: "current", label: "Sin vencimiento", daysOverdue: 0, daysToDue: null };
+  }
+  const daysToDue = daysBetweenDates(dueDate, cutoff);
+  if (daysToDue > 30) return { bucket: "current", label: "No vencida", daysOverdue: 0, daysToDue };
+  if (daysToDue > 15) return { bucket: "upcoming30", label: "Vence en 16 a 30 dias", daysOverdue: 0, daysToDue };
+  if (daysToDue > 7) return { bucket: "upcoming15", label: "Vence en 8 a 15 dias", daysOverdue: 0, daysToDue };
+  if (daysToDue > 0) return { bucket: "upcoming7", label: "Vence en 1 a 7 dias", daysOverdue: 0, daysToDue };
+  if (daysToDue === 0) return { bucket: "dueToday", label: "Vence hoy", daysOverdue: 0, daysToDue: 0 };
+
+  const daysOverdue = Math.abs(daysToDue);
+  if (daysOverdue <= 30) return { bucket: "overdue0To30", label: "Vencida 1 a 30 dias", daysOverdue, daysToDue };
+  if (daysOverdue <= 60) return { bucket: "overdue31To60", label: "Vencida 31 a 60 dias", daysOverdue, daysToDue };
+  if (daysOverdue <= 90) return { bucket: "overdue61To90", label: "Vencida 61 a 90 dias", daysOverdue, daysToDue };
+  return { bucket: "overdueOver90", label: "Vencida mas de 90 dias", daysOverdue, daysToDue };
+}
+
+function sortByPortfolioDate(left = {}, right = {}) {
+  const leftDate = normalizeDate(left.dueDate || left.date) || "9999-12-31";
+  const rightDate = normalizeDate(right.dueDate || right.date) || "9999-12-31";
+  if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+  return String(left.id || "").localeCompare(String(right.id || ""), "es");
+}
+
+function findReceivableInvoice(invoiceMap, invoiceId = "") {
+  const id = cleanText(invoiceId);
+  if (!id) return null;
+  const normalized = normalizeRecordId(id, "FAC");
+  return invoiceMap.get(id)
+    || invoiceMap.get(normalized)
+    || Array.from(invoiceMap.values()).find((entry) => cleanText(entry.invoice.externalReference) === id || cleanText(entry.invoice.externalReference) === normalized)
+    || null;
+}
+
+function buildReceivableLedger(data = {}, customerId = "", cutoffValue = new Date()) {
+  const id = normalizeCustomerId(customerId);
+  const cutoff = cutoffDateOnly(cutoffValue);
+  const invoices = (data.invoices || [])
+    .filter((invoice) => invoice.customerId === id && invoice.status !== "anulada")
+    .sort(sortByPortfolioDate);
+  const payments = (data.payments || [])
+    .filter((payment) => payment.customerId === id && payment.status !== "anulado")
+    .sort((left, right) => {
+      const leftDate = normalizeDate(left.date) || "9999-12-31";
+      const rightDate = normalizeDate(right.date) || "9999-12-31";
+      if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+      return String(left.id || "").localeCompare(String(right.id || ""), "es");
+    });
+
+  const receivables = invoices.map((invoice) => ({
+    invoice,
+    id: invoice.id,
+    total: Number(invoice.total || 0) || 0,
+    paidDirect: 0,
+    paidFifo: 0,
+    balance: Number(invoice.total || 0) || 0,
+    directPayments: [],
+    fifoPayments: []
+  }));
+  const invoiceMap = new Map();
+  receivables.forEach((entry) => {
+    invoiceMap.set(entry.invoice.id, entry);
+    if (entry.invoice.externalReference) invoiceMap.set(cleanText(entry.invoice.externalReference), entry);
+  });
+
+  const globalPool = [];
+  payments.forEach((payment) => {
+    let amount = paymentAmount(payment);
+    if (amount <= 0) return;
+    const directInvoice = findReceivableInvoice(invoiceMap, payment.invoiceId);
+    if (directInvoice && directInvoice.balance > 0) {
+      const applied = Math.min(directInvoice.balance, amount);
+      directInvoice.paidDirect += applied;
+      directInvoice.balance -= applied;
+      directInvoice.directPayments.push({ id: payment.id, amount: applied });
+      amount -= applied;
+    }
+    if (amount > 0) globalPool.push({ payment, amount });
+  });
+
+  let unappliedCredit = 0;
+  globalPool.forEach((item) => {
+    let amount = item.amount;
+    receivables.forEach((entry) => {
+      if (amount <= 0 || entry.balance <= 0) return;
+      const applied = Math.min(entry.balance, amount);
+      entry.paidFifo += applied;
+      entry.balance -= applied;
+      entry.fifoPayments.push({ id: item.payment.id, amount: applied });
+      amount -= applied;
+    });
+    unappliedCredit += Math.max(amount, 0);
+  });
+
+  const aging = emptyAgingBuckets();
+  const enrichedInvoices = receivables.map((entry) => {
+    const classification = agingBucketForInvoice(entry.invoice, cutoff);
+    const balance = Math.max(Math.round(entry.balance), 0);
+    if (balance > 0) aging[classification.bucket] += balance;
+    const paid = Math.round(entry.paidDirect + entry.paidFifo);
+    return {
+      ...entry.invoice,
+      total: Math.round(entry.total),
+      totalLabel: formatMoney(entry.total),
+      paid,
+      paidDirect: Math.round(entry.paidDirect),
+      paidFifo: Math.round(entry.paidFifo),
+      paidLabel: formatMoney(paid),
+      balance,
+      balanceLabel: formatMoney(balance),
+      ageBucket: classification.bucket,
+      ageLabel: balance > 0 ? classification.label : "Pagada",
+      daysOverdue: classification.daysOverdue,
+      daysToDue: classification.daysToDue,
+      directPaymentIds: entry.directPayments.map((payment) => payment.id),
+      fifoPaymentIds: entry.fifoPayments.map((payment) => payment.id)
+    };
+  });
+
+  const billed = invoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const paid = payments.reduce((sum, payment) => sum + paymentAmount(payment), 0);
+  const balance = enrichedInvoices.reduce((sum, invoice) => sum + Number(invoice.balance || 0), 0);
+  const overdue = aging.overdue0To30 + aging.overdue31To60 + aging.overdue61To90 + aging.overdueOver90;
+  const upcoming = aging.dueToday + aging.upcoming7 + aging.upcoming15 + aging.upcoming30;
+
+  return {
+    invoices: enrichedInvoices,
+    payments,
+    billed: Math.round(billed),
+    paid: Math.round(paid),
+    balance: Math.round(balance),
+    unappliedCredit: Math.round(unappliedCredit),
+    overdue: Math.round(overdue),
+    upcoming: Math.round(upcoming),
+    aging,
+    agingLabels: Object.fromEntries(Object.entries(aging).map(([key, value]) => [key, formatMoney(value)])),
+    billedLabel: formatMoney(billed),
+    paidLabel: formatMoney(paid),
+    balanceLabel: formatMoney(balance),
+    overdueLabel: formatMoney(overdue),
+    upcomingLabel: formatMoney(upcoming),
+    unappliedCreditLabel: formatMoney(unappliedCredit),
+    overdueInvoicesCount: enrichedInvoices.filter((invoice) => invoice.balance > 0 && String(invoice.ageBucket).startsWith("overdue")).length,
+    dueSoonInvoicesCount: enrichedInvoices.filter((invoice) => invoice.balance > 0 && ["dueToday", "upcoming7"].includes(invoice.ageBucket)).length
+  };
+}
+
 function customerBalances(data = {}) {
-  const invoices = Array.isArray(data.invoices) ? data.invoices : [];
-  const payments = Array.isArray(data.payments) ? data.payments : [];
   return (data.customers || []).map((customer) => {
-    const customerInvoices = invoices.filter((invoice) => invoice.customerId === customer.id && invoice.status !== "anulada");
-    const customerPayments = payments.filter((payment) => payment.customerId === customer.id && payment.status !== "anulado");
-    const billed = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
-    const paid = customerPayments.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.netReceived || payment.grossAmount || 0), 0);
-    const balance = Math.max(billed - paid, 0);
+    const ledger = buildReceivableLedger(data, customer.id);
     return {
       ...customer,
-      invoicesCount: customerInvoices.length,
-      paymentsCount: customerPayments.length,
-      billed,
-      paid,
-      balance,
-      billedLabel: formatMoney(billed),
-      paidLabel: formatMoney(paid),
-      balanceLabel: formatMoney(balance),
+      invoicesCount: ledger.invoices.length,
+      paymentsCount: ledger.payments.length,
+      receivableInvoices: ledger.invoices,
+      aging: ledger.aging,
+      agingLabels: ledger.agingLabels,
+      billed: ledger.billed,
+      paid: ledger.paid,
+      balance: ledger.balance,
+      overdue: ledger.overdue,
+      upcoming: ledger.upcoming,
+      unappliedCredit: ledger.unappliedCredit,
+      billedLabel: ledger.billedLabel,
+      paidLabel: ledger.paidLabel,
+      balanceLabel: ledger.balanceLabel,
+      overdueLabel: ledger.overdueLabel,
+      upcomingLabel: ledger.upcomingLabel,
+      unappliedCreditLabel: ledger.unappliedCreditLabel,
+      overdueInvoicesCount: ledger.overdueInvoicesCount,
+      dueSoonInvoicesCount: ledger.dueSoonInvoicesCount,
       missingFields: ["documentNumber", "phone"].filter((field) => !cleanText(customer[field]))
     };
   });
+}
+
+function customerFinancialSnapshot(data, customerId) {
+  const id = normalizeCustomerId(customerId);
+  const ledger = buildReceivableLedger(data, id);
+  const orders = (data.orders || []).filter((order) => order.customerId === id);
+  return {
+    invoicesCount: ledger.invoices.length,
+    paymentsCount: ledger.payments.length,
+    ordersCount: orders.length,
+    billed: ledger.billed,
+    paid: ledger.paid,
+    balance: ledger.balance,
+    balanceLabel: ledger.balanceLabel
+  };
+}
+
+function customerDuplicateCandidateFromCustomer(data, customer) {
+  return {
+    source: "sistema",
+    id: customer.id,
+    name: customer.name || "Cliente reservado",
+    documentNumber: customer.documentNumber || "",
+    phone: customer.phone || "",
+    email: customer.email || "",
+    city: customer.city || "",
+    department: customer.department || "",
+    ...customerFinancialSnapshot(data, customer.id)
+  };
+}
+
+function customerDuplicateCandidateFromRow(row, rowNumber) {
+  return {
+    source: "archivo",
+    row: rowNumber,
+    id: normalizeCustomerId(row.id_cliente),
+    name: cleanText(row.nombre_cliente) || "Cliente reservado",
+    documentNumber: cleanText(row.documento),
+    phone: cleanText(row.telefono),
+    email: cleanText(row.correo).toLowerCase(),
+    city: cleanText(row.ciudad),
+    department: "",
+    invoicesCount: 0,
+    paymentsCount: 0,
+    ordersCount: 0,
+    billed: 0,
+    paid: 0,
+    balance: 0,
+    balanceLabel: formatMoney(0)
+  };
+}
+
+function documentDuplicateError(data, incomingCustomer, duplicates) {
+  const documentNumber = normalizeDocument(incomingCustomer.documentNumber);
+  const error = new Error(`El documento ${documentNumber} ya esta asociado a otro cliente.`);
+  error.status = 409;
+  error.code = "DUPLICATE_CUSTOMER_DOCUMENT";
+  error.duplicate = {
+    documentNumber,
+    current: {
+      source: "formulario",
+      id: normalizeCustomerId(incomingCustomer.id),
+      name: cleanText(incomingCustomer.name),
+      documentNumber,
+      phone: cleanText(incomingCustomer.phone),
+      email: cleanText(incomingCustomer.email).toLowerCase()
+    },
+    candidates: duplicates.map((customer) => customerDuplicateCandidateFromCustomer(data, customer))
+  };
+  return error;
+}
+
+function buildCustomerDuplicateGroups(data, rows = []) {
+  const byDocument = new Map();
+  const add = (documentNumber, candidate) => {
+    const key = normalizeDocument(documentNumber);
+    if (!key) return;
+    const group = byDocument.get(key) || { documentNumber: key, candidates: [] };
+    group.candidates.push(candidate);
+    byDocument.set(key, group);
+  };
+
+  (data.customers || []).forEach((customer) => {
+    if (hasRealDocument(customer.documentNumber)) add(customer.documentNumber, customerDuplicateCandidateFromCustomer(data, customer));
+  });
+  rows.forEach((row, index) => {
+    if (hasRealDocument(row.documento)) add(row.documento, customerDuplicateCandidateFromRow(row, index + 2));
+  });
+
+  return Array.from(byDocument.values())
+    .map((group) => {
+      const fileCandidates = group.candidates.filter((candidate) => candidate.source === "archivo");
+      const systemCandidates = group.candidates.filter((candidate) => candidate.source === "sistema");
+      const distinctIds = new Set(group.candidates.map((candidate) => candidate.id).filter(Boolean));
+      const repeatedFileRows = fileCandidates.length > 1;
+      const crossesSystem = systemCandidates.length > 0 && fileCandidates.some((candidate) => !candidate.id || !systemCandidates.some((current) => current.id === candidate.id));
+      const duplicatedInSystem = systemCandidates.length > 1;
+      const duplicatedById = distinctIds.size > 1;
+      const shouldReview = repeatedFileRows || crossesSystem || duplicatedInSystem || duplicatedById;
+      if (!shouldReview) return null;
+      const recommended = systemCandidates[0]?.id || fileCandidates.find((candidate) => candidate.id)?.id || "__AUTO__";
+      return {
+        ...group,
+        recommendedPrimaryId: recommended,
+        candidates: group.candidates,
+        reason: duplicatedInSystem
+          ? "El documento ya existe en varios clientes del sistema."
+          : crossesSystem
+            ? "El documento del archivo ya existe en el sistema."
+            : "El documento aparece mas de una vez dentro del archivo."
+      };
+    })
+    .filter(Boolean);
+}
+
+function pickText(...values) {
+  return values.map((value) => cleanText(value)).find(Boolean) || "";
+}
+
+function pickLowerEmail(...values) {
+  return pickText(...values).toLowerCase();
+}
+
+function buildCustomerFromImportRow(row, id, actor, now, imported = true) {
+  const location = resolveCityDepartment(row.ciudad, row.departamento);
+  const name = cleanText(row.nombre_cliente);
+  const hasCoreContactData = cleanText(row.documento) || cleanText(row.telefono) || cleanText(row.correo);
+  return {
+    id,
+    name,
+    alternateName: cleanText(row.nombre_alterno),
+    documentNumber: normalizeDocument(row.documento) || cleanText(row.documento),
+    phone: cleanText(row.telefono),
+    email: cleanText(row.correo).toLowerCase(),
+    address: cleanText(row.direccion),
+    city: location.city,
+    department: location.department,
+    zone: cleanText(row.zona),
+    geographyStatus: location.geographyStatus,
+    notes: cleanText(row.notas) || (!name ? "Cliente reservado pendiente por asignar." : ""),
+    dataStatus: !name ? "pendiente_asignacion" : hasCoreContactData && cleanText(row.documento) && cleanText(row.telefono) ? "actualizado" : "pendiente_actualizacion",
+    updateAlertShownAt: "",
+    updateConfirmedAt: "",
+    createdAt: now,
+    createdBy: actor,
+    updatedAt: now,
+    updatedBy: actor,
+    auditTrail: [createAudit(imported ? "customer_imported" : "customer_created", actor)]
+  };
+}
+
+function mergeCustomerRecords(data, primaryId, secondaryIds = [], incomingCustomer = {}, actor = "portal") {
+  const now = new Date().toISOString();
+  const normalizedPrimaryId = normalizeCustomerId(primaryId) || nextCustomerId(data.customers);
+  const uniqueSecondaryIds = [...new Set((secondaryIds || []).map(normalizeCustomerId).filter((id) => id && id !== normalizedPrimaryId))];
+  const primaryExisting = data.customers.find((customer) => customer.id === normalizedPrimaryId) || {};
+  const secondaryCustomers = data.customers.filter((customer) => uniqueSecondaryIds.includes(customer.id));
+  const incoming = incomingCustomer || {};
+  const location = resolveCityDepartment(incoming.city || primaryExisting.city, incoming.department || primaryExisting.department);
+  const mergedIds = [
+    ...(Array.isArray(primaryExisting.mergedCustomerIds) ? primaryExisting.mergedCustomerIds : []),
+    ...secondaryCustomers.flatMap((customer) => [customer.id, ...(Array.isArray(customer.mergedCustomerIds) ? customer.mergedCustomerIds : [])])
+  ].filter(Boolean);
+  const merged = {
+    ...primaryExisting,
+    id: normalizedPrimaryId,
+    name: pickText(incoming.name, primaryExisting.name, ...secondaryCustomers.map((customer) => customer.name)),
+    alternateName: pickText(incoming.alternateName, primaryExisting.alternateName, ...secondaryCustomers.map((customer) => customer.alternateName)),
+    documentNumber: normalizeDocument(incoming.documentNumber) || normalizeDocument(primaryExisting.documentNumber) || secondaryCustomers.map((customer) => normalizeDocument(customer.documentNumber)).find(Boolean) || cleanText(incoming.documentNumber || primaryExisting.documentNumber),
+    phone: pickText(incoming.phone, primaryExisting.phone, ...secondaryCustomers.map((customer) => customer.phone)),
+    email: pickLowerEmail(incoming.email, primaryExisting.email, ...secondaryCustomers.map((customer) => customer.email)),
+    address: pickText(incoming.address, primaryExisting.address, ...secondaryCustomers.map((customer) => customer.address)),
+    city: location.city || pickText(primaryExisting.city, ...secondaryCustomers.map((customer) => customer.city)),
+    department: location.department || pickText(primaryExisting.department, ...secondaryCustomers.map((customer) => customer.department)),
+    zone: pickText(incoming.zone, primaryExisting.zone, ...secondaryCustomers.map((customer) => customer.zone)),
+    geographyStatus: location.geographyStatus || primaryExisting.geographyStatus || secondaryCustomers.find((customer) => customer.geographyStatus)?.geographyStatus || "",
+    notes: [
+      pickText(incoming.notes, primaryExisting.notes),
+      ...secondaryCustomers.map((customer) => cleanText(customer.notes)).filter(Boolean),
+      uniqueSecondaryIds.length ? `Unificado con ${uniqueSecondaryIds.join(", ")}.` : ""
+    ].filter(Boolean).join(" | "),
+    dataStatus: "actualizado",
+    updateConfirmedAt: now,
+    updatedAt: now,
+    updatedBy: actor,
+    createdAt: primaryExisting.createdAt || now,
+    createdBy: primaryExisting.createdBy || actor,
+    mergedCustomerIds: [...new Set(mergedIds)],
+    auditTrail: [
+      ...(primaryExisting.auditTrail || []),
+      createAudit("customer_merged", actor, { primaryId: normalizedPrimaryId, secondaryIds: uniqueSecondaryIds })
+    ]
+  };
+  if (!merged.name) throw new Error("No fue posible unificar: el cliente principal no tiene nombre.");
+
+  const rewrite = (record) => uniqueSecondaryIds.includes(record.customerId)
+    ? { ...record, customerId: normalizedPrimaryId, customerNameSnapshot: merged.name, updatedAt: now, updatedBy: actor }
+    : record;
+  data.invoices = (data.invoices || []).map(rewrite);
+  data.payments = (data.payments || []).map(rewrite);
+  data.orders = (data.orders || []).map(rewrite);
+  data.customers = [
+    ...data.customers.filter((customer) => !uniqueSecondaryIds.includes(customer.id) && customer.id !== normalizedPrimaryId),
+    merged
+  ].sort((left, right) => String(left.id).localeCompare(String(right.id), "es"));
+  data.auditTrail = [
+    ...(data.auditTrail || []),
+    createAudit("customer_ids_released_after_merge", actor, { primaryId: normalizedPrimaryId, releasedIds: uniqueSecondaryIds })
+  ];
+  return merged;
 }
 
 function topDebtors(data = {}) {
@@ -562,13 +980,21 @@ function buildDashboard(data = {}) {
   const invoices = data.invoices || [];
   const payments = data.payments || [];
   const balances = customerBalances(data);
-  const totalBilled = invoices.filter((invoice) => invoice.status !== "anulada").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
-  const totalPaid = payments.filter((payment) => payment.status !== "anulado").reduce((sum, payment) => sum + Number(payment.totalApplied || payment.netReceived || payment.grossAmount || 0), 0);
-  const pending = Math.max(totalBilled - totalPaid, 0);
+  const totalBilled = balances.reduce((sum, customer) => sum + Number(customer.billed || 0), 0);
+  const totalPaid = balances.reduce((sum, customer) => sum + Number(customer.paid || 0), 0);
+  const pending = balances.reduce((sum, customer) => sum + Number(customer.balance || 0), 0);
+  const aging = balances.reduce((totals, customer) => {
+    Object.entries(customer.aging || {}).forEach(([key, value]) => {
+      totals[key] = (totals[key] || 0) + Number(value || 0);
+    });
+    return totals;
+  }, emptyAgingBuckets());
+  const overdue = aging.overdue0To30 + aging.overdue31To60 + aging.overdue61To90 + aging.overdueOver90;
+  const upcoming = aging.dueToday + aging.upcoming7 + aging.upcoming15 + aging.upcoming30;
   return {
     customersCount: data.customers.length,
-    invoicesCount: invoices.length,
-    paymentsCount: payments.length,
+    invoicesCount: invoices.filter((invoice) => invoice.status !== "anulada").length,
+    paymentsCount: payments.filter((payment) => payment.status !== "anulado").length,
     inventoryCount: data.inventory.length,
     inventoryMovementsCount: data.inventoryMovements.length,
     ordersCount: data.orders.length,
@@ -578,9 +1004,24 @@ function buildDashboard(data = {}) {
     totalBilledLabel: formatMoney(totalBilled),
     totalPaidLabel: formatMoney(totalPaid),
     pendingLabel: formatMoney(pending),
+    aging,
+    agingLabels: Object.fromEntries(Object.entries(aging).map(([key, value]) => [key, formatMoney(value)])),
+    overdue,
+    overdueLabel: formatMoney(overdue),
+    upcoming,
+    upcomingLabel: formatMoney(upcoming),
+    currentLabel: formatMoney(aging.current),
+    dueTodayLabel: formatMoney(aging.dueToday),
+    overdueInvoicesCount: balances.reduce((sum, customer) => sum + Number(customer.overdueInvoicesCount || 0), 0),
+    dueSoonInvoicesCount: balances.reduce((sum, customer) => sum + Number(customer.dueSoonInvoicesCount || 0), 0),
+    unappliedCredit: balances.reduce((sum, customer) => sum + Number(customer.unappliedCredit || 0), 0),
+    unappliedCreditLabel: formatMoney(balances.reduce((sum, customer) => sum + Number(customer.unappliedCredit || 0), 0)),
     outdatedCustomersCount: balances.filter((customer) => customer.missingFields.length).length,
     negativeInventoryCount: data.inventory.filter((item) => Number(item.stock || 0) < 0).length,
-    topDebtors: topDebtors(data)
+    topDebtors: balances
+      .filter((customer) => customer.balance > 0)
+      .sort((left, right) => right.balance - left.balance)
+      .slice(0, 20)
   };
 }
 
@@ -618,12 +1059,17 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     const id = normalizeCustomerId(payload.id) || nextCustomerId(data.customers);
     const existingIndex = data.customers.findIndex((customer) => customer.id === id);
     const existing = existingIndex >= 0 ? data.customers[existingIndex] : {};
+    const documentKey = normalizeDocument(payload.documentNumber);
+    if (documentKey && !payload.skipDocumentDuplicateCheck) {
+      const duplicates = data.customers.filter((customer) => customer.id !== id && normalizeDocument(customer.documentNumber) === documentKey);
+      if (duplicates.length) throw documentDuplicateError(data, { ...payload, id, documentNumber: documentKey }, duplicates);
+    }
     const customer = {
       ...existing,
       id,
       name: cleanText(payload.name),
       alternateName: cleanText(payload.alternateName),
-      documentNumber: cleanText(payload.documentNumber),
+      documentNumber: documentKey || cleanText(payload.documentNumber),
       phone: cleanText(payload.phone),
       email: cleanText(payload.email).toLowerCase(),
       address: cleanText(payload.address),
@@ -643,6 +1089,19 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.customers = existingIndex >= 0
       ? data.customers.map((item, index) => index === existingIndex ? customer : item)
       : [...data.customers, customer];
+  } else if (type === "mergeCustomers") {
+    const incoming = payload.incomingCustomer || {};
+    const documentKey = normalizeDocument(payload.documentNumber || incoming.documentNumber);
+    const primaryId = normalizeCustomerId(payload.primaryId || incoming.id) || nextCustomerId(data.customers);
+    const explicitSecondaryIds = Array.isArray(payload.secondaryIds) ? payload.secondaryIds.map(normalizeCustomerId) : [];
+    const documentSecondaryIds = documentKey
+      ? data.customers.filter((customer) => customer.id !== primaryId && normalizeDocument(customer.documentNumber) === documentKey).map((customer) => customer.id)
+      : [];
+    mergeCustomerRecords(data, primaryId, [...explicitSecondaryIds, ...documentSecondaryIds], {
+      ...incoming,
+      id: primaryId,
+      documentNumber: documentKey || incoming.documentNumber
+    }, actor);
   } else if (type === "invoice") {
     const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "FAC") : nextInvoiceId(data);
     const existingIndex = data.invoices.findIndex((invoice) => invoice.id === id);
@@ -900,7 +1359,7 @@ function validateCustomerImportLocation(row, rowNumber, warnings) {
   return location;
 }
 
-export function validateImportRows(data, module, rows = []) {
+export function validateImportRows(data, module, rows = [], options = {}) {
   const errors = [];
   const warnings = [];
   const normalizedModule = cleanText(module);
@@ -919,6 +1378,14 @@ export function validateImportRows(data, module, rows = []) {
     if (!headers.has(header)) addImportError(errors, 1, header, "", `Falta la columna obligatoria ${header}.`, "Descarga la plantilla oficial y conserva los encabezados.");
   });
 
+  const mergeChoices = options.mergeChoices || {};
+  const duplicateCustomerDocuments = normalizedModule === "clientes" ? buildCustomerDuplicateGroups(data, rows) : [];
+  const duplicateDocumentsWithChoice = new Set(
+    duplicateCustomerDocuments
+      .filter((group) => mergeChoices[group.documentNumber])
+      .map((group) => group.documentNumber)
+  );
+
   const seenCustomers = new Set();
   const seenInventory = new Set();
   const seenInventoryUpdates = new Set();
@@ -929,9 +1396,11 @@ export function validateImportRows(data, module, rows = []) {
     if (normalizedModule === "clientes") {
       const id = normalizeCustomerId(row.id_cliente);
       const name = cleanText(row.nombre_cliente);
+      const documentKey = normalizeDocument(row.documento);
+      const coveredByDocumentMerge = documentKey && duplicateDocumentsWithChoice.has(documentKey);
       if (!id && !name) addImportError(errors, rowNumber, "nombre_cliente", row.nombre_cliente, "Falta el nombre del cliente o un ID reservado.", "Diligencia el nombre para crear el cliente automaticamente o un ID para reservarlo.");
       if (!name) addImportWarning(warnings, rowNumber, "nombre_cliente", row.nombre_cliente, `El ID ${id || "sin ID"} se cargara como reservado pendiente por asignar.`);
-      if (id && findCustomer(data, id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} ya existe y no puede usarse para crear otro cliente.`, "Usa el siguiente consecutivo disponible o actualiza el cliente existente desde el formulario.");
+      if (id && findCustomer(data, id) && !coveredByDocumentMerge) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} ya existe y no puede usarse para crear otro cliente.`, "Usa el siguiente consecutivo disponible o actualiza el cliente existente desde el formulario.");
       if (id && seenCustomers.has(id)) addImportError(errors, rowNumber, "id_cliente", id, `El ID ${id} esta repetido dentro del archivo.`, "Cada cliente nuevo debe tener un ID unico.");
       if (id) seenCustomers.add(id);
       validateCustomerImportLocation(row, rowNumber, warnings);
@@ -1009,10 +1478,31 @@ export function validateImportRows(data, module, rows = []) {
     }
   });
 
+  if (normalizedModule === "clientes" && duplicateCustomerDocuments.length) {
+    duplicateCustomerDocuments.forEach((group) => {
+      const choice = cleanText(mergeChoices[group.documentNumber]);
+      const candidateIds = new Set(group.candidates.map((candidate) => candidate.id).filter(Boolean));
+      const hasSystemCandidate = group.candidates.some((candidate) => candidate.source === "sistema");
+      if (!choice) {
+        addImportError(errors, 0, "documento", group.documentNumber, `El documento ${group.documentNumber} tiene posibles duplicados.`, "Selecciona un ID principal para unificar antes de importar.");
+        return;
+      }
+      if (choice === "__AUTO__" && hasSystemCandidate) {
+        addImportError(errors, 0, "documento", group.documentNumber, `El documento ${group.documentNumber} ya existe en el sistema.`, "Selecciona como principal uno de los IDs existentes.");
+        return;
+      }
+      if (choice !== "__AUTO__" && !candidateIds.has(choice) && !findCustomer(data, choice)) {
+        addImportError(errors, 0, "documento", group.documentNumber, `El ID principal ${choice} no esta dentro de los candidatos del documento ${group.documentNumber}.`, "Escoge uno de los IDs listados.");
+      }
+    });
+  }
+
   return {
     ok: errors.length === 0,
     errors,
     warnings,
+    duplicateCustomerDocuments,
+    requiresCustomerMerge: duplicateCustomerDocuments.length > 0 && duplicateCustomerDocuments.some((group) => !mergeChoices[group.documentNumber]),
     summary: {
       module: normalizedModule,
       label: template.label,
@@ -1023,36 +1513,44 @@ export function validateImportRows(data, module, rows = []) {
   };
 }
 
-function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
+function commitRows(data, module, rows = [], actor = "portal", warnings = [], options = {}) {
   const now = new Date().toISOString();
 
   if (module === "clientes") {
+    const mergeChoices = options.mergeChoices || {};
+    const handledDocuments = new Set();
     rows.forEach((row) => {
-      const location = resolveCityDepartment(row.ciudad, row.departamento);
-      const name = cleanText(row.nombre_cliente);
-      const hasCoreContactData = cleanText(row.documento) || cleanText(row.telefono) || cleanText(row.correo);
-      data.customers.push({
-        id: normalizeCustomerId(row.id_cliente) || nextCustomerId(data.customers),
-        name,
-        alternateName: cleanText(row.nombre_alterno),
-        documentNumber: cleanText(row.documento),
-        phone: cleanText(row.telefono),
-        email: cleanText(row.correo).toLowerCase(),
-        address: cleanText(row.direccion),
-        city: location.city,
-        department: location.department,
-        zone: cleanText(row.zona),
-        geographyStatus: location.geographyStatus,
-        notes: cleanText(row.notas) || (!name ? "Cliente reservado pendiente por asignar." : ""),
-        dataStatus: !name ? "pendiente_asignacion" : hasCoreContactData && cleanText(row.documento) && cleanText(row.telefono) ? "actualizado" : "pendiente_actualizacion",
-        updateAlertShownAt: "",
-        updateConfirmedAt: "",
-        createdAt: now,
-        createdBy: actor,
-        updatedAt: now,
-        updatedBy: actor,
-        auditTrail: [createAudit("customer_imported", actor)]
-      });
+      const documentKey = normalizeDocument(row.documento);
+      const mergeChoice = documentKey ? cleanText(mergeChoices[documentKey]) : "";
+      if (documentKey && mergeChoice) {
+        if (handledDocuments.has(documentKey)) return;
+        handledDocuments.add(documentKey);
+        const groupRows = rows.filter((candidate) => normalizeDocument(candidate.documento) === documentKey);
+        const preferredRow = mergeChoice === "__AUTO__"
+          ? groupRows.find((candidate) => normalizeCustomerId(candidate.id_cliente)) || groupRows[0]
+          : groupRows.find((candidate) => normalizeCustomerId(candidate.id_cliente) === mergeChoice) || groupRows[0];
+        const primaryId = mergeChoice === "__AUTO__" ? normalizeCustomerId(preferredRow.id_cliente) || nextCustomerId(data.customers) : mergeChoice;
+        const incoming = buildCustomerFromImportRow(preferredRow, primaryId, actor, now, true);
+        const secondaryRows = groupRows.filter((candidate) => normalizeCustomerId(candidate.id_cliente) !== primaryId);
+        secondaryRows.forEach((candidate) => {
+          incoming.name = pickText(incoming.name, candidate.nombre_cliente);
+          incoming.alternateName = pickText(incoming.alternateName, candidate.nombre_alterno);
+          incoming.phone = pickText(incoming.phone, candidate.telefono);
+          incoming.email = pickLowerEmail(incoming.email, candidate.correo);
+          incoming.address = pickText(incoming.address, candidate.direccion);
+          incoming.zone = pickText(incoming.zone, candidate.zona);
+          incoming.notes = [incoming.notes, cleanText(candidate.notas)].filter(Boolean).join(" | ");
+        });
+        const existingDuplicateIds = data.customers
+          .filter((customer) => customer.id !== primaryId && normalizeDocument(customer.documentNumber) === documentKey)
+          .map((customer) => customer.id);
+        const rowDuplicateIds = secondaryRows.map((candidate) => normalizeCustomerId(candidate.id_cliente)).filter(Boolean);
+        mergeCustomerRecords(data, primaryId, [...existingDuplicateIds, ...rowDuplicateIds], incoming, actor);
+        warnings.push({ row: "", field: "documento", value: documentKey, message: `Documento ${documentKey} unificado en el ID ${primaryId}. IDs no usados quedan disponibles para asignacion posterior.` });
+        return;
+      }
+      const id = normalizeCustomerId(row.id_cliente) || nextCustomerId(data.customers);
+      data.customers.push(buildCustomerFromImportRow(row, id, actor, now, true));
     });
   }
 
@@ -1240,14 +1738,14 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = []) {
   return data;
 }
 
-export async function validateOrCommitImport(companyId, module, rows = [], commit = false, actor = "portal") {
+export async function validateOrCommitImport(companyId, module, rows = [], commit = false, actor = "portal", options = {}) {
   const data = await loadCompanyData(companyId);
-  const validation = validateImportRows(data, module, rows);
+  const validation = validateImportRows(data, module, rows, options);
   if (!validation.ok) return { ...validation, committed: false, data: withComputedFields(data) };
   if (!commit) return { ...validation, committed: false, data: withComputedFields(data) };
 
   const warnings = [...validation.warnings];
-  const nextData = commitRows(data, cleanText(module), rows, actor, warnings);
+  const nextData = commitRows(data, cleanText(module), rows, actor, warnings, options);
   const saved = await saveCompanyData(companyId, nextData, actor);
   return {
     ok: true,

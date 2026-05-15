@@ -22,8 +22,11 @@ export default async (req) => {
     const module = String(body?.module || "").trim();
     const rows = Array.isArray(body?.rows) ? body.rows : [];
     const commit = Boolean(body?.commit);
+    const options = {
+      mergeChoices: body?.mergeChoices && typeof body.mergeChoices === "object" ? body.mergeChoices : {}
+    };
     const actor = session.impersonatedBy ? `soporte:${session.impersonatedBy}` : session.username;
-    const result = await validateOrCommitImport(session.companyId, module, rows, commit, actor);
+    const result = await validateOrCommitImport(session.companyId, module, rows, commit, actor, options);
 
     return new Response(JSON.stringify(result), { status: result.ok ? 200 : 400, headers });
   } catch (error) {

@@ -27,8 +27,12 @@ export default async (req) => {
     return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers });
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message || "No fue posible guardar el registro" }),
-      { status: 400, headers }
+      JSON.stringify({
+        error: error.message || "No fue posible guardar el registro",
+        code: error.code || "",
+        duplicate: error.duplicate || null
+      }),
+      { status: error.status || 400, headers }
     );
   }
 };
