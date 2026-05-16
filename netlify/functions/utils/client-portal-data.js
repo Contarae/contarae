@@ -620,14 +620,38 @@ function findReceivableInvoice(invoiceMap, invoiceId = "") {
     || null;
 }
 
-function buildReceivableLedger(data = {}, customerId = "", cutoffValue = new Date()) {
+function groupPortfolioRecords(data = {}) {
+  const invoicesByCustomer = new Map();
+  const paymentsByCustomer = new Map();
+  (data.invoices || []).forEach((invoice) => {
+    const id = normalizeCustomerId(invoice.customerId);
+    if (!id) return;
+    if (!invoicesByCustomer.has(id)) invoicesByCustomer.set(id, []);
+    invoicesByCustomer.get(id).push(invoice);
+  });
+  (data.payments || []).forEach((payment) => {
+    const id = normalizeCustomerId(payment.customerId);
+    if (!id) return;
+    if (!paymentsByCustomer.has(id)) paymentsByCustomer.set(id, []);
+    paymentsByCustomer.get(id).push(payment);
+  });
+  return { invoicesByCustomer, paymentsByCustomer };
+}
+
+function groupedRecords(map, customerId) {
+  const id = normalizeCustomerId(customerId);
+  return map?.get(id) || [];
+}
+
+function buildReceivableLedger(data = {}, customerId = "", cutoffValue = new Date(), grouped = null) {
   const id = normalizeCustomerId(customerId);
   const cutoff = cutoffDateOnly(cutoffValue);
-  const invoices = (data.invoices || [])
-    .filter((invoice) => invoice.customerId === id && invoice.status !== "anulada")
+  const groups = grouped || groupPortfolioRecords(data);
+  const invoices = groupedRecords(groups.invoicesByCustomer, id)
+    .filter((invoice) => invoice.status !== "anulada")
     .sort(sortByPortfolioDate);
-  const payments = (data.payments || [])
-    .filter((payment) => payment.customerId === id && payment.status !== "anulado")
+  const payments = groupedRecords(groups.paymentsByCustomer, id)
+    .filter((payment) => payment.status !== "anulado")
     .sort((left, right) => {
       const leftDate = normalizeDate(left.date) || "9999-12-31";
       const rightDate = normalizeDate(right.date) || "9999-12-31";
@@ -733,9 +757,10 @@ function buildReceivableLedger(data = {}, customerId = "", cutoffValue = new Dat
   };
 }
 
-function customerBalances(data = {}) {
+function customerBalances(data = {}, grouped = null) {
+  const groups = grouped || groupPortfolioRecords(data);
   return (data.customers || []).map((customer) => {
-    const ledger = buildReceivableLedger(data, customer.id);
+    const ledger = buildReceivableLedger(data, customer.id, new Date(), groups);
     return {
       ...customer,
       invoicesCount: ledger.invoices.length,
@@ -757,7 +782,7 @@ function customerBalances(data = {}) {
       unappliedCreditLabel: ledger.unappliedCreditLabel,
       overdueInvoicesCount: ledger.overdueInvoicesCount,
       dueSoonInvoicesCount: ledger.dueSoonInvoicesCount,
-      missingFields: ["documentNumber", "phone"].filter((field) => !cleanText(customer[field]))
+      missingFields: ["documentNumber", "phone", "city", "department"].filter((field) => !cleanText(customer[field]))
     };
   });
 }
@@ -972,21 +997,21 @@ function mergeCustomerRecords(data, primaryId, secondaryIds = [], incomingCustom
   return merged;
 }
 
-function topDebtors(data = {}) {
-  return customerBalances(data)
+function topDebtors(data = {}, balances = null) {
+  return (balances || customerBalances(data))
     .filter((customer) => customer.balance > 0)
     .sort((left, right) => right.balance - left.balance)
     .slice(0, 20);
 }
 
-function buildDashboard(data = {}) {
+function buildDashboard(data = {}, balances = null) {
   const invoices = data.invoices || [];
   const payments = data.payments || [];
-  const balances = customerBalances(data);
-  const totalBilled = balances.reduce((sum, customer) => sum + Number(customer.billed || 0), 0);
-  const totalPaid = balances.reduce((sum, customer) => sum + Number(customer.paid || 0), 0);
-  const pending = balances.reduce((sum, customer) => sum + Number(customer.balance || 0), 0);
-  const aging = balances.reduce((totals, customer) => {
+  const computedBalances = balances || customerBalances(data);
+  const totalBilled = computedBalances.reduce((sum, customer) => sum + Number(customer.billed || 0), 0);
+  const totalPaid = computedBalances.reduce((sum, customer) => sum + Number(customer.paid || 0), 0);
+  const pending = computedBalances.reduce((sum, customer) => sum + Number(customer.balance || 0), 0);
+  const aging = computedBalances.reduce((totals, customer) => {
     Object.entries(customer.aging || {}).forEach(([key, value]) => {
       totals[key] = (totals[key] || 0) + Number(value || 0);
     });
@@ -1015,21 +1040,20 @@ function buildDashboard(data = {}) {
     upcomingLabel: formatMoney(upcoming),
     currentLabel: formatMoney(aging.current),
     dueTodayLabel: formatMoney(aging.dueToday),
-    overdueInvoicesCount: balances.reduce((sum, customer) => sum + Number(customer.overdueInvoicesCount || 0), 0),
-    dueSoonInvoicesCount: balances.reduce((sum, customer) => sum + Number(customer.dueSoonInvoicesCount || 0), 0),
-    unappliedCredit: balances.reduce((sum, customer) => sum + Number(customer.unappliedCredit || 0), 0),
-    unappliedCreditLabel: formatMoney(balances.reduce((sum, customer) => sum + Number(customer.unappliedCredit || 0), 0)),
-    outdatedCustomersCount: balances.filter((customer) => customer.missingFields.length).length,
+    overdueInvoicesCount: computedBalances.reduce((sum, customer) => sum + Number(customer.overdueInvoicesCount || 0), 0),
+    dueSoonInvoicesCount: computedBalances.reduce((sum, customer) => sum + Number(customer.dueSoonInvoicesCount || 0), 0),
+    unappliedCredit: computedBalances.reduce((sum, customer) => sum + Number(customer.unappliedCredit || 0), 0),
+    unappliedCreditLabel: formatMoney(computedBalances.reduce((sum, customer) => sum + Number(customer.unappliedCredit || 0), 0)),
+    outdatedCustomersCount: computedBalances.filter((customer) => customer.missingFields.length).length,
     negativeInventoryCount: data.inventory.filter((item) => Number(item.stock || 0) < 0).length,
-    topDebtors: balances
-      .filter((customer) => customer.balance > 0)
-      .sort((left, right) => right.balance - left.balance)
-      .slice(0, 20)
+    topDebtors: topDebtors(data, computedBalances)
   };
 }
 
 function withComputedFields(data = {}) {
   const normalized = normalizeData(data, data.companyId, data.company?.name);
+  const grouped = groupPortfolioRecords(normalized);
+  const balances = customerBalances(normalized, grouped);
   return {
     ...normalized,
     nextCustomerId: nextCustomerId(normalized.customers),
@@ -1038,8 +1062,8 @@ function withComputedFields(data = {}) {
     nextOrderId: nextOrderId(normalized),
     nextMovementId: nextMovementId(normalized),
     templates: IMPORT_TEMPLATES,
-    customerSummary: customerBalances(normalized),
-    dashboard: buildDashboard(normalized)
+    customerSummary: balances,
+    dashboard: buildDashboard(normalized, balances)
   };
 }
 

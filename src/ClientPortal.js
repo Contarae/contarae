@@ -320,10 +320,18 @@ function customerCollectionMessage(customer = {}) {
   return `Hola ${customer.name || "cliente"}, cordial saludo. Te contactamos para compartir el estado de cartera registrado a la fecha. Actualmente figura un saldo pendiente por valor de ${customer.balanceLabel || money(customer.balance)}. Agradecemos confirmar la fecha estimada de pago o enviarnos el soporte si ya fue cancelado.`;
 }
 
+function customerContactMessage(customer = {}) {
+  return `Hola ${customer.name || "cliente"}, cordial saludo. Te contactamos para actualizar y confirmar informacion de tu cuenta. Quedamos atentos para ayudarte.`;
+}
+
+function customerWhatsappMessage(customer = {}) {
+  return Number(customer.balance || 0) > 0 ? customerCollectionMessage(customer) : customerContactMessage(customer);
+}
+
 function customerWhatsappUrl(customer = {}) {
   const phone = onlyDigits(customer.phone).slice(-10);
-  if (!phone || phone.length < 10 || Number(customer.balance || 0) <= 0) return "";
-  return `https://wa.me/57${phone}?text=${encodeURIComponent(customerCollectionMessage(customer))}`;
+  if (!phone || phone.length < 10) return "";
+  return `https://wa.me/57${phone}?text=${encodeURIComponent(customerWhatsappMessage(customer))}`;
 }
 
 function openExternalUrl(url) {
@@ -701,6 +709,65 @@ function customerById(data, id) {
   return (data.customerSummary || data.customers || []).find((customer) => customer.id === id);
 }
 
+function companyInitials(name = "") {
+  const words = clean(name).split(/\s+/).filter(Boolean);
+  const letters = words.length > 1 ? [words[0], words[1]] : [words[0] || "C"];
+  return letters.map((word) => word.charAt(0).toLocaleUpperCase("es-CO")).join("").slice(0, 2);
+}
+
+function CompanyBrand({ companyName = "", logoDataUrl = "" }) {
+  return (
+    <div className="client-company-brand">
+      <div className="client-company-logo-frame" aria-hidden="true">
+        {logoDataUrl ? (
+          <img src={logoDataUrl} alt="" />
+        ) : (
+          <span>{companyInitials(companyName)}</span>
+        )}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, letterSpacing: "1.6px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PORTAL PARA CLIENTES</div>
+        <h1 className="client-company-name">{companyName || "Mi empresa"}</h1>
+        <p style={{ margin: 0, fontFamily: F, color: "#52647F", fontSize: 13 }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
+      </div>
+    </div>
+  );
+}
+
+function ContaraeSignature() {
+  return (
+    <footer className="client-contarae-signature">
+      <img src="/logo192.png" alt="CONTARAE" />
+      <span>
+        Sistema de gestion propiedad de <strong>CONTARAE</strong> ·{" "}
+        <a href="https://www.contarae.com" target="_blank" rel="noreferrer">www.contarae.com</a>
+      </span>
+    </footer>
+  );
+}
+
+const REQUIRED_CUSTOMER_FIELDS = [
+  ["documentNumber", "numero de documento"],
+  ["phone", "celular"],
+  ["city", "ciudad"],
+  ["department", "departamento"]
+];
+
+function missingCustomerFields(customer = {}) {
+  return REQUIRED_CUSTOMER_FIELDS
+    .filter(([field]) => !clean(customer[field]))
+    .map(([, label]) => label);
+}
+
+function customerNeedsUpdate(customer = {}) {
+  if (!customer?.id) return true;
+  return clean(customer.dataStatus) !== "actualizado" || missingCustomerFields(customer).length > 0;
+}
+
+function isValidCustomerPhone(customer = {}) {
+  return onlyDigits(customer.phone).slice(-10).length >= 10;
+}
+
 function printableDocument(type, record, data = {}) {
   const company = data.company || {};
   const customer = customerById(data, record.customerId) || {};
@@ -839,6 +906,100 @@ function ConfirmModal({ open, title, body, details = [], onCancel, onConfirm, co
           <button type="button" disabled={busy} onClick={onConfirm} style={{ ...button, background: danger ? "linear-gradient(135deg,#991B1B,#DC2626)" : button.background, opacity: busy ? .65 : 1 }}>{busy ? "Guardando..." : confirmLabel}</button>
         </div>
       </div>
+    </PortalModal>
+  );
+}
+
+function CustomerUpdateRequiredModal({ open, customer, context = "continuar", onCancel, onSave, onUpdated }) {
+  const [draft, setDraft] = useState({ id: "", name: "", alternateName: "", documentNumber: "", phone: "", email: "", address: "", city: "", department: "", zone: "", notes: "" });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || !customer) return;
+    setDraft({
+      id: customer.id || "",
+      name: customer.name || "",
+      alternateName: customer.alternateName || "",
+      documentNumber: customer.documentNumber || "",
+      phone: customer.phone || "",
+      email: customer.email || "",
+      address: customer.address || "",
+      city: customer.city || "",
+      department: customer.department || "",
+      zone: customer.zone || "",
+      notes: customer.notes || ""
+    });
+  }, [open, customer]);
+
+  if (!open || !customer) return null;
+
+  const missing = missingCustomerFields({ ...customer, ...draft });
+
+  async function submit(event) {
+    event.preventDefault();
+    const normalizedGeo = resolveCityDepartment(draft.city, draft.department);
+    const payload = {
+      ...draft,
+      name: titleCaseName(draft.name),
+      alternateName: titleCaseName(draft.alternateName),
+      documentNumber: onlyDigits(draft.documentNumber),
+      phone: onlyDigits(draft.phone).slice(-10),
+      city: normalizedGeo.city,
+      department: normalizedGeo.department,
+      geographyStatus: normalizedGeo.geographyStatus,
+      updateConfirmed: true,
+      _silentSuccess: true
+    };
+    const requiredMissing = missingCustomerFields(payload);
+    if (requiredMissing.length) {
+      window.alert(`Para continuar falta actualizar: ${requiredMissing.join(", ")}.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSave("customer", payload);
+      onUpdated?.();
+    } catch (err) {
+      // El componente principal muestra el error detallado.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <PortalModal open={open} title="Actualizar datos del cliente" eyebrow="VALIDACION REQUERIDA" onClose={busy ? undefined : onCancel} wide={false}>
+      <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
+        <p style={{ margin: 0, color: "#52647F", fontFamily: F, lineHeight: 1.65 }}>
+          Antes de {context}, confirma la informacion basica del cliente. Esta alerta se mostrara una sola vez cuando quede actualizado, y volvera a aparecer si faltan datos obligatorios.
+        </p>
+        {missing.length ? (
+          <div style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.12)", color: "#92400E", fontFamily: F, lineHeight: 1.55 }}>
+            Falta actualizar: <strong>{missing.join(", ")}</strong>.
+          </div>
+        ) : null}
+        <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+          <Field label="Nombre completo"><input required style={input} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} onBlur={(event) => setDraft((current) => ({ ...current, name: titleCaseName(event.target.value) }))} /></Field>
+          <Field label="Nombre alterno"><input style={input} value={draft.alternateName} onChange={(event) => setDraft((current) => ({ ...current, alternateName: event.target.value }))} onBlur={(event) => setDraft((current) => ({ ...current, alternateName: titleCaseName(event.target.value) }))} /></Field>
+          <Field label="Documento"><input required style={input} value={draft.documentNumber} onChange={(event) => setDraft((current) => ({ ...current, documentNumber: onlyDigits(event.target.value) }))} /></Field>
+          <Field label="Celular"><input required style={input} value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: onlyDigits(event.target.value).slice(-10) }))} /></Field>
+          <Field label="Correo"><input style={input} type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} /></Field>
+          <Field label="Ciudad"><input required style={input} value={draft.city} onChange={(event) => {
+            const geo = resolveCityDepartment(event.target.value, draft.department);
+            setDraft((current) => ({ ...current, city: event.target.value, department: geo.department }));
+          }} onBlur={(event) => {
+            const geo = resolveCityDepartment(event.target.value, draft.department);
+            setDraft((current) => ({ ...current, city: geo.city, department: geo.department }));
+          }} /></Field>
+          <Field label="Departamento"><input required readOnly style={{ ...input, background: "#F8FBFF" }} value={draft.department} /></Field>
+          <Field label="Zona"><input style={input} value={draft.zone} onChange={(event) => setDraft((current) => ({ ...current, zone: event.target.value }))} /></Field>
+          <Field label="Direccion"><input style={input} value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} /></Field>
+        </div>
+        <textarea style={{ ...input, minHeight: 76 }} placeholder="Notas internas del cliente" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button type="button" disabled={busy} onClick={onCancel} style={{ ...ghostButton, opacity: busy ? .6 : 1 }}>Cancelar</button>
+          <button type="submit" disabled={busy} style={{ ...button, opacity: busy ? .65 : 1 }}>{busy ? "Guardando..." : "Guardar y continuar"}</button>
+        </div>
+      </form>
     </PortalModal>
   );
 }
@@ -1288,6 +1449,11 @@ function Customers({ data, onSave, onExport }) {
       zone: titleCaseName(draft.zone),
       updateConfirmed: true
     };
+    const requiredMissing = missingCustomerFields(payload);
+    if (requiredMissing.length) {
+      window.alert(`Para guardar el cliente falta actualizar: ${requiredMissing.join(", ")}.`);
+      return;
+    }
     setConfirmSave({
       payload,
       details: [
@@ -1367,15 +1533,15 @@ function Customers({ data, onSave, onExport }) {
           <Field label="ID cliente"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.id || `Automatico: ${data.nextCustomerId}`} /></Field>
           <Field label="Nombre"><input style={input} required value={draft.name} onBlur={() => setDraft((current) => ({ ...current, name: titleCaseName(current.name) }))} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></Field>
           <Field label="Nombre alterno"><input style={input} value={draft.alternateName} onBlur={() => setDraft((current) => ({ ...current, alternateName: titleCaseName(current.alternateName) }))} onChange={(event) => setDraft((current) => ({ ...current, alternateName: event.target.value }))} /></Field>
-          <Field label="Documento"><input style={input} value={draft.documentNumber} onChange={(event) => setDraft((current) => ({ ...current, documentNumber: onlyDigits(event.target.value) }))} /></Field>
-          <Field label="Telefono"><input style={input} value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: onlyDigits(event.target.value).slice(0, 10) }))} /></Field>
+          <Field label="Documento"><input required style={input} value={draft.documentNumber} onChange={(event) => setDraft((current) => ({ ...current, documentNumber: onlyDigits(event.target.value) }))} /></Field>
+          <Field label="Telefono"><input required style={input} value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: onlyDigits(event.target.value).slice(0, 10) }))} /></Field>
           <Field label="Correo"><input style={input} type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value.toLowerCase() }))} /></Field>
           <Field label="Direccion"><input style={input} value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} /></Field>
-          <Field label="Ciudad"><input style={input} list="client-city-list" value={draft.city} onBlur={() => setDraft((current) => ({ ...current, ...resolveCityDepartment(current.city, current.department) }))} onChange={(event) => {
+          <Field label="Ciudad"><input required style={input} list="client-city-list" value={draft.city} onBlur={() => setDraft((current) => ({ ...current, ...resolveCityDepartment(current.city, current.department) }))} onChange={(event) => {
             const location = resolveCityDepartment(event.target.value, draft.department);
             setDraft((current) => ({ ...current, city: event.target.value, department: location.geographyStatus === "validado" ? location.department : current.department }));
           }} /></Field>
-          <Field label="Departamento automatico"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.department || (draft.city ? "Por validar" : "")} /></Field>
+          <Field label="Departamento automatico"><input required style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.department || (draft.city ? "Por validar" : "")} /></Field>
           <Field label="Zona opcional"><input style={input} value={draft.zone} onBlur={() => setDraft((current) => ({ ...current, zone: titleCaseName(current.zone) }))} onChange={(event) => setDraft((current) => ({ ...current, zone: event.target.value }))} /></Field>
           <datalist id="client-city-list">
             {Object.entries(CITY_DEPARTMENT_MAP).map(([key, [city, department]]) => <option key={key} value={city}>{department}</option>)}
@@ -1453,6 +1619,7 @@ function Invoices({ data, onSave, onExport }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
   const [searched, setSearched] = useState(false);
@@ -1511,17 +1678,27 @@ function Invoices({ data, onSave, onExport }) {
       total: mode === "resumida" ? draft.total : "",
       lines: payloadLines
     };
-    setConfirmAction({
+    const customer = customerById(data, draft.customerId);
+    if (!customer) {
+      window.alert("No fue posible encontrar el cliente seleccionado. Vuelve a buscarlo antes de guardar.");
+      return;
+    }
+    const nextConfirm = {
       type: "save",
       payload,
       title: draft.id ? "Guardar cambios de factura" : "Crear factura",
       body: "Confirma que la factura esta correcta antes de guardarla. Si el backend rechaza la operacion, el formulario conservara lo digitado.",
       details: [
-        { label: "Cliente", value: customerById(data, draft.customerId)?.name || draft.customerId },
+        { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Total", value: mode === "detallada" ? money(totals.total) : formatCurrencyInput(draft.total) },
         { label: "Estado", value: draft.status }
       ]
-    });
+    };
+    if (customerNeedsUpdate(customer)) {
+      setCustomerUpdateRequest({ customer, context: "guardar esta factura", nextConfirm });
+      return;
+    }
+    setConfirmAction(nextConfirm);
   }
 
   function voidInvoice(invoice) {
@@ -1641,6 +1818,18 @@ function Invoices({ data, onSave, onExport }) {
         onConfirm={runConfirmAction}
         confirmLabel={confirmAction?.type === "void" ? "Anular factura" : "Guardar"}
       />
+      <CustomerUpdateRequiredModal
+        open={Boolean(customerUpdateRequest)}
+        customer={customerUpdateRequest?.customer}
+        context={customerUpdateRequest?.context}
+        onSave={onSave}
+        onCancel={() => setCustomerUpdateRequest(null)}
+        onUpdated={() => {
+          const nextConfirm = customerUpdateRequest?.nextConfirm;
+          setCustomerUpdateRequest(null);
+          if (nextConfirm) setConfirmAction(nextConfirm);
+        }}
+      />
       <PortalModal open={Boolean(viewRecord)} title={`Factura ${viewRecord?.id || ""}`} eyebrow="DETALLE" onClose={() => setViewRecord(null)} wide={false}>
         {viewRecord ? (
           <div style={{ display: "grid", gap: 12, fontFamily: F }}>
@@ -1671,6 +1860,7 @@ function Payments({ data, onSave, onExport }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
   const [searched, setSearched] = useState(false);
@@ -1715,17 +1905,27 @@ function Payments({ data, onSave, onExport }) {
       window.alert("Primero busca y selecciona un cliente.");
       return;
     }
-    setConfirmAction({
+    const customer = customerById(data, draft.customerId);
+    if (!customer) {
+      window.alert("No fue posible encontrar el cliente seleccionado. Vuelve a buscarlo antes de guardar.");
+      return;
+    }
+    const nextConfirm = {
       type: "save",
       title: draft.id ? "Guardar cambios del abono" : "Registrar abono",
       body: "Confirma el abono antes de guardarlo. Las retenciones y el neto recibido quedaran trazados en cartera.",
       payload: draft,
       details: [
-        { label: "Cliente", value: customerById(data, draft.customerId)?.name || draft.customerId },
+        { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Valor bruto", value: formatCurrencyInput(draft.grossAmount) },
         { label: "Medio", value: draft.method }
       ]
-    });
+    };
+    if (customerNeedsUpdate(customer)) {
+      setCustomerUpdateRequest({ customer, context: "registrar este abono", nextConfirm });
+      return;
+    }
+    setConfirmAction(nextConfirm);
   }
 
   function voidPayment(payment) {
@@ -1826,6 +2026,18 @@ function Payments({ data, onSave, onExport }) {
         onConfirm={runConfirmAction}
         confirmLabel={confirmAction?.type === "void" ? "Anular abono" : "Guardar"}
       />
+      <CustomerUpdateRequiredModal
+        open={Boolean(customerUpdateRequest)}
+        customer={customerUpdateRequest?.customer}
+        context={customerUpdateRequest?.context}
+        onSave={onSave}
+        onCancel={() => setCustomerUpdateRequest(null)}
+        onUpdated={() => {
+          const nextConfirm = customerUpdateRequest?.nextConfirm;
+          setCustomerUpdateRequest(null);
+          if (nextConfirm) setConfirmAction(nextConfirm);
+        }}
+      />
       <PortalModal open={Boolean(viewRecord)} title={`Abono ${viewRecord?.id || ""}`} eyebrow="DETALLE" onClose={() => setViewRecord(null)} wide={false}>
         {viewRecord ? (
           <div style={{ display: "grid", gap: 12, fontFamily: F }}>
@@ -1848,7 +2060,7 @@ function Payments({ data, onSave, onExport }) {
   );
 }
 
-function Portfolio({ data, onExport }) {
+function Portfolio({ data, onExport, onSave }) {
   const [selectedId, setSelectedId] = useState("");
   const [tab, setTab] = useState("consulta");
   const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" });
@@ -1858,6 +2070,7 @@ function Portfolio({ data, onExport }) {
   const [customerModalId, setCustomerModalId] = useState("");
   const [customerDetailOpen, setCustomerDetailOpen] = useState(false);
   const [whatsappConfirm, setWhatsappConfirm] = useState(null);
+  const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [copyNotice, setCopyNotice] = useState("");
   const rows = data.customerSummary || [];
   const selected = rows.find((customer) => customer.id === selectedId);
@@ -1919,18 +2132,22 @@ function Portfolio({ data, onExport }) {
   }
 
   function requestWhatsapp(customer) {
+    if (!isValidCustomerPhone(customer)) {
+      setCustomerUpdateRequest({ customer, context: "contactar al cliente por WhatsApp" });
+      return;
+    }
     const url = customerWhatsappUrl(customer);
     if (!url) return;
     setWhatsappConfirm({ customer, url });
   }
 
   async function copyCollectionMessage(customer) {
-    const message = customerCollectionMessage(customer);
+    const message = customerWhatsappMessage(customer);
     try {
       await navigator.clipboard.writeText(message);
-      setCopyNotice("Mensaje de cobro copiado al portapapeles.");
+      setCopyNotice(Number(customer.balance || 0) > 0 ? "Mensaje de cobro copiado al portapapeles." : "Mensaje de contacto copiado al portapapeles.");
     } catch {
-      window.prompt("Copia el mensaje de cobro:", message);
+      window.prompt("Copia el mensaje:", message);
     }
   }
 
@@ -1966,7 +2183,6 @@ function Portfolio({ data, onExport }) {
               headers={["Cliente", "Facturado", "Abonado", "Saldo / favor", "Estado", "Accion"]}
               rows={filteredRows.map((customer) => {
                 const view = customerBalanceView(customer);
-                const wa = customerWhatsappUrl(customer);
                 return [
                   <div><strong>{customer.name}</strong><div style={{ color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>,
                   customer.billedLabel,
@@ -1975,7 +2191,7 @@ function Portfolio({ data, onExport }) {
                   <span style={{ display: "inline-flex", padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}</span>,
                   <div className="client-action-group">
                     <button type="button" onClick={() => showCustomerProfile(customer)} style={ghostButton}>Ver ficha</button>
-                    {wa ? <button type="button" onClick={() => requestWhatsapp(customer)} style={{ ...smallButton, background: "#25D366" }}>Cobrar</button> : <span style={{ fontFamily: F, color: view.label === "Saldo a favor" ? "#6D28D9" : "#64748B", fontSize: 12 }}>{view.label === "Saldo a favor" ? "Revisar favor" : "Sin cobro"}</span>}
+                    <button type="button" onClick={() => requestWhatsapp(customer)} style={{ ...smallButton, background: "#25D366" }}>{Number(customer.balance || 0) > 0 ? "Cobrar" : "WhatsApp"}</button>
                   </div>
                 ];
               })}
@@ -2054,7 +2270,7 @@ function Portfolio({ data, onExport }) {
               </div>
               <div className="client-action-group">
                 <button type="button" onClick={() => showCustomerProfile(modalPreview)} style={button}>Abrir ficha</button>
-                {customerWhatsappUrl(modalPreview) ? <button type="button" onClick={() => requestWhatsapp(modalPreview)} style={{ ...smallButton, background: "#25D366" }}>Cobrar por WhatsApp</button> : null}
+                <button type="button" onClick={() => requestWhatsapp(modalPreview)} style={{ ...smallButton, background: "#25D366" }}>{Number(modalPreview.balance || 0) > 0 ? "Cobrar por WhatsApp" : "Contactar por WhatsApp"}</button>
               </div>
             </div>
           ) : null}
@@ -2081,8 +2297,8 @@ function Portfolio({ data, onExport }) {
             ) : null}
             {copyNotice ? <div style={{ padding: 12, borderRadius: 14, background: "rgba(34,197,94,.10)", color: "#15803D", fontFamily: F, fontWeight: 900 }}>{copyNotice}</div> : null}
             <div className="client-action-group">
-              {customerWhatsappUrl(activeCustomer) ? <button type="button" onClick={() => requestWhatsapp(activeCustomer)} style={{ ...smallButton, background: "#25D366" }}>Cobrar por WhatsApp</button> : null}
-              {Number(activeCustomer.balance || 0) > 0 ? <button type="button" onClick={() => copyCollectionMessage(activeCustomer)} style={ghostButton}>Copiar mensaje de cobro</button> : null}
+              <button type="button" onClick={() => requestWhatsapp(activeCustomer)} style={{ ...smallButton, background: "#25D366" }}>{Number(activeCustomer.balance || 0) > 0 ? "Cobrar por WhatsApp" : "Contactar por WhatsApp"}</button>
+              <button type="button" onClick={() => copyCollectionMessage(activeCustomer)} style={ghostButton}>{Number(activeCustomer.balance || 0) > 0 ? "Copiar mensaje de cobro" : "Copiar mensaje de contacto"}</button>
               <button type="button" onClick={() => setCustomerDetailOpen((current) => !current)} style={button}>{customerDetailOpen ? "Ocultar detalle" : "Consultar detalles"}</button>
               <button type="button" onClick={() => onExport("cartera_detallada")} style={ghostButton}>Excel cartera detallada</button>
               <button type="button" onClick={() => onExport("detalle_facturas")} style={ghostButton}>Excel productos por factura</button>
@@ -2109,16 +2325,26 @@ function Portfolio({ data, onExport }) {
       </PortalModal>
       <ConfirmModal
         open={Boolean(whatsappConfirm)}
-        title="Abrir cobro por WhatsApp"
-        body="Se abrirá WhatsApp con un mensaje formal de cobro para el cliente seleccionado. Revisa el texto antes de enviarlo."
+        title={Number(whatsappConfirm?.customer?.balance || 0) > 0 ? "Abrir cobro por WhatsApp" : "Abrir WhatsApp"}
+        body={Number(whatsappConfirm?.customer?.balance || 0) > 0
+          ? "Se abrira WhatsApp con un mensaje formal de cobro para el cliente seleccionado. Revisa el texto antes de enviarlo."
+          : "Se abrira WhatsApp con un mensaje formal de contacto para actualizar o confirmar informacion del cliente."}
         details={[
           { label: "Cliente", value: whatsappConfirm?.customer?.name || "" },
-          { label: "Saldo pendiente", value: whatsappConfirm?.customer?.balanceLabel || money(whatsappConfirm?.customer?.balance) },
+          { label: Number(whatsappConfirm?.customer?.balance || 0) > 0 ? "Saldo pendiente" : "Estado", value: Number(whatsappConfirm?.customer?.balance || 0) > 0 ? (whatsappConfirm?.customer?.balanceLabel || money(whatsappConfirm?.customer?.balance)) : customerBalanceView(whatsappConfirm?.customer || {}).label },
           { label: "Telefono", value: whatsappConfirm?.customer?.phone || "" }
         ]}
         onCancel={() => setWhatsappConfirm(null)}
         onConfirm={() => { openExternalUrl(whatsappConfirm?.url || ""); setWhatsappConfirm(null); }}
         confirmLabel="Abrir WhatsApp"
+      />
+      <CustomerUpdateRequiredModal
+        open={Boolean(customerUpdateRequest)}
+        customer={customerUpdateRequest?.customer}
+        context={customerUpdateRequest?.context}
+        onSave={onSave}
+        onCancel={() => setCustomerUpdateRequest(null)}
+        onUpdated={() => setCustomerUpdateRequest(null)}
       />
     </ModuleWithForm>
   );
@@ -2317,6 +2543,7 @@ function Orders({ data, onSave, onExport }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
   const [searched, setSearched] = useState(false);
@@ -2362,21 +2589,36 @@ function Orders({ data, onSave, onExport }) {
       window.alert("Agrega al menos una linea a la orden.");
       return;
     }
-    setConfirmAction({
+    const customer = customerById(data, draft.customerId);
+    if (!customer) {
+      window.alert("No fue posible encontrar el cliente seleccionado. Vuelve a buscarlo antes de guardar.");
+      return;
+    }
+    const nextConfirm = {
       type: "save",
       title: draft.id ? "Guardar cambios de orden" : "Crear orden / cotizacion",
       body: "Confirma la orden antes de guardarla. Podras convertirla en factura cuando sea aprobada.",
       payload: { ...draft, lines: payloadLines },
       details: [
-        { label: "Cliente", value: customerById(data, draft.customerId)?.name || draft.customerId },
+        { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Total", value: money(totals.total) },
         { label: "Estado", value: draft.status }
       ]
-    });
+    };
+    if (customerNeedsUpdate(customer)) {
+      setCustomerUpdateRequest({ customer, context: "guardar esta orden", nextConfirm });
+      return;
+    }
+    setConfirmAction(nextConfirm);
   }
 
   async function convert(order) {
-    setConfirmAction({
+    const customer = customerById(data, order.customerId);
+    if (!customer) {
+      window.alert("No fue posible encontrar el cliente de la orden. Vuelve a cargar los datos antes de convertirla.");
+      return;
+    }
+    const nextConfirm = {
       type: "convert",
       title: "Convertir orden en factura",
       body: `La orden ${order.id} se convertira en factura. Si hay productos asociados, se descontara inventario y se conservara alerta si queda negativo.`,
@@ -2386,7 +2628,12 @@ function Orders({ data, onSave, onExport }) {
         { label: "Cliente", value: order.customerNameSnapshot },
         { label: "Total", value: order.totalLabel || money(order.total) }
       ]
-    });
+    };
+    if (customerNeedsUpdate(customer)) {
+      setCustomerUpdateRequest({ customer, context: "convertir esta orden en factura", nextConfirm });
+      return;
+    }
+    setConfirmAction(nextConfirm);
   }
 
   function voidOrder(order) {
@@ -2495,6 +2742,18 @@ function Orders({ data, onSave, onExport }) {
         onCancel={() => setConfirmAction(null)}
         onConfirm={runConfirmAction}
         confirmLabel={confirmAction?.type === "void" ? "Anular orden" : confirmAction?.type === "convert" ? "Convertir" : "Guardar"}
+      />
+      <CustomerUpdateRequiredModal
+        open={Boolean(customerUpdateRequest)}
+        customer={customerUpdateRequest?.customer}
+        context={customerUpdateRequest?.context}
+        onSave={onSave}
+        onCancel={() => setCustomerUpdateRequest(null)}
+        onUpdated={() => {
+          const nextConfirm = customerUpdateRequest?.nextConfirm;
+          setCustomerUpdateRequest(null);
+          if (nextConfirm) setConfirmAction(nextConfirm);
+        }}
       />
       <PortalModal open={Boolean(viewRecord)} title={`Orden ${viewRecord?.id || ""}`} eyebrow="DETALLE" onClose={() => setViewRecord(null)} wide={false}>
         {viewRecord ? (
@@ -2946,11 +3205,12 @@ export default function ClientPortal() {
   async function save(type, payload) {
     setNotice("");
     setError("");
+    const { _silentSuccess: silentSuccess, ...payloadToSave } = payload || {};
     try {
       const response = await fetch("/api/client-portal-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, payload })
+        body: JSON.stringify({ type, payload: payloadToSave })
       });
       const result = await response.json();
       if (!response.ok) {
@@ -2975,12 +3235,14 @@ export default function ClientPortal() {
         revertImport: "Cargue reversado"
       };
       setNotice("Informacion guardada correctamente.");
-      setOperationSuccess({
-        title: labels[type] || "Operacion completada",
-        body: type === "revertImport"
-          ? "El cargue fue reversado con trazabilidad. Revisa el historial y los reportes antes de continuar."
-          : "La informacion quedo actualizada en el portal."
-      });
+      if (!silentSuccess) {
+        setOperationSuccess({
+          title: labels[type] || "Operacion completada",
+          body: type === "revertImport"
+            ? "El cargue fue reversado con trazabilidad. Revisa el historial y los reportes antes de continuar."
+            : "La informacion quedo actualizada en el portal."
+        });
+      }
       return result;
     } catch (err) {
       const message = err.message || "No fue posible guardar.";
@@ -3078,6 +3340,70 @@ export default function ClientPortal() {
           gap:8px;
           flex-wrap:wrap;
         }
+        .client-company-brand{
+          display:grid;
+          grid-template-columns:auto minmax(0,1fr);
+          gap:14px;
+          align-items:center;
+        }
+        .client-company-logo-frame{
+          width:70px;
+          height:58px;
+          border-radius:18px;
+          background:linear-gradient(135deg,#FFFFFF,#F3F7FF);
+          border:1px solid rgba(37,99,235,.14);
+          box-shadow:0 12px 28px rgba(15,23,42,.08);
+          display:grid;
+          place-items:center;
+          overflow:hidden;
+          padding:8px;
+        }
+        .client-company-logo-frame img{
+          max-width:100%;
+          max-height:100%;
+          object-fit:contain;
+          display:block;
+        }
+        .client-company-logo-frame span{
+          font-family:${F};
+          color:#1D4ED8;
+          font-size:22px;
+          font-weight:950;
+          letter-spacing:.5px;
+        }
+        .client-company-name{
+          margin:2px 0 3px;
+          font-family:${F};
+          font-size:clamp(23px,3vw,34px);
+          font-weight:950;
+          color:#0B1D3A;
+          line-height:1.06;
+          overflow-wrap:anywhere;
+        }
+        .client-contarae-signature{
+          display:flex;
+          justify-content:center;
+          align-items:center;
+          gap:10px;
+          padding:10px 12px 2px;
+          color:#64748B;
+          font-family:${F};
+          font-size:12px;
+          line-height:1.45;
+          text-align:center;
+        }
+        .client-contarae-signature img{
+          width:78px;
+          max-height:26px;
+          object-fit:contain;
+          opacity:.78;
+          filter:saturate(.85);
+        }
+        .client-contarae-signature a{
+          color:#1D4ED8;
+          font-weight:900;
+          text-decoration:none;
+        }
         @media(max-width:980px){
           .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls,.client-customer-picker{grid-template-columns:1fr!important}
           .client-portal-row{grid-template-columns:1fr!important}
@@ -3104,15 +3430,34 @@ export default function ClientPortal() {
             flex:0 0 auto;
             scroll-snap-align:start;
           }
+          .client-company-brand{
+            grid-template-columns:auto minmax(0,1fr);
+            gap:11px;
+          }
+          .client-company-logo-frame{
+            width:54px;
+            height:48px;
+            border-radius:15px;
+            padding:7px;
+          }
+          .client-company-name{
+            font-size:clamp(20px,6vw,27px);
+            line-height:1.08;
+          }
+          .client-contarae-signature{
+            flex-direction:column;
+            gap:5px;
+            padding-top:6px;
+          }
+          .client-contarae-signature img{
+            width:70px;
+            max-height:23px;
+          }
         }
       `}</style>
       <div className="client-portal-shell" style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 14 }}>
         <header className="client-portal-header" style={{ ...card, padding: 14, borderRadius: 20, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: "1.6px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PORTAL PARA CLIENTES</div>
-            <h1 style={{ margin: "2px 0 3px", fontFamily: F, fontSize: "clamp(23px,3vw,34px)", fontWeight: 950, color: "#0B1D3A", lineHeight: 1.06, overflowWrap: "anywhere" }}>{data?.company?.name || session.companyName}</h1>
-            <p style={{ margin: 0, fontFamily: F, color: "#52647F", fontSize: 13 }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
-          </div>
+          <CompanyBrand companyName={data?.company?.name || session.companyName} logoDataUrl={data?.company?.logoDataUrl || ""} />
           <div className="client-portal-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
             <button type="button" onClick={loadData} style={{ ...button, background: "#fff", color: "#1D4ED8", border: "1px solid rgba(37,99,235,.14)" }}>Actualizar</button>
             <button type="button" onClick={logout} style={{ ...button, background: "#fff", color: "#B91C1C", border: "1px solid rgba(220,38,38,.14)" }}>Salir</button>
@@ -3135,13 +3480,14 @@ export default function ClientPortal() {
         {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} /> : null}
+        {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} onSave={save} /> : null}
         {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
         {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
+        <ContaraeSignature />
         <PortalModal open={Boolean(operationSuccess)} title={operationSuccess?.title || "Operacion completada"} eyebrow="LISTO" onClose={() => setOperationSuccess(null)} wide={false}>
           <div style={{ display: "grid", gap: 14, fontFamily: F }}>
             <p style={{ margin: 0, color: "#52647F", lineHeight: 1.75 }}>{operationSuccess?.body}</p>
