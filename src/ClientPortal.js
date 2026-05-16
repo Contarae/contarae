@@ -10,6 +10,20 @@ const MODULE_GROUPS = [
   { title: "Administracion", items: [["cargues", "Cargues masivos"], ["cargues-historial", "Historial de cargues"], ["configuracion", "Configuracion"]] }
 ];
 
+const MODULE_BADGES = {
+  dashboard: "DB",
+  clientes: "CL",
+  facturas: "FA",
+  abonos: "AB",
+  cartera: "CA",
+  inventario: "IN",
+  movimientos: "MV",
+  ordenes: "OR",
+  cargues: "CM",
+  "cargues-historial": "HC",
+  configuracion: "CF"
+};
+
 const PAYMENT_METHODS = ["Transferencia bancaria", "Nequi", "Daviplata", "Efectivo", "PSE", "Tarjeta", "Otro"];
 const IVA_RATES = [0, 5, 19];
 const DISCOUNT_PERCENTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
@@ -727,7 +741,23 @@ function CompanyBrand({ companyName = "", logoDataUrl = "" }) {
   );
 }
 
-function ModuleNavigation({ activeModule, onChange }) {
+function moduleCounter(data = {}, id = "") {
+  data = data || {};
+  const customers = data.customerSummary || [];
+  const countMap = {
+    clientes: customers.length,
+    facturas: (data.invoices || []).length,
+    abonos: (data.payments || []).length,
+    cartera: customers.filter((customer) => Number(customer.balance || 0) > 0).length,
+    inventario: (data.inventory || []).length,
+    movimientos: (data.inventoryMovements || []).length,
+    ordenes: (data.orders || []).length,
+    "cargues-historial": (data.importBatches || []).length
+  };
+  return Object.prototype.hasOwnProperty.call(countMap, id) ? countMap[id] : null;
+}
+
+function ModuleNavigation({ activeModule, onChange, data }) {
   return (
     <aside className="client-portal-sidebar" aria-label="Modulos del portal">
       <div className="client-sidebar-kicker">Modulos</div>
@@ -735,16 +765,21 @@ function ModuleNavigation({ activeModule, onChange }) {
         <section key={group.title} className="client-module-group">
           <div className="client-module-group-title">{group.title}</div>
           <div className="client-module-list">
-            {group.items.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={`client-module-button${id === activeModule ? " active" : ""}`}
-                onClick={() => onChange(id)}
-              >
-                {label}
-              </button>
-            ))}
+            {group.items.map(([id, label]) => {
+              const count = moduleCounter(data, id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`client-module-button${id === activeModule ? " active" : ""}`}
+                  onClick={() => onChange(id)}
+                >
+                  <span className="client-module-badge">{MODULE_BADGES[id] || label.slice(0, 2).toUpperCase()}</span>
+                  <span className="client-module-label">{label}</span>
+                  {count !== null ? <span className="client-module-count">{count}</span> : null}
+                </button>
+              );
+            })}
           </div>
         </section>
       ))}
@@ -1326,7 +1361,9 @@ function Dashboard({ data, setModule }) {
   const paymentsInPeriod = (data.payments || []).filter((payment) => payment.status !== "anulado" && (!periodActive || dateInRange(payment.date, range)));
   const billedInPeriod = invoicesInPeriod.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
   const paidInPeriod = paymentsInPeriod.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.grossAmount || payment.netReceived || 0), 0);
-  const reviewCases = (data.customerSummary || []).filter((customer) => Number(customer.unappliedCredit || 0) > 0);
+  const reviewCases = [...(data.customerSummary || [])]
+    .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
+    .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0));
   const agingTotal = AGING_BUCKETS.reduce((sum, [key]) => sum + Number(dashboard.aging?.[key] || 0), 0);
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -2095,7 +2132,9 @@ function Portfolio({ data, onExport, onSave }) {
   const selectedView = selected ? customerBalanceView(selected) : null;
   const selectedInvoices = selected?.receivableInvoices || [];
   const selectedPayments = (data.payments || []).filter((payment) => payment.customerId === selectedId && payment.status !== "anulado");
-  const reviewRows = rows.filter((customer) => Number(customer.unappliedCredit || 0) > 0);
+  const reviewRows = [...rows]
+    .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
+    .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0));
   const getFilteredRows = (sourceFilters = filters) => rows.filter((customer) => {
     const localRange = periodRange(sourceFilters.period || "all", sourceFilters.from, sourceFilters.to);
     const localPeriodActive = (sourceFilters.period || "all") !== "all";
@@ -2255,27 +2294,28 @@ function Portfolio({ data, onExport, onSave }) {
             customer.billedLabel,
             customer.paidLabel,
             <strong style={{ color: "#6D28D9" }}>{customer.unappliedCreditLabel}</strong>,
-            <button type="button" onClick={() => { setSelectedId(customer.id); setTab("detalle"); }} style={ghostButton}>Revisar</button>
+            <button type="button" onClick={() => showCustomerProfile(customer)} style={ghostButton}>Revisar</button>
           ])}
           emptyMessage="No hay saldos a favor por revisar."
         />
       ) : null}
       <PortalModal open={matchesOpen} title={`Coincidencias para "${filters.customerQuery}"`} eyebrow="SELECCIONAR CLIENTE" onClose={() => setMatchesOpen(false)}>
         <div className="client-customer-picker">
-          <div style={{ display: "grid", gap: 8 }}>
+          <div className="client-customer-picker-results" style={{ display: "grid", gap: 8 }}>
             {filteredRows.map((customer) => {
               const view = customerBalanceView(customer);
               return (
-                <button key={customer.id} type="button" onClick={() => setModalPreviewId(customer.id)} style={{ textAlign: "left", padding: 12, borderRadius: 14, border: customer.id === modalPreview?.id ? "1px solid rgba(37,99,235,.46)" : "1px solid rgba(37,99,235,.12)", background: customer.id === modalPreview?.id ? "#F8FBFF" : "#fff", cursor: "pointer", fontFamily: F }}>
+                <button key={customer.id} type="button" onClick={() => showCustomerProfile(customer)} style={{ textAlign: "left", padding: 12, borderRadius: 14, border: "1px solid rgba(37,99,235,.12)", background: "#fff", cursor: "pointer", fontFamily: F }}>
                   <strong>{customer.name || "Cliente sin nombre"}</strong>
                   <div style={{ marginTop: 4, color: "#64748B", fontSize: 12, lineHeight: 1.45 }}>{customer.id} · Documento: {customer.documentNumber || "por asignar"} · {customer.invoicesCount} factura(s)</div>
                   <span style={{ display: "inline-flex", marginTop: 8, padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}: {view.value}</span>
+                  <div style={{ marginTop: 8, color: "#1D4ED8", fontSize: 12, fontWeight: 900 }}>Abrir ficha del cliente</div>
                 </button>
               );
             })}
           </div>
           {modalPreview ? (
-            <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
+            <div className="client-customer-picker-preview" style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
               <div>
                 <div style={{ fontSize: 11, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>VISTA RAPIDA</div>
                 <h3 style={{ margin: "4px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: 22, lineHeight: 1.15 }}>{modalPreview.name || "Cliente sin nombre"}</h3>
@@ -2314,7 +2354,7 @@ function Portfolio({ data, onExport, onSave }) {
               </div>
             ) : null}
             {copyNotice ? <div style={{ padding: 12, borderRadius: 14, background: "rgba(34,197,94,.10)", color: "#15803D", fontFamily: F, fontWeight: 900 }}>{copyNotice}</div> : null}
-            <div className="client-action-group">
+            <div className="client-action-group client-sticky-actions">
               <button type="button" onClick={() => requestWhatsapp(activeCustomer)} style={{ ...smallButton, background: "#25D366" }}>{Number(activeCustomer.balance || 0) > 0 ? "Cobrar por WhatsApp" : "Contactar por WhatsApp"}</button>
               <button type="button" onClick={() => copyCollectionMessage(activeCustomer)} style={ghostButton}>{Number(activeCustomer.balance || 0) > 0 ? "Copiar mensaje de cobro" : "Copiar mensaje de contacto"}</button>
               <button type="button" onClick={() => setCustomerDetailOpen((current) => !current)} style={button}>{customerDetailOpen ? "Ocultar detalle" : "Consultar detalles"}</button>
@@ -3321,7 +3361,7 @@ export default function ClientPortal() {
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "radial-gradient(circle at top left, rgba(37,99,235,.12), transparent 28%), linear-gradient(180deg,#EFF6FF,#F8FBFF)", padding: "24px" }}>
+    <main style={{ minHeight: "100vh", background: "radial-gradient(circle at top left, rgba(37,99,235,.12), transparent 28%), linear-gradient(180deg,#EFF6FF,#F8FBFF)", padding: "clamp(10px,1.2vw,18px)" }}>
       <style>{`
         .client-portal-modal-backdrop{
           position:fixed;
@@ -3353,18 +3393,38 @@ export default function ClientPortal() {
         .client-record-cards{display:none}
         .client-action-group{display:flex;gap:8px;flex-wrap:wrap}
         .client-customer-picker{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.25fr);gap:14px}
+        .client-customer-picker-results{
+          max-height:68vh;
+          overflow:auto;
+          padding-right:4px;
+        }
+        .client-customer-picker-preview{
+          position:sticky;
+          top:0;
+        }
+        .client-sticky-actions{
+          position:sticky;
+          top:0;
+          z-index:5;
+          padding:10px;
+          border-radius:18px;
+          background:rgba(255,255,255,.96);
+          border:1px solid rgba(37,99,235,.10);
+          box-shadow:0 14px 30px rgba(15,23,42,.08);
+          backdrop-filter:blur(10px);
+        }
         .client-portal-layout{
           display:grid;
-          grid-template-columns:220px minmax(0,1fr);
-          gap:14px;
+          grid-template-columns:200px minmax(0,1fr);
+          gap:12px;
           align-items:start;
         }
         .client-portal-sidebar{
           position:sticky;
           top:16px;
           display:grid;
-          gap:14px;
-          padding:14px;
+          gap:12px;
+          padding:12px;
           border-radius:22px;
           background:rgba(255,255,255,.95);
           border:1px solid rgba(37,99,235,.10);
@@ -3380,7 +3440,7 @@ export default function ClientPortal() {
         }
         .client-module-group{
           display:grid;
-          gap:7px;
+          gap:6px;
         }
         .client-module-group-title{
           font-family:${F};
@@ -3392,22 +3452,54 @@ export default function ClientPortal() {
         }
         .client-module-list{
           display:grid;
-          gap:6px;
+          gap:5px;
         }
         .client-module-button{
           width:100%;
-          min-height:38px;
-          padding:9px 10px;
+          min-height:36px;
+          padding:7px 8px;
           border-radius:13px;
           border:1px solid rgba(37,99,235,.11);
           background:#fff;
           color:#1D4ED8;
           font-family:${F};
-          font-size:13px;
+          font-size:12px;
           font-weight:950;
           text-align:left;
           cursor:pointer;
+          display:grid;
+          grid-template-columns:auto minmax(0,1fr) auto;
+          gap:8px;
+          align-items:center;
           transition:background .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease;
+        }
+        .client-module-badge{
+          width:28px;
+          height:24px;
+          border-radius:9px;
+          display:grid;
+          place-items:center;
+          background:rgba(37,99,235,.09);
+          color:#1D4ED8;
+          font-size:10px;
+          letter-spacing:.2px;
+          font-weight:950;
+        }
+        .client-module-label{
+          min-width:0;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
+        }
+        .client-module-count{
+          min-width:23px;
+          padding:3px 6px;
+          border-radius:999px;
+          background:#EEF4FF;
+          color:#52647F;
+          font-size:10px;
+          text-align:center;
+          font-weight:950;
         }
         .client-module-button:hover{
           background:#F8FBFF;
@@ -3418,6 +3510,14 @@ export default function ClientPortal() {
           background:linear-gradient(135deg,#0B1D3A,#2563EB);
           color:#fff;
           box-shadow:0 10px 24px rgba(37,99,235,.22);
+        }
+        .client-module-button.active .client-module-badge{
+          background:rgba(255,255,255,.18);
+          color:#fff;
+        }
+        .client-module-button.active .client-module-count{
+          background:rgba(255,255,255,.18);
+          color:#fff;
         }
         .client-portal-workspace{
           min-width:0;
@@ -3496,7 +3596,7 @@ export default function ClientPortal() {
           .client-portal-row{grid-template-columns:1fr!important}
           .client-aging-row{grid-template-columns:1fr!important}
           .client-aging-row span,.client-aging-row strong{text-align:left!important}
-          .client-portal-shell{padding:16px!important}
+          .client-portal-shell{padding:16px!important;width:100%!important}
           .client-portal-header{grid-template-columns:1fr!important}
           .client-portal-actions{justify-content:stretch!important}
           .client-portal-actions button{width:100%!important}
@@ -3510,6 +3610,9 @@ export default function ClientPortal() {
           .client-portal-layout{grid-template-columns:1fr}
           .client-portal-sidebar{display:none}
           .client-portal-mobile-module{display:block}
+          .client-customer-picker-results{max-height:none;overflow:visible;padding-right:0}
+          .client-customer-picker-preview{position:static}
+          .client-sticky-actions{position:static}
           .client-company-brand{
             grid-template-columns:auto minmax(0,1fr);
             gap:11px;
@@ -3535,7 +3638,7 @@ export default function ClientPortal() {
           }
         }
       `}</style>
-      <div className="client-portal-shell" style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 14 }}>
+      <div className="client-portal-shell" style={{ width: "min(1760px, calc(100vw - 28px))", margin: "0 auto", display: "grid", gap: 12 }}>
         <header className="client-portal-header" style={{ ...card, padding: 14, borderRadius: 20, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center" }}>
           <CompanyBrand companyName={data?.company?.name || session.companyName} logoDataUrl={data?.company?.logoDataUrl || ""} />
           <div className="client-portal-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
@@ -3565,7 +3668,7 @@ export default function ClientPortal() {
         </div>
 
         <div className="client-portal-layout">
-          <ModuleNavigation activeModule={activeModule} onChange={setActiveModule} />
+          <ModuleNavigation activeModule={activeModule} onChange={setActiveModule} data={data} />
           <section className="client-portal-workspace">
             {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
             {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
