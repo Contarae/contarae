@@ -283,7 +283,7 @@ function customerBalanceView(customer = {}) {
     const value = credit > 0 ? credit : Math.abs(balance);
     return {
       label: "Saldo a favor",
-      value: customer.unappliedCreditLabel || money(value),
+      value: credit > 0 ? (customer.unappliedCreditLabel || money(value)) : money(value),
       tone: "#6D28D9",
       statusStyle: {
         color: "#6D28D9",
@@ -314,6 +314,21 @@ function customerBalanceView(customer = {}) {
       border: "1px solid rgba(239,68,68,.16)"
     }
   };
+}
+
+function customerCollectionMessage(customer = {}) {
+  return `Hola ${customer.name || "cliente"}, cordial saludo. Te contactamos para compartir el estado de cartera registrado a la fecha. Actualmente figura un saldo pendiente por valor de ${customer.balanceLabel || money(customer.balance)}. Agradecemos confirmar la fecha estimada de pago o enviarnos el soporte si ya fue cancelado.`;
+}
+
+function customerWhatsappUrl(customer = {}) {
+  const phone = onlyDigits(customer.phone).slice(-10);
+  if (!phone || phone.length < 10 || Number(customer.balance || 0) <= 0) return "";
+  return `https://wa.me/57${phone}?text=${encodeURIComponent(customerCollectionMessage(customer))}`;
+}
+
+function openExternalUrl(url) {
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (win) win.opener = null;
 }
 
 function buildRowsForExport(data, type) {
@@ -1840,6 +1855,10 @@ function Portfolio({ data, onExport }) {
   const [searched, setSearched] = useState(false);
   const [matchesOpen, setMatchesOpen] = useState(false);
   const [modalPreviewId, setModalPreviewId] = useState("");
+  const [customerModalId, setCustomerModalId] = useState("");
+  const [customerDetailOpen, setCustomerDetailOpen] = useState(false);
+  const [whatsappConfirm, setWhatsappConfirm] = useState(null);
+  const [copyNotice, setCopyNotice] = useState("");
   const rows = data.customerSummary || [];
   const selected = rows.find((customer) => customer.id === selectedId);
   const selectedView = selected ? customerBalanceView(selected) : null;
@@ -1865,15 +1884,17 @@ function Portfolio({ data, onExport }) {
   const hasTextQuery = Boolean(normalizeText(filters.customerQuery));
   const multipleNamedMatches = hasTextQuery && filteredRows.length > 1;
   const modalPreview = rows.find((customer) => customer.id === modalPreviewId) || filteredRows[0];
+  const activeCustomer = rows.find((customer) => customer.id === customerModalId);
+  const activeView = activeCustomer ? customerBalanceView(activeCustomer) : null;
+  const activeInvoices = activeCustomer?.receivableInvoices || [];
+  const activePayments = activeCustomer ? (data.payments || []).filter((payment) => payment.customerId === activeCustomer.id && payment.status !== "anulado") : [];
 
   function handleSearch() {
     const matches = getFilteredRows(filters);
     const hasQuery = Boolean(normalizeText(filters.customerQuery));
     setSearched(true);
     if (hasQuery && matches.length === 1) {
-      setSelectedId(matches[0].id);
-      setTab("detalle");
-      setMatchesOpen(false);
+      showCustomerProfile(matches[0]);
       return;
     }
     if (hasQuery && matches.length > 1) {
@@ -1886,6 +1907,31 @@ function Portfolio({ data, onExport }) {
     setSelectedId(customer.id);
     setTab("detalle");
     setMatchesOpen(false);
+  }
+
+  function showCustomerProfile(customer) {
+    if (!customer) return;
+    setSelectedId(customer.id);
+    setCustomerModalId(customer.id);
+    setCustomerDetailOpen(false);
+    setMatchesOpen(false);
+    setCopyNotice("");
+  }
+
+  function requestWhatsapp(customer) {
+    const url = customerWhatsappUrl(customer);
+    if (!url) return;
+    setWhatsappConfirm({ customer, url });
+  }
+
+  async function copyCollectionMessage(customer) {
+    const message = customerCollectionMessage(customer);
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopyNotice("Mensaje de cobro copiado al portapapeles.");
+    } catch {
+      window.prompt("Copia el mensaje de cobro:", message);
+    }
   }
 
   return (
@@ -1920,8 +1966,7 @@ function Portfolio({ data, onExport }) {
               headers={["Cliente", "Facturado", "Abonado", "Saldo / favor", "Estado", "Accion"]}
               rows={filteredRows.map((customer) => {
                 const view = customerBalanceView(customer);
-                const message = `Hola ${customer.name}, te saludamos cordialmente. A la fecha registramos un saldo pendiente de ${customer.balanceLabel}. Agradecemos revisar el estado de cuenta y confirmar la fecha estimada de pago.`;
-                const wa = customer.phone && Number(customer.balance || 0) > 0 ? `https://wa.me/57${onlyDigits(customer.phone).slice(-10)}?text=${encodeURIComponent(message)}` : "";
+                const wa = customerWhatsappUrl(customer);
                 return [
                   <div><strong>{customer.name}</strong><div style={{ color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>,
                   customer.billedLabel,
@@ -1929,8 +1974,8 @@ function Portfolio({ data, onExport }) {
                   <strong style={{ color: view.tone }}>{view.value}</strong>,
                   <span style={{ display: "inline-flex", padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}</span>,
                   <div className="client-action-group">
-                    <button type="button" onClick={() => openCustomer(customer)} style={ghostButton}>Ver</button>
-                    {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...smallButton, textDecoration: "none", background: "#25D366" }}>Cobrar</a> : <span style={{ fontFamily: F, color: view.label === "Saldo a favor" ? "#6D28D9" : "#64748B", fontSize: 12 }}>{view.label === "Saldo a favor" ? "Revisar favor" : "Sin cobro"}</span>}
+                    <button type="button" onClick={() => showCustomerProfile(customer)} style={ghostButton}>Ver ficha</button>
+                    {wa ? <button type="button" onClick={() => requestWhatsapp(customer)} style={{ ...smallButton, background: "#25D366" }}>Cobrar</button> : <span style={{ fontFamily: F, color: view.label === "Saldo a favor" ? "#6D28D9" : "#64748B", fontSize: 12 }}>{view.label === "Saldo a favor" ? "Revisar favor" : "Sin cobro"}</span>}
                   </div>
                 ];
               })}
@@ -2007,11 +2052,74 @@ function Portfolio({ data, onExport }) {
                 <Stat label="ABONADO" value={modalPreview.paidLabel || money(modalPreview.paid)} note={`${modalPreview.paymentsCount || 0} pago(s).`} tone="#15803D" />
                 <Stat label={customerBalanceView(modalPreview).label.toUpperCase()} value={customerBalanceView(modalPreview).value} note={customerBalanceView(modalPreview).label === "Saldo a favor" ? "Revisar o compensar." : "Estado de cartera."} tone={customerBalanceView(modalPreview).tone} />
               </div>
-              <button type="button" onClick={() => openCustomer(modalPreview)} style={button}>Abrir cartera</button>
+              <div className="client-action-group">
+                <button type="button" onClick={() => showCustomerProfile(modalPreview)} style={button}>Abrir ficha</button>
+                {customerWhatsappUrl(modalPreview) ? <button type="button" onClick={() => requestWhatsapp(modalPreview)} style={{ ...smallButton, background: "#25D366" }}>Cobrar por WhatsApp</button> : null}
+              </div>
             </div>
           ) : null}
         </div>
       </PortalModal>
+      <PortalModal open={Boolean(activeCustomer)} title={activeCustomer?.name || "Cliente"} eyebrow="FICHA DE CARTERA" onClose={() => { setCustomerModalId(""); setCustomerDetailOpen(false); setCopyNotice(""); }}>
+        {activeCustomer && activeView ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
+              <Stat label="FACTURADO" value={activeCustomer.billedLabel || money(activeCustomer.billed)} note={`${activeCustomer.invoicesCount || 0} factura(s) registradas.`} />
+              <Stat label="ABONADO" value={activeCustomer.paidLabel || money(activeCustomer.paid)} note={`${activeCustomer.paymentsCount || 0} abono(s) registrados.`} tone="#15803D" />
+              <Stat label={activeView.label.toUpperCase()} value={activeView.value} note={activeView.label === "Saldo a favor" ? "Revisar anticipo o compensacion." : "Estado a la fecha."} tone={activeView.tone} />
+              <Stat label="VENCIDO" value={activeCustomer.overdueLabel || "$ 0"} note={`${activeCustomer.overdueInvoicesCount || 0} factura(s) vencida(s).`} tone="#B91C1C" />
+            </div>
+            <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 8, fontFamily: F, color: "#52647F", lineHeight: 1.55 }}>
+              <strong style={{ color: "#0B1D3A" }}>{activeCustomer.id} · Documento: {activeCustomer.documentNumber || "por asignar"}</strong>
+              <span>Telefono: {activeCustomer.phone || "pendiente"} · Correo: {activeCustomer.email || "pendiente"}</span>
+              <span>Ciudad: {activeCustomer.city || "pendiente"}{activeCustomer.department ? `, ${activeCustomer.department}` : ""}</span>
+            </section>
+            {activeView.label === "Saldo a favor" ? (
+              <div style={{ padding: 13, borderRadius: 16, background: "rgba(109,40,217,.10)", border: "1px solid rgba(109,40,217,.16)", color: "#4C1D95", fontFamily: F, lineHeight: 1.6 }}>
+                Este cliente tiene saldo a favor. Revisa si corresponde a anticipo, pago duplicado, nota credito o compensacion futura antes de hacer un nuevo cobro.
+              </div>
+            ) : null}
+            {copyNotice ? <div style={{ padding: 12, borderRadius: 14, background: "rgba(34,197,94,.10)", color: "#15803D", fontFamily: F, fontWeight: 900 }}>{copyNotice}</div> : null}
+            <div className="client-action-group">
+              {customerWhatsappUrl(activeCustomer) ? <button type="button" onClick={() => requestWhatsapp(activeCustomer)} style={{ ...smallButton, background: "#25D366" }}>Cobrar por WhatsApp</button> : null}
+              {Number(activeCustomer.balance || 0) > 0 ? <button type="button" onClick={() => copyCollectionMessage(activeCustomer)} style={ghostButton}>Copiar mensaje de cobro</button> : null}
+              <button type="button" onClick={() => setCustomerDetailOpen((current) => !current)} style={button}>{customerDetailOpen ? "Ocultar detalle" : "Consultar detalles"}</button>
+              <button type="button" onClick={() => onExport("cartera_detallada")} style={ghostButton}>Excel cartera detallada</button>
+              <button type="button" onClick={() => onExport("detalle_facturas")} style={ghostButton}>Excel productos por factura</button>
+            </div>
+            {customerDetailOpen ? (
+              <section style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {AGING_BUCKETS.filter(([key]) => Number(activeCustomer.aging?.[key] || 0) > 0).map(([key, label]) => (
+                    <div key={key} className="client-aging-row" style={{ display: "grid", gridTemplateColumns: "170px minmax(0,1fr) 110px", gap: 10, alignItems: "center", fontFamily: F, fontSize: 13 }}>
+                      <strong style={{ color: key.startsWith("overdue") ? "#B91C1C" : "#334155" }}>{label}</strong>
+                      <div style={{ height: 10, borderRadius: 999, background: "#EAF1FF", overflow: "hidden" }}>
+                        <div style={{ width: `${Math.min(100, Math.max(8, (Number(activeCustomer.aging?.[key] || 0) / Math.max(Number(activeCustomer.balance || 1), 1)) * 100))}%`, height: "100%", background: key.startsWith("overdue") ? "#DC2626" : "#2563EB" }} />
+                      </div>
+                      <strong style={{ textAlign: "right" }}>{money(activeCustomer.aging?.[key] || 0)}</strong>
+                    </div>
+                  ))}
+                </div>
+                <RecordList rows={activeInvoices.map((invoice) => [invoice.id, invoice.date, invoice.dueDate || "Sin vencimiento", invoice.totalLabel || money(invoice.total), invoice.paidLabel || money(invoice.paid), invoice.balanceLabel || money(invoice.balance), invoice.ageLabel || invoice.status])} headers={["Factura", "Fecha", "Vence", "Total", "Aplicado", "Saldo", "Edad"]} />
+                <RecordList rows={activePayments.map((payment) => [payment.id, payment.date, payment.invoiceId || "Global FIFO", money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Aplicacion", "Bruto", "Retenciones", "Neto", "Medio"]} />
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+      </PortalModal>
+      <ConfirmModal
+        open={Boolean(whatsappConfirm)}
+        title="Abrir cobro por WhatsApp"
+        body="Se abrirá WhatsApp con un mensaje formal de cobro para el cliente seleccionado. Revisa el texto antes de enviarlo."
+        details={[
+          { label: "Cliente", value: whatsappConfirm?.customer?.name || "" },
+          { label: "Saldo pendiente", value: whatsappConfirm?.customer?.balanceLabel || money(whatsappConfirm?.customer?.balance) },
+          { label: "Telefono", value: whatsappConfirm?.customer?.phone || "" }
+        ]}
+        onCancel={() => setWhatsappConfirm(null)}
+        onConfirm={() => { openExternalUrl(whatsappConfirm?.url || ""); setWhatsappConfirm(null); }}
+        confirmLabel="Abrir WhatsApp"
+      />
     </ModuleWithForm>
   );
 }
@@ -2809,6 +2917,7 @@ export default function ClientPortal() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [operationSuccess, setOperationSuccess] = useState(null);
+  const [pendingExport, setPendingExport] = useState(null);
 
   async function loadData() {
     setLoading(true);
@@ -2887,7 +2996,29 @@ export default function ClientPortal() {
   }
 
   function exportData(type) {
-    downloadExcelWorkbook(`${type}-${new Date().toISOString().slice(0, 10)}.xls`, buildWorkbookForExport(data, type));
+    const labels = {
+      clientes: "Clientes",
+      facturas: "Facturas",
+      abonos: "Abonos",
+      cartera: "Cartera",
+      cartera_detallada: "Cartera detallada",
+      detalle_facturas: "Detalle productos por factura",
+      cargues_historial: "Historial de cargues",
+      inventario: "Inventario",
+      movimientos: "Movimientos",
+      ordenes: "Ordenes"
+    };
+    setPendingExport({ type, label: labels[type] || "Reporte" });
+  }
+
+  function confirmExport() {
+    if (!pendingExport) return;
+    downloadExcelWorkbook(`${pendingExport.type}-${new Date().toISOString().slice(0, 10)}.xls`, buildWorkbookForExport(data, pendingExport.type));
+    setPendingExport(null);
+    setOperationSuccess({
+      title: "Reporte descargado",
+      body: `Se genero el archivo de ${pendingExport.label}. Revisa el archivo descargado antes de compartirlo o usarlo para analisis.`
+    });
   }
 
   if (loading) {
@@ -3020,6 +3151,18 @@ export default function ClientPortal() {
             </div>
           </div>
         </PortalModal>
+        <ConfirmModal
+          open={Boolean(pendingExport)}
+          title="Descargar reporte Excel"
+          body="Vas a generar un archivo de Excel con informacion del portal. Confirma la descarga para evitar reportes accidentales o con filtros equivocados."
+          details={[
+            { label: "Reporte", value: pendingExport?.label || "" },
+            { label: "Fecha", value: new Date().toLocaleDateString("es-CO") }
+          ]}
+          onCancel={() => setPendingExport(null)}
+          onConfirm={confirmExport}
+          confirmLabel="Descargar Excel"
+        />
       </div>
     </main>
   );
