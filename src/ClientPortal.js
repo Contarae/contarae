@@ -276,6 +276,46 @@ function customerSearchMatches(customers = [], type = "name", query = "") {
     .slice(0, 25);
 }
 
+function customerBalanceView(customer = {}) {
+  const balance = Number(customer.balance || 0);
+  const credit = Number(customer.unappliedCredit || 0);
+  if (credit > 0 || balance < 0) {
+    const value = credit > 0 ? credit : Math.abs(balance);
+    return {
+      label: "Saldo a favor",
+      value: customer.unappliedCreditLabel || money(value),
+      tone: "#6D28D9",
+      statusStyle: {
+        color: "#6D28D9",
+        background: "rgba(109,40,217,.10)",
+        border: "1px solid rgba(109,40,217,.16)"
+      }
+    };
+  }
+  if (balance === 0) {
+    return {
+      label: "Al dia",
+      value: "$ 0",
+      tone: "#15803D",
+      statusStyle: {
+        color: "#15803D",
+        background: "rgba(34,197,94,.10)",
+        border: "1px solid rgba(34,197,94,.16)"
+      }
+    };
+  }
+  return {
+    label: "Saldo pendiente",
+    value: customer.balanceLabel || money(balance),
+    tone: "#C2410C",
+    statusStyle: {
+      color: "#B91C1C",
+      background: "rgba(239,68,68,.10)",
+      border: "1px solid rgba(239,68,68,.16)"
+    }
+  };
+}
+
 function buildRowsForExport(data, type) {
   if (type === "clientes") {
     return [
@@ -595,7 +635,7 @@ function PeriodControls({ filters, setFilters, compact = false }) {
 
 function QueryControls({ filters, setFilters, onSearch, onClear, statusOptions = [], placeholder = "Ej: JOSE" }) {
   return (
-    <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10 }}>
+    <form onSubmit={(event) => { event.preventDefault(); onSearch?.(); }} style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10 }}>
       <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(170px,220px) minmax(0,1fr) minmax(160px,220px)", gap: 10, alignItems: "end" }}>
         <Field label="Buscar por">
           <select style={input} value={filters.customerSearchType || "name"} onChange={(event) => setFilters((current) => ({ ...current, customerSearchType: event.target.value }))}>
@@ -615,9 +655,9 @@ function QueryControls({ filters, setFilters, onSearch, onClear, statusOptions =
       <PeriodControls filters={filters} setFilters={setFilters} />
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
         <button type="button" onClick={onClear} style={ghostButton}>Limpiar</button>
-        <button type="button" onClick={onSearch} style={button}>Buscar</button>
+        <button type="submit" style={button}>Buscar</button>
       </div>
-    </section>
+    </form>
   );
 }
 
@@ -737,10 +777,10 @@ function Field({ label, children }) {
 
 function Stat({ label, value, note, tone = "#1D4ED8" }) {
   return (
-    <div style={card}>
-      <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
-      <div style={{ fontFamily: FH, fontSize: "clamp(24px,3vw,38px)", lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
-      <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7, marginTop: 8 }}>{note}</div>
+    <div style={{ ...card, padding: 16, borderRadius: 18 }}>
+      <div style={{ fontSize: 10, letterSpacing: "1.2px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
+      <div style={{ fontFamily: F, fontSize: "clamp(18px,2vw,25px)", fontWeight: 950, lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
+      <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.55, marginTop: 7 }}>{note}</div>
     </div>
   );
 }
@@ -753,7 +793,7 @@ function PortalModal({ open, title, eyebrow, onClose, children, wide = true }) {
         <div className="client-portal-modal-head">
           <div>
             {eyebrow ? <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>{eyebrow}</div> : null}
-            <h2 style={{ margin: "2px 0 0", fontFamily: FH, color: "#0B1D3A", fontSize: "clamp(28px,4vw,44px)", lineHeight: 1.05 }}>{title}</h2>
+            <h2 style={{ margin: "2px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: "clamp(23px,3.2vw,34px)", fontWeight: 950, lineHeight: 1.08, overflowWrap: "anywhere" }}>{title}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" style={{ width: 46, height: 46, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontWeight: 900, cursor: "pointer" }}>x</button>
         </div>
@@ -792,12 +832,26 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
   const [type, setType] = useState("name");
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [previewId, setPreviewId] = useState("");
   const selected = customers.find((customer) => customer.id === selectedId);
   const results = useMemo(() => customerSearchMatches(customers, type, query), [customers, type, query]);
+  const preview = results.find((customer) => customer.id === previewId) || results[0];
+
+  useEffect(() => {
+    if (resultsOpen) setPreviewId(results[0]?.id || "");
+  }, [resultsOpen, results]);
 
   function search(event) {
     event?.preventDefault();
     setSearched(true);
+    const found = customerSearchMatches(customers, type, query);
+    if (found.length === 1) {
+      onSelect(found[0]);
+      setResultsOpen(false);
+      return;
+    }
+    setResultsOpen(found.length > 1);
   }
 
   return (
@@ -824,27 +878,55 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
           <button type="button" onClick={() => onSelect(null)} style={{ marginLeft: 10, padding: "6px 9px", borderRadius: 10, border: "1px solid rgba(21,128,61,.18)", background: "#fff", color: "#15803D", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>Quitar</button>
         </div>
       ) : null}
-      {searched ? (
-        <div style={{ display: "grid", gap: 8 }}>
-          {results.length ? results.map((customer) => (
-            <button
-              key={customer.id}
-              type="button"
-              onClick={() => onSelect(customer)}
-              style={{ textAlign: "left", padding: 12, borderRadius: 14, border: "1px solid rgba(37,99,235,.12)", background: "#fff", cursor: "pointer", fontFamily: F }}
-            >
-              <strong>{customer.id} - {customer.name || "Cliente sin nombre"}</strong>
-              <div style={{ marginTop: 4, color: "#64748B", fontSize: 12 }}>
-                Alterno: {customer.alternateName || "sin alterno"} · Documento: {customer.documentNumber || "por asignar"} · Saldo: {customer.balanceLabel || money(customer.balance)}
-              </div>
-            </button>
-          )) : (
-            <div style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", color: "#92400E", fontFamily: F, lineHeight: 1.6 }}>
-              No se encontraron coincidencias. Revisa el criterio o crea el cliente antes de continuar.
-            </div>
-          )}
+      {searched && !results.length ? (
+        <div style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", color: "#92400E", fontFamily: F, lineHeight: 1.6 }}>
+          No se encontraron coincidencias. Revisa el criterio o crea el cliente antes de continuar.
         </div>
       ) : null}
+      {searched && results.length > 1 ? (
+        <div style={{ padding: 12, borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, lineHeight: 1.55, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span>Se encontraron {results.length} coincidencias. Selecciona el cliente correcto en la ventana de resultados.</span>
+          <button type="button" onClick={() => setResultsOpen(true)} style={ghostButton}>Ver coincidencias</button>
+        </div>
+      ) : null}
+      <PortalModal open={resultsOpen} title={`Coincidencias para "${query}"`} eyebrow="SELECCIONAR CLIENTE" onClose={() => setResultsOpen(false)}>
+        <div className="client-customer-picker">
+          <div style={{ display: "grid", gap: 8 }}>
+            {results.map((customer) => {
+              const view = customerBalanceView(customer);
+              return (
+                <button
+                  key={customer.id}
+                  type="button"
+                  onClick={() => setPreviewId(customer.id)}
+                  style={{ textAlign: "left", padding: 12, borderRadius: 14, border: customer.id === preview?.id ? "1px solid rgba(37,99,235,.46)" : "1px solid rgba(37,99,235,.12)", background: customer.id === preview?.id ? "#F8FBFF" : "#fff", cursor: "pointer", fontFamily: F }}
+                >
+                  <strong>{customer.id} - {customer.name || "Cliente sin nombre"}</strong>
+                  <div style={{ marginTop: 4, color: "#64748B", fontSize: 12, lineHeight: 1.45 }}>
+                    Alterno: {customer.alternateName || "sin alterno"} · Documento: {customer.documentNumber || "por asignar"}
+                  </div>
+                  <span style={{ display: "inline-flex", marginTop: 8, padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}: {view.value}</span>
+                </button>
+              );
+            })}
+          </div>
+          {preview ? (
+            <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>VISTA RAPIDA</div>
+                <h3 style={{ margin: "4px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: 22, lineHeight: 1.15 }}>{preview.name || "Cliente sin nombre"}</h3>
+                <p style={{ margin: "6px 0 0", color: "#64748B", fontFamily: F, lineHeight: 1.5 }}>ID {preview.id} · Documento {preview.documentNumber || "por asignar"}</p>
+              </div>
+              <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                <Stat label="FACTURADO" value={preview.billedLabel || money(preview.billed)} note={`${preview.invoicesCount || 0} factura(s).`} />
+                <Stat label="ABONADO" value={preview.paidLabel || money(preview.paid)} note={`${preview.paymentsCount || 0} pago(s).`} tone="#15803D" />
+                <Stat label={customerBalanceView(preview).label.toUpperCase()} value={customerBalanceView(preview).value} note={customerBalanceView(preview).label === "Saldo a favor" ? "Revisar o compensar." : "Estado de cartera."} tone={customerBalanceView(preview).tone} />
+              </div>
+              <button type="button" onClick={() => { onSelect(preview); setResultsOpen(false); }} style={button}>Seleccionar cliente</button>
+            </div>
+          ) : null}
+        </div>
+      </PortalModal>
     </section>
   );
 }
@@ -1063,29 +1145,25 @@ function Dashboard({ data, setModule }) {
           <PeriodControls filters={filters} setFilters={setFilters} compact />
         </div>
       </section>
-      <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-        <Stat label="CARTERA TOTAL" value={dashboard.pendingLabel || "$ 0"} note="Saldo pendiente por cobrar." tone="#C2410C" />
+      <div className="client-portal-stats client-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
+        <Stat label="VALOR FACTURADO" value={money(billedInPeriod)} note={`${invoicesInPeriod.length} factura(s) en el rango.`} />
+        <Stat label="VALOR ABONADO" value={money(paidInPeriod)} note={`${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" />
+        <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" />
         <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" />
         <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" />
-        <Stat label="RECAUDO DEL PERIODO" value={money(paidInPeriod)} note={`${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" />
-      </div>
-      <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-        <Stat label="FACTURADO PERIODO" value={money(billedInPeriod)} note={`${invoicesInPeriod.length} factura(s) en el rango.`} />
-        <Stat label="NO VENCIDA" value={dashboard.currentLabel || "$ 0"} note="Saldo con vencimiento futuro o sin vencimiento." tone="#1D4ED8" />
-        <Stat label="CREDITOS A REVISAR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#15803D" />
-        <Stat label="ALERTAS" value={(dashboard.outdatedCustomersCount || 0) + (dashboard.negativeInventoryCount || 0)} note={`${dashboard.outdatedCustomersCount || 0} cliente(s) por actualizar · ${dashboard.negativeInventoryCount || 0} inventario(s) negativo(s).`} tone="#B45309" />
+        <Stat label="SALDOS A FAVOR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#6D28D9" />
       </div>
       {reviewCases.length ? (
         <section style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
             <div>
-              <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#B45309", fontWeight: 900, fontFamily: F }}>CASOS DE REVISION</div>
-              <h2 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A" }}>Cartera con credito o saldo a favor</h2>
+              <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#6D28D9", fontWeight: 900, fontFamily: F }}>CASOS DE REVISION</div>
+              <h2 style={{ margin: 0, fontFamily: F, fontSize: 22, color: "#0B1D3A", fontWeight: 950 }}>Clientes con saldo a favor</h2>
             </div>
             <button type="button" onClick={() => setModule("cartera")} style={ghostButton}>Revisar cartera</button>
           </div>
           <PaginatedRecordList
-            headers={["Cliente", "ID", "Pagado", "Facturado", "Credito"]}
+            headers={["Cliente", "ID", "Abonado", "Facturado", "Saldo a favor"]}
             rows={reviewCases.map((customer) => [customer.name, customer.id, customer.paidLabel, customer.billedLabel, customer.unappliedCreditLabel])}
             pageSize={8}
           />
@@ -1095,7 +1173,7 @@ function Dashboard({ data, setModule }) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>EDADES DE CARTERA</div>
-            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A" }}>Distribucion del saldo pendiente</h2>
+            <h2 style={{ margin: 0, fontFamily: F, fontSize: 23, fontWeight: 950, color: "#0B1D3A" }}>Distribucion del saldo pendiente</h2>
           </div>
           <button type="button" onClick={() => setModule("cartera")} style={ghostButton}>Analizar cartera</button>
         </div>
@@ -1120,7 +1198,7 @@ function Dashboard({ data, setModule }) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>TOP 20 CARTERA</div>
-            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 32, color: "#0B1D3A" }}>Clientes con mayor saldo</h2>
+            <h2 style={{ margin: 0, fontFamily: F, fontSize: 23, fontWeight: 950, color: "#0B1D3A" }}>Clientes con mayor saldo</h2>
           </div>
           <button type="button" onClick={() => setModule("cartera")} style={button}>Ver cartera</button>
         </div>
@@ -1760,26 +1838,55 @@ function Portfolio({ data, onExport }) {
   const [tab, setTab] = useState("consulta");
   const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" });
   const [searched, setSearched] = useState(false);
+  const [matchesOpen, setMatchesOpen] = useState(false);
+  const [modalPreviewId, setModalPreviewId] = useState("");
   const rows = data.customerSummary || [];
   const selected = rows.find((customer) => customer.id === selectedId);
+  const selectedView = selected ? customerBalanceView(selected) : null;
   const selectedInvoices = selected?.receivableInvoices || [];
   const selectedPayments = (data.payments || []).filter((payment) => payment.customerId === selectedId && payment.status !== "anulado");
-  const range = periodRange(filters.period || "all", filters.from, filters.to);
-  const periodActive = (filters.period || "all") !== "all";
   const reviewRows = rows.filter((customer) => Number(customer.unappliedCredit || 0) > 0);
-  const filteredRows = searched ? rows.filter((customer) => {
-    const q = normalizeText(filters.customerQuery);
+  const getFilteredRows = (sourceFilters = filters) => rows.filter((customer) => {
+    const localRange = periodRange(sourceFilters.period || "all", sourceFilters.from, sourceFilters.to);
+    const localPeriodActive = (sourceFilters.period || "all") !== "all";
+    const q = normalizeText(sourceFilters.customerQuery);
     const matchesText = !q
-      || (filters.customerSearchType === "id" && normalizeText(customer.id).includes(q))
-      || (filters.customerSearchType === "documentNumber" && isValidDocumentSearch(customer.documentNumber) && onlyDigits(customer.documentNumber) === onlyDigits(filters.customerQuery))
-      || (filters.customerSearchType === "alternateName" && normalizeText(customer.alternateName).includes(q))
-      || ((!filters.customerSearchType || filters.customerSearchType === "name") && normalizeText(customer.name).includes(q));
+      || (sourceFilters.customerSearchType === "id" && normalizeText(customer.id).includes(q))
+      || (sourceFilters.customerSearchType === "documentNumber" && isValidDocumentSearch(customer.documentNumber) && onlyDigits(customer.documentNumber) === onlyDigits(sourceFilters.customerQuery))
+      || (sourceFilters.customerSearchType === "alternateName" && normalizeText(customer.alternateName).includes(q))
+      || ((!sourceFilters.customerSearchType || sourceFilters.customerSearchType === "name") && normalizeText(customer.name).includes(q));
     if (!matchesText) return false;
-    if (!periodActive) return true;
-    const hasInvoice = (customer.receivableInvoices || []).some((invoice) => dateInRange(invoice.date, range) || dateInRange(invoice.dueDate, range));
-    const hasPayment = (data.payments || []).some((payment) => payment.customerId === customer.id && dateInRange(payment.date, range));
+    if (!localPeriodActive) return true;
+    const hasInvoice = (customer.receivableInvoices || []).some((invoice) => dateInRange(invoice.date, localRange) || dateInRange(invoice.dueDate, localRange));
+    const hasPayment = (data.payments || []).some((payment) => payment.customerId === customer.id && dateInRange(payment.date, localRange));
     return hasInvoice || hasPayment;
-  }) : [];
+  });
+  const filteredRows = searched ? getFilteredRows(filters) : [];
+  const hasTextQuery = Boolean(normalizeText(filters.customerQuery));
+  const multipleNamedMatches = hasTextQuery && filteredRows.length > 1;
+  const modalPreview = rows.find((customer) => customer.id === modalPreviewId) || filteredRows[0];
+
+  function handleSearch() {
+    const matches = getFilteredRows(filters);
+    const hasQuery = Boolean(normalizeText(filters.customerQuery));
+    setSearched(true);
+    if (hasQuery && matches.length === 1) {
+      setSelectedId(matches[0].id);
+      setTab("detalle");
+      setMatchesOpen(false);
+      return;
+    }
+    if (hasQuery && matches.length > 1) {
+      setModalPreviewId(matches[0].id);
+      setMatchesOpen(true);
+    }
+  }
+
+  function openCustomer(customer) {
+    setSelectedId(customer.id);
+    setTab("detalle");
+    setMatchesOpen(false);
+  }
 
   return (
     <ModuleWithForm title="Cartera por cliente" count={rows.length} onExport={() => onExport("cartera")}>
@@ -1794,15 +1901,57 @@ function Portfolio({ data, onExport }) {
         <button type="button" onClick={() => onExport("cartera_detallada")} style={ghostButton}>Reporte cartera detallada</button>
         <button type="button" onClick={() => onExport("detalle_facturas")} style={ghostButton}>Detalle productos por factura</button>
       </div>
-      <CustomerSearch customers={rows} selectedId={selectedId} onSelect={(customer) => { setSelectedId(customer?.id || ""); setTab("detalle"); }} title="Consultar cartera de cliente" />
-      {selected ? (
+      {tab === "consulta" ? (
+        <>
+          <QueryControls
+            filters={filters}
+            setFilters={setFilters}
+            onSearch={handleSearch}
+            onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" }); setSearched(false); setMatchesOpen(false); }}
+            placeholder="Cliente, ID o documento"
+          />
+          {multipleNamedMatches ? (
+            <div style={{ padding: 14, borderRadius: 18, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, lineHeight: 1.55, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span>Se encontraron {filteredRows.length} coincidencias. Selecciona el cliente correcto para evitar abrir informacion equivocada.</span>
+              <button type="button" onClick={() => setMatchesOpen(true)} style={ghostButton}>Ver coincidencias</button>
+            </div>
+          ) : (
+            <PaginatedRecordList
+              headers={["Cliente", "Facturado", "Abonado", "Saldo / favor", "Estado", "Accion"]}
+              rows={filteredRows.map((customer) => {
+                const view = customerBalanceView(customer);
+                const message = `Hola ${customer.name}, te saludamos cordialmente. A la fecha registramos un saldo pendiente de ${customer.balanceLabel}. Agradecemos revisar el estado de cuenta y confirmar la fecha estimada de pago.`;
+                const wa = customer.phone && Number(customer.balance || 0) > 0 ? `https://wa.me/57${onlyDigits(customer.phone).slice(-10)}?text=${encodeURIComponent(message)}` : "";
+                return [
+                  <div><strong>{customer.name}</strong><div style={{ color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>,
+                  customer.billedLabel,
+                  customer.paidLabel,
+                  <strong style={{ color: view.tone }}>{view.value}</strong>,
+                  <span style={{ display: "inline-flex", padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}</span>,
+                  <div className="client-action-group">
+                    <button type="button" onClick={() => openCustomer(customer)} style={ghostButton}>Ver</button>
+                    {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...smallButton, textDecoration: "none", background: "#25D366" }}>Cobrar</a> : <span style={{ fontFamily: F, color: view.label === "Saldo a favor" ? "#6D28D9" : "#64748B", fontSize: 12 }}>{view.label === "Saldo a favor" ? "Revisar favor" : "Sin cobro"}</span>}
+                  </div>
+                ];
+              })}
+              emptyMessage={searched ? "No se encontraron clientes con esos filtros." : "Usa los filtros para consultar cartera sin cargar todos los clientes."}
+            />
+          )}
+        </>
+      ) : null}
+      {selected && tab === "detalle" ? (
         <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
           <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
             <Stat label="FACTURADO" value={selected.billedLabel} note={`${selectedInvoices.length} factura(s).`} />
-            <Stat label="PAGADO" value={selected.paidLabel} note={`${selectedPayments.length} abono(s).`} tone="#15803D" />
-            <Stat label="SALDO" value={selected.balanceLabel} note="Pendiente a la fecha de corte." tone={selected.balance > 0 ? "#C2410C" : "#15803D"} />
+            <Stat label="ABONADO" value={selected.paidLabel} note={`${selectedPayments.length} abono(s).`} tone="#15803D" />
+            <Stat label={selectedView.label.toUpperCase()} value={selectedView.value} note={selectedView.label === "Saldo a favor" ? "Abonos superiores a la cartera." : "Pendiente a la fecha de corte."} tone={selectedView.tone} />
             <Stat label="VENCIDO" value={selected.overdueLabel || "$ 0"} note={`${selected.overdueInvoicesCount || 0} factura(s) vencida(s).`} tone="#B91C1C" />
           </div>
+          {selectedView.label === "Saldo a favor" ? (
+            <div style={{ padding: 13, borderRadius: 16, background: "rgba(109,40,217,.10)", border: "1px solid rgba(109,40,217,.16)", color: "#4C1D95", fontFamily: F, lineHeight: 1.6 }}>
+              Este cliente tiene saldo a favor. Revisa si corresponde a anticipo, pago duplicado, nota credito o compensacion futura.
+            </div>
+          ) : null}
           <div style={{ display: "grid", gap: 8 }}>
             {AGING_BUCKETS.filter(([key]) => Number(selected.aging?.[key] || 0) > 0).map(([key, label]) => (
               <div key={key} className="client-aging-row" style={{ display: "grid", gridTemplateColumns: "170px minmax(0,1fr) 110px", gap: 10, alignItems: "center", fontFamily: F, fontSize: 13 }}>
@@ -1818,50 +1967,51 @@ function Portfolio({ data, onExport }) {
           <RecordList rows={selectedPayments.map((payment) => [payment.id, payment.date, payment.invoiceId || "Global FIFO", money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Aplicacion", "Bruto", "Retenciones", "Neto", "Medio"]} />
         </section>
       ) : null}
-      {tab === "consulta" ? (
-        <>
-          <QueryControls
-            filters={filters}
-            setFilters={setFilters}
-            onSearch={() => setSearched(true)}
-            onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" }); setSearched(false); }}
-            placeholder="Cliente, ID o documento"
-          />
-          <PaginatedRecordList
-            headers={["Cliente", "Facturado", "Pagado", "Saldo", "Vencido", "Accion"]}
-            rows={filteredRows.map((customer) => {
-              const message = `Hola ${customer.name}, te saludamos cordialmente. A la fecha registramos un saldo pendiente de ${customer.balanceLabel}. Agradecemos revisar el estado de cuenta y confirmar la fecha estimada de pago.`;
-              const wa = customer.phone ? `https://wa.me/57${onlyDigits(customer.phone).slice(-10)}?text=${encodeURIComponent(message)}` : "";
-              return [
-                <div><strong>{customer.name}</strong><div style={{ color: "#64748B", fontSize: 12 }}>{customer.id} · {customer.invoicesCount} factura(s)</div></div>,
-                customer.billedLabel,
-                customer.paidLabel,
-                <strong style={{ color: customer.balance > 0 ? "#C2410C" : "#15803D" }}>{customer.balanceLabel}</strong>,
-                <span style={{ color: customer.overdue > 0 ? "#B91C1C" : "#64748B", fontWeight: 900 }}>{customer.overdueLabel || "$ 0"}</span>,
-                <div className="client-action-group">
-                  <button type="button" onClick={() => { setSelectedId(customer.id); setTab("detalle"); }} style={ghostButton}>Ver</button>
-                  {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...smallButton, textDecoration: "none", background: "#25D366" }}>Cobrar</a> : <span style={{ fontFamily: F, color: "#B45309", fontSize: 12 }}>Sin WhatsApp</span>}
-                </div>
-              ];
-            })}
-            emptyMessage={searched ? "No se encontraron clientes con esos filtros." : "Usa los filtros para consultar cartera sin cargar todos los clientes."}
-          />
-        </>
-      ) : null}
       {tab === "revision" ? (
         <PaginatedRecordList
-          headers={["Cliente", "ID", "Facturado", "Pagado", "Credito a favor", "Accion"]}
+          headers={["Cliente", "ID", "Facturado", "Abonado", "Saldo a favor", "Accion"]}
           rows={reviewRows.map((customer) => [
             customer.name,
             customer.id,
             customer.billedLabel,
             customer.paidLabel,
-            <strong style={{ color: "#15803D" }}>{customer.unappliedCreditLabel}</strong>,
+            <strong style={{ color: "#6D28D9" }}>{customer.unappliedCreditLabel}</strong>,
             <button type="button" onClick={() => { setSelectedId(customer.id); setTab("detalle"); }} style={ghostButton}>Revisar</button>
           ])}
-          emptyMessage="No hay creditos sin aplicar o saldos a favor por revisar."
+          emptyMessage="No hay saldos a favor por revisar."
         />
       ) : null}
+      <PortalModal open={matchesOpen} title={`Coincidencias para "${filters.customerQuery}"`} eyebrow="SELECCIONAR CLIENTE" onClose={() => setMatchesOpen(false)}>
+        <div className="client-customer-picker">
+          <div style={{ display: "grid", gap: 8 }}>
+            {filteredRows.map((customer) => {
+              const view = customerBalanceView(customer);
+              return (
+                <button key={customer.id} type="button" onClick={() => setModalPreviewId(customer.id)} style={{ textAlign: "left", padding: 12, borderRadius: 14, border: customer.id === modalPreview?.id ? "1px solid rgba(37,99,235,.46)" : "1px solid rgba(37,99,235,.12)", background: customer.id === modalPreview?.id ? "#F8FBFF" : "#fff", cursor: "pointer", fontFamily: F }}>
+                  <strong>{customer.name || "Cliente sin nombre"}</strong>
+                  <div style={{ marginTop: 4, color: "#64748B", fontSize: 12, lineHeight: 1.45 }}>{customer.id} · Documento: {customer.documentNumber || "por asignar"} · {customer.invoicesCount} factura(s)</div>
+                  <span style={{ display: "inline-flex", marginTop: 8, padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}: {view.value}</span>
+                </button>
+              );
+            })}
+          </div>
+          {modalPreview ? (
+            <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>VISTA RAPIDA</div>
+                <h3 style={{ margin: "4px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: 22, lineHeight: 1.15 }}>{modalPreview.name || "Cliente sin nombre"}</h3>
+                <p style={{ margin: "6px 0 0", color: "#64748B", fontFamily: F, lineHeight: 1.5 }}>ID {modalPreview.id} · Documento {modalPreview.documentNumber || "por asignar"}</p>
+              </div>
+              <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                <Stat label="FACTURADO" value={modalPreview.billedLabel || money(modalPreview.billed)} note={`${modalPreview.invoicesCount || 0} factura(s).`} />
+                <Stat label="ABONADO" value={modalPreview.paidLabel || money(modalPreview.paid)} note={`${modalPreview.paymentsCount || 0} pago(s).`} tone="#15803D" />
+                <Stat label={customerBalanceView(modalPreview).label.toUpperCase()} value={customerBalanceView(modalPreview).value} note={customerBalanceView(modalPreview).label === "Saldo a favor" ? "Revisar o compensar." : "Estado de cartera."} tone={customerBalanceView(modalPreview).tone} />
+              </div>
+              <button type="button" onClick={() => openCustomer(modalPreview)} style={button}>Abrir cartera</button>
+            </div>
+          ) : null}
+        </div>
+      </PortalModal>
     </ModuleWithForm>
   );
 }
@@ -2273,12 +2423,12 @@ function Orders({ data, onSave, onExport }) {
 
 function ModuleWithForm({ title, count, onExport, children }) {
   return (
-    <section style={card}>
+    <section style={{ ...card, borderRadius: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>MODULO</div>
-          <h2 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(26px,3vw,34px)", color: "#0B1D3A", lineHeight: 1.05 }}>{title}</h2>
-          <p style={{ fontFamily: F, color: "#64748B", margin: "6px 0 0" }}>{count} registro(s)</p>
+          <div style={{ fontSize: 11, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>MODULO</div>
+          <h2 style={{ margin: 0, fontFamily: F, fontSize: "clamp(23px,2.6vw,31px)", fontWeight: 950, color: "#0B1D3A", lineHeight: 1.05 }}>{title}</h2>
+          <p style={{ fontFamily: F, color: "#64748B", margin: "5px 0 0", fontSize: 13 }}>{count} registro(s)</p>
         </div>
         {onExport ? <button type="button" onClick={onExport} style={button}>Descargar Excel</button> : null}
       </div>
@@ -2684,8 +2834,6 @@ export default function ClientPortal() {
 
   useEffect(() => { loadData(); }, []);
 
-  const moduleLabel = useMemo(() => MODULES.find(([id]) => id === activeModule)?.[1] || "Dashboard", [activeModule]);
-
   async function save(type, payload) {
     setNotice("");
     setError("");
@@ -2793,15 +2941,21 @@ export default function ClientPortal() {
         .client-portal-modal-body{padding:24px 28px 28px}
         .client-record-cards{display:none}
         .client-action-group{display:flex;gap:8px;flex-wrap:wrap}
+        .client-customer-picker{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.25fr);gap:14px}
+        .client-portal-nav{
+          display:flex;
+          gap:8px;
+          flex-wrap:wrap;
+        }
         @media(max-width:980px){
-          .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls{grid-template-columns:1fr!important}
+          .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls,.client-customer-picker{grid-template-columns:1fr!important}
           .client-portal-row{grid-template-columns:1fr!important}
           .client-aging-row{grid-template-columns:1fr!important}
           .client-aging-row span,.client-aging-row strong{text-align:left!important}
           .client-portal-shell{padding:16px!important}
           .client-portal-header{grid-template-columns:1fr!important}
           .client-portal-actions{justify-content:stretch!important}
-          .client-portal-actions button,.client-portal-actions select{width:100%!important}
+          .client-portal-actions button{width:100%!important}
           .client-portal-modal-backdrop{align-items:end;padding:10px}
           .client-portal-modal{border-radius:24px 24px 16px 16px;max-height:94vh}
           .client-portal-modal-head{padding:20px}
@@ -2809,19 +2963,26 @@ export default function ClientPortal() {
           .client-record-table{display:none}
           .client-record-cards{display:grid;gap:10px}
           .client-action-group button{width:100%}
+          .client-portal-nav{
+            flex-wrap:nowrap;
+            overflow-x:auto;
+            padding-bottom:4px;
+            scroll-snap-type:x proximity;
+          }
+          .client-portal-nav button{
+            flex:0 0 auto;
+            scroll-snap-align:start;
+          }
         }
       `}</style>
       <div className="client-portal-shell" style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 14 }}>
-        <header className="client-portal-header" style={{ ...card, padding: 16, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 16, alignItems: "center" }}>
+        <header className="client-portal-header" style={{ ...card, padding: 14, borderRadius: 20, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 12, letterSpacing: "1.8px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PORTAL PARA CLIENTES</div>
-            <h1 style={{ margin: "2px 0 4px", fontFamily: FH, fontSize: "clamp(28px,4vw,44px)", color: "#0B1D3A", lineHeight: 1.02, overflowWrap: "anywhere" }}>{data?.company?.name || session.companyName}</h1>
-            <p style={{ margin: 0, fontFamily: F, color: "#52647F", fontSize: 14 }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
+            <div style={{ fontSize: 11, letterSpacing: "1.6px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PORTAL PARA CLIENTES</div>
+            <h1 style={{ margin: "2px 0 3px", fontFamily: F, fontSize: "clamp(23px,3vw,34px)", fontWeight: 950, color: "#0B1D3A", lineHeight: 1.06, overflowWrap: "anywhere" }}>{data?.company?.name || session.companyName}</h1>
+            <p style={{ margin: 0, fontFamily: F, color: "#52647F", fontSize: 13 }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
           </div>
           <div className="client-portal-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <select style={{ ...input, minWidth: 220 }} value={activeModule} onChange={(event) => setActiveModule(event.target.value)}>
-              {MODULES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
             <button type="button" onClick={loadData} style={{ ...button, background: "#fff", color: "#1D4ED8", border: "1px solid rgba(37,99,235,.14)" }}>Actualizar</button>
             <button type="button" onClick={logout} style={{ ...button, background: "#fff", color: "#B91C1C", border: "1px solid rgba(220,38,38,.14)" }}>Salir</button>
           </div>
@@ -2835,11 +2996,10 @@ export default function ClientPortal() {
         ) : null}
         {error ? <div style={{ padding: 13, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 900 }}>{error}</div> : null}
 
-        <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {MODULES.map(([id, label]) => <button key={id} type="button" onClick={() => setActiveModule(id)} style={{ padding: "10px 13px", borderRadius: 999, border: id === activeModule ? "none" : "1px solid rgba(37,99,235,.14)", background: id === activeModule ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#fff", color: id === activeModule ? "#fff" : "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+        <nav className="client-portal-nav" aria-label="Modulos del portal">
+          {MODULES.map(([id, label]) => <button key={id} type="button" onClick={() => setActiveModule(id)} style={{ padding: "9px 12px", minHeight: 38, borderRadius: 999, border: id === activeModule ? "none" : "1px solid rgba(37,99,235,.14)", background: id === activeModule ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#fff", color: id === activeModule ? "#fff" : "#1D4ED8", fontFamily: F, fontSize: 13, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
         </nav>
 
-        <div style={{ fontFamily: F, color: "#64748B", fontWeight: 900, letterSpacing: "1.2px" }}>Modulo actual: {moduleLabel}</div>
         {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
         {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
         {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
