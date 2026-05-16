@@ -3,18 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 const F = "'Outfit',sans-serif";
 const FH = "'Libre Baskerville',serif";
 
-const MODULES = [
-  ["dashboard", "Dashboard"],
-  ["clientes", "Clientes"],
-  ["facturas", "Facturas"],
-  ["abonos", "Abonos"],
-  ["cartera", "Cartera"],
-  ["inventario", "Inventario"],
-  ["movimientos", "Movimientos"],
-  ["ordenes", "Ordenes"],
-  ["cargues", "Cargues masivos"],
-  ["cargues-historial", "Historial de cargues"],
-  ["configuracion", "Configuracion"]
+const MODULE_GROUPS = [
+  { title: "Panel", items: [["dashboard", "Dashboard"]] },
+  { title: "Operacion", items: [["clientes", "Clientes"], ["facturas", "Facturas"], ["abonos", "Abonos"], ["cartera", "Cartera"]] },
+  { title: "Inventario", items: [["inventario", "Inventario"], ["movimientos", "Movimientos"], ["ordenes", "Ordenes"]] },
+  { title: "Administracion", items: [["cargues", "Cargues masivos"], ["cargues-historial", "Historial de cargues"], ["configuracion", "Configuracion"]] }
 ];
 
 const PAYMENT_METHODS = ["Transferencia bancaria", "Nequi", "Daviplata", "Efectivo", "PSE", "Tarjeta", "Otro"];
@@ -731,6 +724,31 @@ function CompanyBrand({ companyName = "", logoDataUrl = "" }) {
         <p style={{ margin: 0, fontFamily: F, color: "#52647F", fontSize: 13 }}>Cartera, facturas, abonos, inventario, ordenes y cargues masivos.</p>
       </div>
     </div>
+  );
+}
+
+function ModuleNavigation({ activeModule, onChange }) {
+  return (
+    <aside className="client-portal-sidebar" aria-label="Modulos del portal">
+      <div className="client-sidebar-kicker">Modulos</div>
+      {MODULE_GROUPS.map((group) => (
+        <section key={group.title} className="client-module-group">
+          <div className="client-module-group-title">{group.title}</div>
+          <div className="client-module-list">
+            {group.items.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`client-module-button${id === activeModule ? " active" : ""}`}
+                onClick={() => onChange(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </aside>
   );
 }
 
@@ -3335,10 +3353,79 @@ export default function ClientPortal() {
         .client-record-cards{display:none}
         .client-action-group{display:flex;gap:8px;flex-wrap:wrap}
         .client-customer-picker{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.25fr);gap:14px}
-        .client-portal-nav{
-          display:flex;
-          gap:8px;
-          flex-wrap:wrap;
+        .client-portal-layout{
+          display:grid;
+          grid-template-columns:220px minmax(0,1fr);
+          gap:14px;
+          align-items:start;
+        }
+        .client-portal-sidebar{
+          position:sticky;
+          top:16px;
+          display:grid;
+          gap:14px;
+          padding:14px;
+          border-radius:22px;
+          background:rgba(255,255,255,.95);
+          border:1px solid rgba(37,99,235,.10);
+          box-shadow:0 18px 42px rgba(15,23,42,.07);
+        }
+        .client-sidebar-kicker{
+          font-family:${F};
+          font-size:11px;
+          letter-spacing:1.5px;
+          color:#1D4ED8;
+          font-weight:950;
+          text-transform:uppercase;
+        }
+        .client-module-group{
+          display:grid;
+          gap:7px;
+        }
+        .client-module-group-title{
+          font-family:${F};
+          font-size:10px;
+          letter-spacing:1.25px;
+          color:#64748B;
+          font-weight:950;
+          text-transform:uppercase;
+        }
+        .client-module-list{
+          display:grid;
+          gap:6px;
+        }
+        .client-module-button{
+          width:100%;
+          min-height:38px;
+          padding:9px 10px;
+          border-radius:13px;
+          border:1px solid rgba(37,99,235,.11);
+          background:#fff;
+          color:#1D4ED8;
+          font-family:${F};
+          font-size:13px;
+          font-weight:950;
+          text-align:left;
+          cursor:pointer;
+          transition:background .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease;
+        }
+        .client-module-button:hover{
+          background:#F8FBFF;
+          transform:translateY(-1px);
+        }
+        .client-module-button.active{
+          border-color:transparent;
+          background:linear-gradient(135deg,#0B1D3A,#2563EB);
+          color:#fff;
+          box-shadow:0 10px 24px rgba(37,99,235,.22);
+        }
+        .client-portal-workspace{
+          min-width:0;
+          display:grid;
+          gap:14px;
+        }
+        .client-portal-mobile-module{
+          display:none;
         }
         .client-company-brand{
           display:grid;
@@ -3420,16 +3507,9 @@ export default function ClientPortal() {
           .client-record-table{display:none}
           .client-record-cards{display:grid;gap:10px}
           .client-action-group button{width:100%}
-          .client-portal-nav{
-            flex-wrap:nowrap;
-            overflow-x:auto;
-            padding-bottom:4px;
-            scroll-snap-type:x proximity;
-          }
-          .client-portal-nav button{
-            flex:0 0 auto;
-            scroll-snap-align:start;
-          }
+          .client-portal-layout{grid-template-columns:1fr}
+          .client-portal-sidebar{display:none}
+          .client-portal-mobile-module{display:block}
           .client-company-brand{
             grid-template-columns:auto minmax(0,1fr);
             gap:11px;
@@ -3472,21 +3552,34 @@ export default function ClientPortal() {
         ) : null}
         {error ? <div style={{ padding: 13, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 900 }}>{error}</div> : null}
 
-        <nav className="client-portal-nav" aria-label="Modulos del portal">
-          {MODULES.map(([id, label]) => <button key={id} type="button" onClick={() => setActiveModule(id)} style={{ padding: "9px 12px", minHeight: 38, borderRadius: 999, border: id === activeModule ? "none" : "1px solid rgba(37,99,235,.14)", background: id === activeModule ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#fff", color: id === activeModule ? "#fff" : "#1D4ED8", fontFamily: F, fontSize: 13, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
-        </nav>
+        <div className="client-portal-mobile-module">
+          <Field label="Ir a modulo">
+            <select style={input} value={activeModule} onChange={(event) => setActiveModule(event.target.value)}>
+              {MODULE_GROUPS.map((group) => (
+                <optgroup key={group.title} label={group.title}>
+                  {group.items.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </Field>
+        </div>
 
-        {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
-        {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} onSave={save} /> : null}
-        {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
-        {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
-        {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
+        <div className="client-portal-layout">
+          <ModuleNavigation activeModule={activeModule} onChange={setActiveModule} />
+          <section className="client-portal-workspace">
+            {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
+            {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} onSave={save} /> : null}
+            {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
+            {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
+            {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
+          </section>
+        </div>
         <ContaraeSignature />
         <PortalModal open={Boolean(operationSuccess)} title={operationSuccess?.title || "Operacion completada"} eyebrow="LISTO" onClose={() => setOperationSuccess(null)} wide={false}>
           <div style={{ display: "grid", gap: 14, fontFamily: F }}>
