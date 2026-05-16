@@ -10,18 +10,18 @@ const MODULE_GROUPS = [
   { title: "Administracion", items: [["cargues", "Cargues masivos"], ["cargues-historial", "Historial de cargues"], ["configuracion", "Configuracion"]] }
 ];
 
-const MODULE_BADGES = {
-  dashboard: "DB",
-  clientes: "CL",
-  facturas: "FA",
-  abonos: "AB",
-  cartera: "CA",
-  inventario: "IN",
-  movimientos: "MV",
-  ordenes: "OR",
-  cargues: "CM",
-  "cargues-historial": "HC",
-  configuracion: "CF"
+const MODULE_ICONS = {
+  dashboard: "dashboard",
+  clientes: "users",
+  facturas: "invoice",
+  abonos: "wallet",
+  cartera: "portfolio",
+  inventario: "boxes",
+  movimientos: "transfer",
+  ordenes: "clipboard",
+  cargues: "upload",
+  "cargues-historial": "history",
+  configuracion: "gear"
 };
 
 const PAYMENT_METHODS = ["Transferencia bancaria", "Nequi", "Daviplata", "Efectivo", "PSE", "Tarjeta", "Otro"];
@@ -722,6 +722,162 @@ function companyInitials(name = "") {
   return letters.map((word) => word.charAt(0).toLocaleUpperCase("es-CO")).join("").slice(0, 2);
 }
 
+function Icon({ name = "dashboard", size = 18 }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+    focusable: "false"
+  };
+  const icons = {
+    dashboard: (
+      <>
+        <path d="M4 13a8 8 0 0 1 16 0" />
+        <path d="M12 13l4-4" />
+        <path d="M6.5 18h11" />
+      </>
+    ),
+    users: (
+      <>
+        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+        <circle cx="9.5" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </>
+    ),
+    invoice: (
+      <>
+        <path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2-2-1.35V5a2 2 0 0 1 2-2z" />
+        <path d="M9 8h6" />
+        <path d="M9 12h6" />
+        <path d="M9 16h3" />
+      </>
+    ),
+    wallet: (
+      <>
+        <path d="M3 7a2 2 0 0 1 2-2h14v14H5a2 2 0 0 1-2-2z" />
+        <path d="M17 11h4v4h-4a2 2 0 0 1 0-4z" />
+        <path d="M7 5V3h10v2" />
+      </>
+    ),
+    portfolio: (
+      <>
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M7 15l3-4 3 2 4-6" />
+        <path d="M17 7h3v3" />
+      </>
+    ),
+    boxes: (
+      <>
+        <path d="M3 7l9-4 9 4-9 4z" />
+        <path d="M3 7v10l9 4 9-4V7" />
+        <path d="M12 11v10" />
+      </>
+    ),
+    transfer: (
+      <>
+        <path d="M7 7h13" />
+        <path d="M17 4l3 3-3 3" />
+        <path d="M17 17H4" />
+        <path d="M7 14l-3 3 3 3" />
+      </>
+    ),
+    clipboard: (
+      <>
+        <path d="M9 4h6l1 2h3v15H5V6h3z" />
+        <path d="M9 12h6" />
+        <path d="M9 16h4" />
+      </>
+    ),
+    upload: (
+      <>
+        <path d="M12 16V4" />
+        <path d="M8 8l4-4 4 4" />
+        <path d="M20 16.5V20H4v-3.5" />
+      </>
+    ),
+    history: (
+      <>
+        <path d="M3 12a9 9 0 1 0 3-6.7" />
+        <path d="M3 4v5h5" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+    gear: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04-2 3.46-.06-.02a1.8 1.8 0 0 0-1.94.22 1.8 1.8 0 0 0-.72 1.42H9a1.8 1.8 0 0 0-.72-1.42 1.8 1.8 0 0 0-1.94-.22l-.06.02-2-3.46.04-.04A1.7 1.7 0 0 0 4.6 15 1.8 1.8 0 0 0 3.1 14H3v-4h.1A1.8 1.8 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.04-.04 2-3.46.06.02a1.8 1.8 0 0 0 1.94-.22A1.8 1.8 0 0 0 9 2h6a1.8 1.8 0 0 0 .72 1.42 1.8 1.8 0 0 0 1.94.22l.06-.02 2 3.46-.04.04A1.7 1.7 0 0 0 19.4 9a1.8 1.8 0 0 0 1.5 1h.1v4h-.1a1.8 1.8 0 0 0-1.5 1z" />
+      </>
+    ),
+    money: (
+      <>
+        <rect x="3" y="6" width="18" height="12" rx="2" />
+        <circle cx="12" cy="12" r="3" />
+        <path d="M6 9h.01" />
+        <path d="M18 15h.01" />
+      </>
+    ),
+    alert: (
+      <>
+        <path d="M12 3l10 18H2z" />
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+      </>
+    ),
+    gift: (
+      <>
+        <path d="M20 12v8H4v-8" />
+        <path d="M2 7h20v5H2z" />
+        <path d="M12 7v13" />
+        <path d="M12 7H8.5A2.5 2.5 0 1 1 12 3.5z" />
+        <path d="M12 7h3.5A2.5 2.5 0 1 0 12 3.5z" />
+      </>
+    )
+  };
+  return <svg {...common}>{icons[name] || icons.dashboard}</svg>;
+}
+
+function metricSparkline(seed = 0, count = 1) {
+  const base = Math.abs(Number(seed) || 0);
+  const factor = Math.max(Number(count) || 1, 1);
+  return [
+    18,
+    24 + (base % 17),
+    20 + Math.round((base / factor) % 20),
+    36 + (base % 23),
+    32 + ((base + factor) % 18),
+    50 + ((base + factor * 7) % 22)
+  ];
+}
+
+function MiniSparkline({ values = [], tone = "#1D4ED8" }) {
+  const safeValues = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (safeValues.length < 2) return null;
+  const min = Math.min(...safeValues);
+  const max = Math.max(...safeValues);
+  const range = Math.max(max - min, 1);
+  const points = safeValues
+    .map((value, index) => {
+      const x = (index / (safeValues.length - 1)) * 100;
+      const y = 34 - ((value - min) / range) * 25;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg className="client-stat-sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={points} fill="none" stroke={tone} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" opacity=".72" />
+      <path d={`M0 38 L${points.replaceAll(" ", " L")} L100 38 Z`} fill={tone} opacity=".07" />
+    </svg>
+  );
+}
+
 function CompanyBrand({ companyName = "", logoDataUrl = "" }) {
   return (
     <div className="client-company-brand">
@@ -774,7 +930,7 @@ function ModuleNavigation({ activeModule, onChange, data }) {
                   className={`client-module-button${id === activeModule ? " active" : ""}`}
                   onClick={() => onChange(id)}
                 >
-                  <span className="client-module-badge">{MODULE_BADGES[id] || label.slice(0, 2).toUpperCase()}</span>
+                  <span className="client-module-badge"><Icon name={MODULE_ICONS[id] || "dashboard"} size={16} /></span>
                   <span className="client-module-label">{label}</span>
                   {count !== null ? <span className="client-module-count">{count}</span> : null}
                 </button>
@@ -910,13 +1066,98 @@ function Field({ label, children }) {
   );
 }
 
-function Stat({ label, value, note, tone = "#1D4ED8" }) {
+function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkline = [] }) {
   return (
-    <div style={{ ...card, padding: 16, borderRadius: 18 }}>
-      <div style={{ fontSize: 10, letterSpacing: "1.2px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
+    <div className="client-stat-card" style={{ ...card, padding: 16, borderRadius: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <div style={{ fontSize: 10, letterSpacing: "1.2px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
+        <span className="client-stat-icon" style={{ color: tone }}><Icon name={icon} size={18} /></span>
+      </div>
       <div style={{ fontFamily: F, fontSize: "clamp(18px,2vw,25px)", fontWeight: 950, lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
+      <MiniSparkline values={sparkline} tone={tone} />
       <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.55, marginTop: 7 }}>{note}</div>
     </div>
+  );
+}
+
+function PortalLoading({ message = "Cargando portal..." }) {
+  return (
+    <main className="client-loading-screen">
+      <style>{`
+        .client-loading-screen{
+          min-height:100vh;
+          display:grid;
+          place-items:center;
+          padding:24px;
+          background:radial-gradient(circle at top left, rgba(37,99,235,.14), transparent 30%), linear-gradient(180deg,#EFF6FF,#F8FBFF);
+          font-family:${F};
+          color:#0B1D3A;
+        }
+        .client-loading-card{
+          width:min(520px, 100%);
+          display:grid;
+          gap:16px;
+          padding:24px;
+          border-radius:24px;
+          background:rgba(255,255,255,.94);
+          border:1px solid rgba(37,99,235,.12);
+          box-shadow:0 22px 50px rgba(15,23,42,.10);
+        }
+        .client-loading-mark{
+          width:54px;
+          height:54px;
+          display:grid;
+          place-items:center;
+          border-radius:18px;
+          color:#1D4ED8;
+          background:#EEF4FF;
+        }
+        .client-loading-kicker{
+          font-size:11px;
+          letter-spacing:1.5px;
+          color:#1D4ED8;
+          font-weight:950;
+        }
+        .client-loading-card h1{
+          margin:4px 0 0;
+          font-family:${F};
+          font-size:clamp(24px,4vw,34px);
+          line-height:1.05;
+        }
+        .client-loading-card p{
+          margin:8px 0 0;
+          color:#52647F;
+          line-height:1.7;
+        }
+        .client-loading-bar{
+          height:10px;
+          overflow:hidden;
+          border-radius:999px;
+          background:#EAF1FF;
+        }
+        .client-loading-bar span{
+          display:block;
+          width:42%;
+          height:100%;
+          border-radius:999px;
+          background:linear-gradient(135deg,#0B1D3A,#2563EB);
+          animation:clientLoad 1.1s ease-in-out infinite alternate;
+        }
+        @keyframes clientLoad{
+          from{transform:translateX(-10%)}
+          to{transform:translateX(150%)}
+        }
+      `}</style>
+      <section className="client-loading-card">
+        <div className="client-loading-mark"><Icon name="portfolio" size={24} /></div>
+        <div>
+          <div className="client-loading-kicker">PORTAL PARA CLIENTES</div>
+          <h1>Preparando informacion</h1>
+          <p>{message}</p>
+        </div>
+        <div className="client-loading-bar" aria-hidden="true"><span /></div>
+      </section>
+    </main>
   );
 }
 
@@ -1357,14 +1598,32 @@ function Dashboard({ data, setModule }) {
   const [filters, setFilters] = useState({ period: "month", from: "", to: "" });
   const range = periodRange(filters.period, filters.from, filters.to);
   const periodActive = (filters.period || "month") !== "all";
-  const invoicesInPeriod = (data.invoices || []).filter((invoice) => invoice.status !== "anulada" && (!periodActive || dateInRange(invoice.date, range)));
-  const paymentsInPeriod = (data.payments || []).filter((payment) => payment.status !== "anulado" && (!periodActive || dateInRange(payment.date, range)));
-  const billedInPeriod = invoicesInPeriod.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
-  const paidInPeriod = paymentsInPeriod.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.grossAmount || payment.netReceived || 0), 0);
-  const reviewCases = [...(data.customerSummary || [])]
-    .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
-    .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0));
-  const agingTotal = AGING_BUCKETS.reduce((sum, [key]) => sum + Number(dashboard.aging?.[key] || 0), 0);
+  const invoicesInPeriod = useMemo(
+    () => (data.invoices || []).filter((invoice) => invoice.status !== "anulada" && (!periodActive || dateInRange(invoice.date, range))),
+    [data.invoices, periodActive, range.from, range.to]
+  );
+  const paymentsInPeriod = useMemo(
+    () => (data.payments || []).filter((payment) => payment.status !== "anulado" && (!periodActive || dateInRange(payment.date, range))),
+    [data.payments, periodActive, range.from, range.to]
+  );
+  const billedInPeriod = useMemo(
+    () => invoicesInPeriod.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
+    [invoicesInPeriod]
+  );
+  const paidInPeriod = useMemo(
+    () => paymentsInPeriod.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.grossAmount || payment.netReceived || 0), 0),
+    [paymentsInPeriod]
+  );
+  const reviewCases = useMemo(
+    () => [...(data.customerSummary || [])]
+      .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
+      .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0)),
+    [data.customerSummary]
+  );
+  const agingTotal = useMemo(
+    () => AGING_BUCKETS.reduce((sum, [key]) => sum + Number(dashboard.aging?.[key] || 0), 0),
+    [dashboard.aging]
+  );
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <section style={{ ...card, display: "grid", gap: 10 }}>
@@ -1377,12 +1636,12 @@ function Dashboard({ data, setModule }) {
         </div>
       </section>
       <div className="client-portal-stats client-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
-        <Stat label="VALOR FACTURADO" value={money(billedInPeriod)} note={`${invoicesInPeriod.length} factura(s) en el rango.`} />
-        <Stat label="VALOR ABONADO" value={money(paidInPeriod)} note={`${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" />
-        <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" />
-        <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" />
-        <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" />
-        <Stat label="SALDOS A FAVOR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#6D28D9" />
+        <Stat label="VALOR FACTURADO" value={money(billedInPeriod)} note={`${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={metricSparkline(billedInPeriod, invoicesInPeriod.length)} />
+        <Stat label="VALOR ABONADO" value={money(paidInPeriod)} note={`${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={metricSparkline(paidInPeriod, paymentsInPeriod.length)} />
+        <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" icon="portfolio" sparkline={metricSparkline(dashboard.pending, dashboard.pendingInvoicesCount)} />
+        <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" icon="alert" sparkline={metricSparkline(dashboard.overdue, dashboard.overdueInvoicesCount)} />
+        <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" icon="history" sparkline={metricSparkline(dashboard.upcoming, dashboard.dueSoonInvoicesCount)} />
+        <Stat label="SALDOS A FAVOR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#6D28D9" icon="gift" sparkline={metricSparkline(dashboard.unappliedCredit, reviewCases.length)} />
       </div>
       {reviewCases.length ? (
         <section style={card}>
@@ -3231,13 +3490,20 @@ export default function ClientPortal() {
   const [data, setData] = useState(null);
   const [activeModule, setActiveModule] = useState("dashboard");
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Validando sesion...");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [operationSuccess, setOperationSuccess] = useState(null);
   const [pendingExport, setPendingExport] = useState(null);
 
-  async function loadData() {
-    setLoading(true);
+  async function loadData(options = {}) {
+    const silentRefresh = Boolean(data) && options?.forceFull !== true;
+    if (!silentRefresh) {
+      setLoading(true);
+      setLoadingMessage("Validando sesion...");
+    } else {
+      setNotice("Actualizando informacion...");
+    }
     setError("");
     try {
       const sessionResponse = await fetch("/api/client-portal-session");
@@ -3247,14 +3513,17 @@ export default function ClientPortal() {
         setData(null);
         return;
       }
+      if (!silentRefresh) setLoadingMessage("Cargando informacion financiera...");
       const dataResponse = await fetch("/api/client-portal-data");
       const dataPayload = await dataResponse.json();
       if (!dataResponse.ok) throw new Error(dataPayload.error || "No fue posible cargar datos.");
       setData(dataPayload.data);
+      if (silentRefresh) setNotice("Informacion actualizada.");
     } catch (err) {
       setError(err.message);
+      if (silentRefresh) setNotice("");
     } finally {
-      setLoading(false);
+      if (!silentRefresh) setLoading(false);
     }
   }
 
@@ -3342,7 +3611,7 @@ export default function ClientPortal() {
   }
 
   if (loading) {
-    return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: F, color: "#0B1D3A" }}>Cargando portal...</main>;
+    return <PortalLoading message={loadingMessage} />;
   }
 
   if (!session.authenticated) {
@@ -3481,9 +3750,9 @@ export default function ClientPortal() {
           place-items:center;
           background:rgba(37,99,235,.09);
           color:#1D4ED8;
-          font-size:10px;
-          letter-spacing:.2px;
-          font-weight:950;
+        }
+        .client-module-badge svg{
+          display:block;
         }
         .client-module-label{
           min-width:0;
@@ -3590,6 +3859,42 @@ export default function ClientPortal() {
           color:#1D4ED8;
           font-weight:900;
           text-decoration:none;
+        }
+        .client-stat-card{
+          position:relative;
+          overflow:hidden;
+        }
+        .client-stat-card::after{
+          content:"";
+          position:absolute;
+          right:-34px;
+          top:-38px;
+          width:106px;
+          height:106px;
+          border-radius:999px;
+          background:rgba(37,99,235,.055);
+          pointer-events:none;
+        }
+        .client-stat-icon{
+          width:34px;
+          height:34px;
+          border-radius:13px;
+          display:grid;
+          place-items:center;
+          background:#F2F7FF;
+          border:1px solid rgba(37,99,235,.08);
+          flex:0 0 auto;
+          position:relative;
+          z-index:1;
+        }
+        .client-stat-icon svg{
+          display:block;
+        }
+        .client-stat-sparkline{
+          width:100%;
+          height:34px;
+          display:block;
+          margin-top:8px;
         }
         @media(max-width:980px){
           .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls,.client-customer-picker{grid-template-columns:1fr!important}
