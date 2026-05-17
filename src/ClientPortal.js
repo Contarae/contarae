@@ -5,13 +5,14 @@ const FH = "'Libre Baskerville',serif";
 
 const MODULE_GROUPS = [
   { title: "Panel", items: [["dashboard", "Dashboard"]] },
-  { title: "Operacion", items: [["clientes", "Clientes"], ["facturas", "Facturas"], ["abonos", "Abonos"], ["cartera", "Cartera"]] },
+  { title: "Operacion", items: [["actividad", "Actividad"], ["clientes", "Clientes"], ["facturas", "Facturas"], ["abonos", "Abonos"], ["cartera", "Cartera"]] },
   { title: "Inventario", items: [["inventario", "Inventario"], ["movimientos", "Movimientos"], ["ordenes", "Ordenes"]] },
   { title: "Administracion", items: [["cargues", "Cargues masivos"], ["cargues-historial", "Historial de cargues"], ["configuracion", "Configuracion"]] }
 ];
 
 const MODULE_ICONS = {
   dashboard: "dashboard",
+  actividad: "activity",
   clientes: "users",
   facturas: "invoice",
   abonos: "wallet",
@@ -524,8 +525,12 @@ function buildRowsForExport(data, type, context = {}) {
 }
 
 function buildWorkbookForExport(data, type, context = {}) {
+  if (type === "actividad") {
+    return buildActivityWorkbook(data, context.activity?.filters || {}, context.activity?.section || "all");
+  }
   data = scopedExportData(data, context);
   const labels = {
+    actividad: "Actividad del periodo",
     clientes: "Clientes",
     facturas: "Facturas",
     abonos: "Abonos",
@@ -844,6 +849,108 @@ function sortRecords(records = [], data = {}, sort = "recent") {
   });
 }
 
+function activityDateOnly(record = {}, filters = {}) {
+  const createdDate = clean(record.createdAt).slice(0, 10) || clean(record.updatedAt).slice(0, 10);
+  const operationDate = clean(record.date).slice(0, 10) || createdDate;
+  return (filters.dateMode || "createdAt") === "operation" ? operationDate : (createdDate || operationDate);
+}
+
+function activityRange(filters = {}) {
+  return periodRange(filters.period || "today", filters.from, filters.to);
+}
+
+function activityDateInRange(record = {}, filters = {}) {
+  const period = filters.period || "today";
+  if (period === "all") return true;
+  return dateInRange(activityDateOnly(record, filters), activityRange(filters));
+}
+
+function activityDataset(data = {}, filters = {}) {
+  const customers = (data.customerSummary || data.customers || []).filter((customer) => activityDateInRange(customer, { ...filters, dateMode: "createdAt" }));
+  const invoices = (data.invoices || []).filter((invoice) => activityDateInRange(invoice, filters));
+  const payments = (data.payments || []).filter((payment) => activityDateInRange(payment, filters));
+  const orders = (data.orders || []).filter((order) => activityDateInRange(order, filters));
+  const movements = (data.inventoryMovements || []).filter((movement) => activityDateInRange(movement, filters));
+  return {
+    customers: sortRecords(customers, data, "recent"),
+    invoices: sortRecords(invoices, data, "recent"),
+    payments: sortRecords(payments, data, "recent"),
+    orders: sortRecords(orders, data, "recent"),
+    movements: sortRecords(movements, data, "recent")
+  };
+}
+
+function activityRowsForExport(data = {}, filters = {}, section = "all") {
+  const activity = activityDataset(data, filters);
+  const allSections = {
+    customers: {
+      name: "Clientes",
+      rows: [
+        ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "fecha_registro", "estado_datos"],
+        ...activity.customers.map((customer) => [customer.id, customer.name, customer.alternateName, customer.documentNumber, customer.phone, customer.email, clean(customer.createdAt).slice(0, 10), customer.dataStatus || ""])
+      ]
+    },
+    invoices: {
+      name: "Facturas",
+      rows: [
+        ["id_factura", "id_cliente", "cliente", "fecha_registro", "fecha_factura", "fecha_vencimiento", "total", "estado", "condicion_pago"],
+        ...activity.invoices.map((invoice) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, clean(invoice.createdAt).slice(0, 10), invoice.date, invoice.dueDate, invoice.total, invoice.status, invoice.paymentCondition || ""])
+      ]
+    },
+    payments: {
+      name: "Abonos",
+      rows: [
+        ["id_abono", "id_cliente", "cliente", "fecha_registro", "fecha_abono", "valor_bruto", "neto_recibido", "medio_pago", "referencia", "estado"],
+        ...activity.payments.map((payment) => [payment.id, payment.customerId, payment.customerNameSnapshot, clean(payment.createdAt).slice(0, 10), payment.date, payment.grossAmount, payment.netReceived, payment.method, payment.reference, payment.status])
+      ]
+    },
+    orders: {
+      name: "Ordenes",
+      rows: [
+        ["id_orden", "id_cliente", "cliente", "fecha_registro", "fecha_orden", "fecha_vencimiento", "total", "estado"],
+        ...activity.orders.map((order) => [order.id, order.customerId, order.customerNameSnapshot, clean(order.createdAt).slice(0, 10), order.date, order.dueDate, order.total, order.status])
+      ]
+    },
+    movements: {
+      name: "Movimientos",
+      rows: [
+        ["id_movimiento", "fecha_registro", "fecha_movimiento", "sku", "producto", "tipo", "cantidad", "efecto", "stock_final", "referencia"],
+        ...activity.movements.map((movement) => [movement.id, clean(movement.createdAt).slice(0, 10), movement.date, movement.sku, movement.productNameSnapshot, movement.type, movement.quantity, movement.effect, movement.stockAfter, movement.reference])
+      ]
+    }
+  };
+  if (section !== "all" && allSections[section]) return [allSections[section]];
+  return Object.values(allSections);
+}
+
+function buildActivityWorkbook(data = {}, filters = {}, section = "all") {
+  const range = activityRange(filters);
+  const activity = activityDataset(data, filters);
+  const periodLabel = periodSummary(filters.period || "today", range);
+  const invoiceTotal = recordsTotal(activity.invoices.filter((invoice) => invoice.status !== "anulada"), (invoice) => invoice.total);
+  const paymentTotal = recordsTotal(activity.payments.filter((payment) => payment.status !== "anulado"), (payment) => payment.netReceived);
+  const sheets = [
+    {
+      name: "Resumen",
+      rows: [
+        ["concepto", "valor"],
+        ["periodo", periodLabel],
+        ["tipo_fecha", (filters.dateMode || "createdAt") === "operation" ? "Fecha de documento u operacion" : "Fecha de registro"],
+        ["clientes_creados", activity.customers.length],
+        ["facturas_registradas", activity.invoices.length],
+        ["total_facturado", invoiceTotal],
+        ["abonos_registrados", activity.payments.length],
+        ["total_abonado_neto", paymentTotal],
+        ["ordenes_creadas", activity.orders.length],
+        ["movimientos_inventario", activity.movements.length]
+      ]
+    },
+    ...activityRowsForExport(data, filters, section)
+  ];
+  sheets.push({ name: "Generado", rows: [["reporte", "Actividad del periodo"], ["fecha_generacion", new Date().toISOString()]] });
+  return sheets;
+}
+
 function blankPaymentSplit(date = today(), amount = "") {
   return {
     id: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1009,6 +1116,16 @@ function Icon({ name = "dashboard", size = 18 }) {
         <path d="M6.5 18h11" />
       </>
     ),
+    activity: (
+      <>
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M7 14l3-3 3 2 4-6" />
+        <path d="M17 7h3v3" />
+        <circle cx="7" cy="14" r="1" />
+        <circle cx="13" cy="13" r="1" />
+      </>
+    ),
     users: (
       <>
         <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
@@ -1163,11 +1280,48 @@ function CompanyBrand({ companyName = "", logoDataUrl = "" }) {
   );
 }
 
+function moduleLabel(moduleId = "") {
+  for (const group of MODULE_GROUPS) {
+    const item = group.items.find(([id]) => id === moduleId);
+    if (item) return item[1];
+  }
+  return "Dashboard";
+}
+
+function CompactPortalHeader({ visible, companyName = "", logoDataUrl = "", activeModule, onModuleChange, onRefresh, onLogout }) {
+  return (
+    <div className={`client-portal-sticky-header${visible ? " visible" : ""}`} aria-hidden={!visible}>
+      <div className="client-portal-sticky-brand">
+        <div className="client-portal-sticky-logo">
+          {logoDataUrl ? <img src={logoDataUrl} alt="" /> : <span>{companyInitials(companyName)}</span>}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <strong>{companyName || "Mi empresa"}</strong>
+          <span>{moduleLabel(activeModule)}</span>
+        </div>
+      </div>
+      <div className="client-portal-sticky-controls">
+        <select aria-label="Cambiar modulo" value={activeModule} onChange={(event) => onModuleChange(event.target.value)} tabIndex={visible ? 0 : -1}>
+          {MODULE_GROUPS.map((group) => (
+            <optgroup key={group.title} label={group.title}>
+              {group.items.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <button type="button" onClick={onRefresh} tabIndex={visible ? 0 : -1}>Actualizar</button>
+        <button type="button" className="danger" onClick={onLogout} tabIndex={visible ? 0 : -1}>Salir</button>
+      </div>
+    </div>
+  );
+}
+
 function moduleCounter(data = {}, id = "") {
   data = data || {};
   const dashboard = data.dashboard || {};
+  const todayActivity = id === "actividad" ? activityDataset(data, { period: "today", dateMode: "createdAt" }) : null;
   const customers = data.customerSummary || [];
   const countMap = {
+    actividad: todayActivity ? todayActivity.customers.length + todayActivity.invoices.length + todayActivity.payments.length + todayActivity.orders.length + todayActivity.movements.length : 0,
     clientes: dashboard.customersCount ?? customers.length,
     facturas: dashboard.invoicesCount ?? (data.invoices || []).length,
     abonos: dashboard.paymentsCount ?? (data.payments || []).length,
@@ -1358,6 +1512,7 @@ function MiniBarChart({ values = [], tone = "#1D4ED8" }) {
 }
 
 function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkline = [], trend = null }) {
+  const hasSparkline = Array.isArray(sparkline) && sparkline.length > 0 && sparkline.some((item) => Number(item || 0) !== 0);
   return (
     <div className="client-stat-card" style={{ ...card, padding: 16, borderRadius: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -1371,7 +1526,7 @@ function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkl
           <small>{trend.caption}</small>
         </div>
       ) : null}
-      <MiniBarChart values={sparkline} tone={tone} />
+      {hasSparkline ? <MiniBarChart values={sparkline} tone={tone} /> : null}
       <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.55, marginTop: 7 }}>{note}</div>
     </div>
   );
@@ -1658,7 +1813,7 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
       ) : null}
       <PortalModal open={resultsOpen} title={`Coincidencias para "${query}"`} eyebrow="SELECCIONAR CLIENTE" onClose={() => setResultsOpen(false)}>
         <div className="client-customer-picker">
-          <div style={{ display: "grid", gap: 8 }}>
+          <div className="client-customer-picker-results" style={{ display: "grid", gap: 8 }}>
             {results.map((customer) => {
               const view = customerBalanceView(customer);
               return (
@@ -1678,7 +1833,7 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
             })}
           </div>
           {preview ? (
-            <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
+            <div className="client-customer-picker-preview" style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
               <div>
                 <div style={{ fontSize: 11, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>VISTA RAPIDA</div>
                 <h3 style={{ margin: "4px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: 22, lineHeight: 1.15 }}>{preview.name || "Cliente sin nombre"}</h3>
@@ -2052,6 +2207,270 @@ function Dashboard({ data, setModule }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function Activity({ data, onExport }) {
+  const [filters, setFilters] = useState({ period: "today", from: "", to: "", dateMode: "createdAt" });
+  const [activeSection, setActiveSection] = useState("");
+  const [selectedDetail, setSelectedDetail] = useState(null);
+  const activity = useMemo(() => activityDataset(data, filters), [data, filters.period, filters.from, filters.to, filters.dateMode]);
+  const range = activityRange(filters);
+  const periodLabel = periodSummary(filters.period || "today", range);
+  const invoiceTotal = recordsTotal(activity.invoices.filter((invoice) => invoice.status !== "anulada"), (invoice) => invoice.total);
+  const paymentTotal = recordsTotal(activity.payments.filter((payment) => payment.status !== "anulado"), (payment) => payment.netReceived);
+
+  const sectionMeta = {
+    customers: {
+      title: "Clientes creados",
+      label: "clientes",
+      icon: "users",
+      count: activity.customers.length,
+      totalLabel: `${activity.customers.length} cliente(s)`,
+      headers: ["ID", "Cliente", "Documento", "Fecha registro", "Estado", "Acciones"],
+      rows: activity.customers.map((customer) => [
+        customer.id,
+        customer.name || "Cliente reservado",
+        customer.documentNumber || "Por asignar",
+        clean(customer.createdAt).slice(0, 10) || "-",
+        customer.dataStatus || "pendiente",
+        <button type="button" onClick={() => setSelectedDetail({ type: "customer", record: customer })} style={ghostButton}>Ver</button>
+      ]),
+      keys: activity.customers.map((customer) => customer.id)
+    },
+    invoices: {
+      title: "Facturas registradas",
+      label: "facturas",
+      icon: "invoice",
+      count: activity.invoices.length,
+      totalLabel: money(invoiceTotal),
+      headers: ["ID", "Cliente", "Registro", "Factura", "Total", "Estado", "Acciones"],
+      rows: activity.invoices.map((invoice) => [
+        invoice.id,
+        invoice.customerNameSnapshot || customerById(data, invoice.customerId)?.name || invoice.customerId,
+        clean(invoice.createdAt).slice(0, 10) || "-",
+        invoice.date || "-",
+        money(invoice.total),
+        invoice.status || "emitida",
+        <button type="button" onClick={() => setSelectedDetail({ type: "invoice", record: invoice })} style={ghostButton}>Ver</button>
+      ]),
+      keys: activity.invoices.map((invoice) => invoice.id)
+    },
+    payments: {
+      title: "Abonos registrados",
+      label: "abonos",
+      icon: "wallet",
+      count: activity.payments.length,
+      totalLabel: money(paymentTotal),
+      headers: ["ID", "Cliente", "Registro", "Abono", "Neto", "Medio", "Acciones"],
+      rows: activity.payments.map((payment) => [
+        payment.id,
+        payment.customerNameSnapshot || customerById(data, payment.customerId)?.name || payment.customerId,
+        clean(payment.createdAt).slice(0, 10) || "-",
+        payment.date || "-",
+        money(payment.netReceived),
+        payment.method || "-",
+        <button type="button" onClick={() => setSelectedDetail({ type: "payment", record: payment })} style={ghostButton}>Ver</button>
+      ]),
+      keys: activity.payments.map((payment) => payment.id)
+    },
+    orders: {
+      title: "Ordenes creadas",
+      label: "ordenes",
+      icon: "clipboard",
+      count: activity.orders.length,
+      totalLabel: money(recordsTotal(activity.orders.filter((order) => order.status !== "anulada"), (order) => order.total)),
+      headers: ["ID", "Cliente", "Registro", "Orden", "Total", "Estado", "Acciones"],
+      rows: activity.orders.map((order) => [
+        order.id,
+        order.customerNameSnapshot || customerById(data, order.customerId)?.name || order.customerId,
+        clean(order.createdAt).slice(0, 10) || "-",
+        order.date || "-",
+        money(order.total),
+        order.status || "borrador",
+        <button type="button" onClick={() => setSelectedDetail({ type: "order", record: order })} style={ghostButton}>Ver</button>
+      ]),
+      keys: activity.orders.map((order) => order.id)
+    },
+    movements: {
+      title: "Movimientos de inventario",
+      label: "movimientos",
+      icon: "transfer",
+      count: activity.movements.length,
+      totalLabel: `${activity.movements.length} movimiento(s)`,
+      headers: ["ID", "SKU", "Registro", "Movimiento", "Tipo", "Cantidad", "Acciones"],
+      rows: activity.movements.map((movement) => [
+        movement.id,
+        movement.sku,
+        clean(movement.createdAt).slice(0, 10) || "-",
+        movement.date || "-",
+        movement.type || "-",
+        movement.quantity || 0,
+        <button type="button" onClick={() => setSelectedDetail({ type: "movement", record: movement })} style={ghostButton}>Ver</button>
+      ]),
+      keys: activity.movements.map((movement) => movement.id)
+    }
+  };
+
+  const activeMeta = activeSection ? sectionMeta[activeSection] : null;
+
+  function exportActivity(section = "all") {
+    const label = section === "all" ? "Actividad del periodo" : sectionMeta[section]?.title || "Actividad";
+    onExport("actividad", {
+      activity: { filters, section, label },
+      activityLabel: `${label} · ${periodLabel}`
+    });
+  }
+
+  function detailRows(detail) {
+    if (!detail?.record) return [];
+    const record = detail.record;
+    if (detail.type === "customer") {
+      return [
+        ["ID", record.id],
+        ["Cliente", record.name || "Cliente reservado"],
+        ["Nombre alterno", record.alternateName || "-"],
+        ["Documento", record.documentNumber || "Por asignar"],
+        ["Telefono", record.phone || "-"],
+        ["Correo", record.email || "-"],
+        ["Fecha registro", clean(record.createdAt).slice(0, 10) || "-"],
+        ["Estado datos", record.dataStatus || "pendiente"]
+      ];
+    }
+    if (detail.type === "invoice") {
+      return [
+        ["Factura", record.id],
+        ["Cliente", record.customerNameSnapshot || record.customerId],
+        ["Fecha registro", clean(record.createdAt).slice(0, 10) || "-"],
+        ["Fecha factura", record.date || "-"],
+        ["Vencimiento", record.dueDate || "-"],
+        ["Orden compra", record.orderNumber || "-"],
+        ["Consecutivo interno", record.internalConsecutive || "-"],
+        ["Condicion pago", record.paymentCondition || "-"],
+        ["Total", money(record.total)],
+        ["Estado", record.status || "-"]
+      ];
+    }
+    if (detail.type === "payment") {
+      return [
+        ["Abono", record.id],
+        ["Cliente", record.customerNameSnapshot || record.customerId],
+        ["Factura", record.invoiceId || "Global"],
+        ["Fecha registro", clean(record.createdAt).slice(0, 10) || "-"],
+        ["Fecha abono", record.date || "-"],
+        ["Valor bruto", money(record.grossAmount)],
+        ["Neto recibido", money(record.netReceived)],
+        ["Medio", record.method || "-"],
+        ["Referencia", record.reference || "-"],
+        ["Estado", record.status || "-"]
+      ];
+    }
+    if (detail.type === "order") {
+      return [
+        ["Orden", record.id],
+        ["Cliente", record.customerNameSnapshot || record.customerId],
+        ["Fecha registro", clean(record.createdAt).slice(0, 10) || "-"],
+        ["Fecha orden", record.date || "-"],
+        ["Vencimiento", record.dueDate || "-"],
+        ["Total", money(record.total)],
+        ["Estado", record.status || "-"]
+      ];
+    }
+    return [
+      ["Movimiento", record.id],
+      ["SKU", record.sku],
+      ["Producto", record.productNameSnapshot || "-"],
+      ["Fecha registro", clean(record.createdAt).slice(0, 10) || "-"],
+      ["Fecha movimiento", record.date || "-"],
+      ["Tipo", record.type || "-"],
+      ["Cantidad", record.quantity || 0],
+      ["Efecto", record.effect || 0],
+      ["Stock final", record.stockAfter ?? "-"],
+      ["Referencia", record.reference || "-"]
+    ];
+  }
+
+  return (
+    <ModuleWithForm title="Actividad del periodo" count={Object.values(sectionMeta).reduce((sum, item) => sum + item.count, 0)} onExport={() => exportActivity("all")}>
+      <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>REVISION RAPIDA</div>
+            <strong style={{ fontFamily: F, color: "#0B1D3A", fontSize: 19 }}>{periodLabel}</strong>
+            <p style={{ margin: "4px 0 0", fontFamily: F, color: "#64748B", lineHeight: 1.55 }}>Consulta lo registrado en el periodo y abre solo el listado que quieras revisar.</p>
+          </div>
+          <Field label="Tipo de fecha">
+            <select style={{ ...input, minWidth: 230 }} value={filters.dateMode || "createdAt"} onChange={(event) => setFilters((current) => ({ ...current, dateMode: event.target.value }))}>
+              <option value="createdAt">Fecha de registro</option>
+              <option value="operation">Fecha del documento / operacion</option>
+            </select>
+          </Field>
+        </div>
+        <PeriodControls filters={filters} setFilters={setFilters} compact />
+      </section>
+
+      <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
+        <Stat label="CLIENTES CREADOS" value={activity.customers.length} note="Registros de clientes creados en el periodo." icon="users" />
+        <Stat label="FACTURAS REGISTRADAS" value={activity.invoices.length} note={money(invoiceTotal)} icon="invoice" sparkline={activity.invoices.map((invoice) => invoice.total)} />
+        <Stat label="ABONOS REGISTRADOS" value={activity.payments.length} note={money(paymentTotal)} tone="#15803D" icon="wallet" sparkline={activity.payments.map((payment) => payment.netReceived)} />
+        <Stat label="ORDENES CREADAS" value={activity.orders.length} note="Ordenes o cotizaciones creadas." tone="#B45309" icon="clipboard" />
+        <Stat label="MOVIMIENTOS INVENTARIO" value={activity.movements.length} note="Entradas, salidas y ajustes registrados." tone="#6D28D9" icon="transfer" />
+        <Stat label="TOTAL FACTURADO" value={money(invoiceTotal)} note="Suma de facturas no anuladas del periodo." tone="#C2410C" icon="money" sparkline={activity.invoices.map((invoice) => invoice.total)} />
+      </div>
+
+      <section style={{ padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff", display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>LISTADOS</div>
+            <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F }}>Abre cada listado en ventana emergente para revisar sin cargar visualmente el modulo.</p>
+          </div>
+          <button type="button" onClick={() => exportActivity("all")} style={ghostButton}>Excel del periodo</button>
+        </div>
+        <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10 }}>
+          {Object.entries(sectionMeta).map(([section, item]) => (
+            <button key={section} type="button" onClick={() => setActiveSection(section)} style={{ ...ghostButton, minHeight: 78, display: "grid", gap: 6, justifyItems: "start", alignContent: "center" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Icon name={item.icon} size={16} /> {item.title}</span>
+              <strong style={{ color: "#0B1D3A", fontSize: 15 }}>{item.totalLabel}</strong>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <PortalModal open={Boolean(activeMeta)} title={activeMeta?.title || ""} eyebrow="ACTIVIDAD DEL PERIODO" onClose={() => setActiveSection("")}>
+        {activeMeta ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", fontFamily: F }}>
+              <div style={{ color: "#64748B" }}>{activeMeta.count} registro(s) · {periodLabel}</div>
+              <button type="button" onClick={() => exportActivity(activeSection)} style={ghostButton}>Descargar este listado</button>
+            </div>
+            <PaginatedRecordList
+              headers={activeMeta.headers}
+              rows={activeMeta.rows}
+              rowKeys={activeMeta.keys}
+              onRowClick={(key) => {
+                const index = activeMeta.keys.indexOf(key);
+                const sectionRecords = {
+                  customers: activity.customers,
+                  invoices: activity.invoices,
+                  payments: activity.payments,
+                  orders: activity.orders,
+                  movements: activity.movements
+                };
+                const typeMap = { customers: "customer", invoices: "invoice", payments: "payment", orders: "order", movements: "movement" };
+                const record = sectionRecords[activeSection]?.[index];
+                if (record) setSelectedDetail({ type: typeMap[activeSection], record });
+              }}
+              pageSize={12}
+              emptyMessage="No hay registros en este listado para el periodo seleccionado."
+            />
+          </div>
+        ) : null}
+      </PortalModal>
+
+      <PortalModal open={Boolean(selectedDetail)} title="Detalle del registro" eyebrow="REVISION" onClose={() => setSelectedDetail(null)} wide={false}>
+        <RecordList headers={["Campo", "Valor"]} rows={detailRows(selectedDetail)} />
+      </PortalModal>
+    </ModuleWithForm>
   );
 }
 
@@ -4192,6 +4611,7 @@ export default function ClientPortal() {
   const [session, setSession] = useState({ configured: true, authenticated: false });
   const [data, setData] = useState(null);
   const [activeModule, setActiveModule] = useState("dashboard");
+  const [showCompactHeader, setShowCompactHeader] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Validando sesion...");
   const [notice, setNotice] = useState("");
@@ -4202,6 +4622,16 @@ export default function ClientPortal() {
   const [backgroundLoading, setBackgroundLoading] = useState(false);
   const loadRequestRef = useRef(0);
   const fullDataModuleRequestRef = useRef("");
+
+  useEffect(() => {
+    function updateCompactHeader() {
+      const shouldShow = window.scrollY > 170;
+      setShowCompactHeader((current) => (current === shouldShow ? current : shouldShow));
+    }
+    updateCompactHeader();
+    window.addEventListener("scroll", updateCompactHeader, { passive: true });
+    return () => window.removeEventListener("scroll", updateCompactHeader);
+  }, []);
 
   async function fetchPortalData(scope = "full") {
     const dataResponse = await fetch(`/api/client-portal-data?scope=${encodeURIComponent(scope)}`);
@@ -4342,6 +4772,7 @@ export default function ClientPortal() {
 
   function exportData(type, context = {}) {
     const labels = {
+      actividad: "Actividad del periodo",
       clientes: "Clientes",
       facturas: "Facturas",
       abonos: "Abonos",
@@ -4391,6 +4822,114 @@ export default function ClientPortal() {
   return (
     <main style={{ minHeight: "100vh", background: "radial-gradient(circle at top left, rgba(37,99,235,.12), transparent 28%), linear-gradient(180deg,#EFF6FF,#F8FBFF)", padding: "clamp(10px,1.2vw,18px)" }}>
       <style>{`
+        .client-portal-sticky-header{
+          position:fixed;
+          top:10px;
+          left:50%;
+          width:min(1760px,calc(100vw - 28px));
+          min-height:62px;
+          transform:translate(-50%,-120%);
+          opacity:0;
+          pointer-events:none;
+          z-index:800;
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          gap:12px;
+          align-items:center;
+          padding:9px 11px;
+          border-radius:18px;
+          background:rgba(255,255,255,.92);
+          border:1px solid rgba(37,99,235,.14);
+          box-shadow:0 18px 48px rgba(15,23,42,.16);
+          backdrop-filter:blur(16px);
+          transition:transform .22s ease,opacity .22s ease;
+        }
+        .client-portal-sticky-header.visible{
+          transform:translate(-50%,0);
+          opacity:1;
+          pointer-events:auto;
+        }
+        .client-portal-sticky-brand{
+          min-width:0;
+          display:grid;
+          grid-template-columns:auto minmax(0,1fr);
+          gap:10px;
+          align-items:center;
+        }
+        .client-portal-sticky-logo{
+          width:42px;
+          height:42px;
+          border-radius:14px;
+          background:linear-gradient(135deg,#FFFFFF,#F3F7FF);
+          border:1px solid rgba(37,99,235,.14);
+          display:grid;
+          place-items:center;
+          overflow:hidden;
+          padding:6px;
+        }
+        .client-portal-sticky-logo img{
+          max-width:100%;
+          max-height:100%;
+          object-fit:contain;
+          display:block;
+        }
+        .client-portal-sticky-logo span{
+          font-family:${F};
+          color:#1D4ED8;
+          font-size:16px;
+          font-weight:950;
+        }
+        .client-portal-sticky-brand strong{
+          display:block;
+          min-width:0;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+          color:#0B1D3A;
+          font-family:${F};
+          font-size:16px;
+          font-weight:950;
+          line-height:1.1;
+        }
+        .client-portal-sticky-brand span{
+          display:block;
+          margin-top:2px;
+          color:#52647F;
+          font-family:${F};
+          font-size:11px;
+          font-weight:850;
+          letter-spacing:.25px;
+        }
+        .client-portal-sticky-controls{
+          display:flex;
+          align-items:center;
+          justify-content:flex-end;
+          gap:8px;
+        }
+        .client-portal-sticky-controls select,
+        .client-portal-sticky-controls button{
+          min-height:40px;
+          border-radius:13px;
+          border:1px solid rgba(37,99,235,.14);
+          background:#fff;
+          color:#1D4ED8;
+          font-family:${F};
+          font-weight:950;
+          font-size:12px;
+          padding:0 12px;
+          cursor:pointer;
+        }
+        .client-portal-sticky-controls select{
+          min-width:190px;
+          color:#0B1D3A;
+        }
+        .client-portal-sticky-controls button{
+          background:#F8FBFF;
+        }
+        .client-portal-sticky-controls button.danger{
+          color:#B91C1C;
+          border-color:rgba(220,38,38,.16);
+        }
         .client-portal-modal-backdrop{
           position:fixed;
           inset:0;
@@ -4718,6 +5257,36 @@ export default function ClientPortal() {
           opacity:.82;
         }
         @media(max-width:980px){
+          .client-portal-sticky-header{
+            top:8px;
+            width:calc(100vw - 20px);
+            grid-template-columns:1fr;
+            min-height:auto;
+            gap:9px;
+            padding:9px;
+            border-radius:17px;
+          }
+          .client-portal-sticky-logo{
+            width:38px;
+            height:38px;
+            border-radius:13px;
+          }
+          .client-portal-sticky-brand strong{
+            font-size:14px;
+          }
+          .client-portal-sticky-controls{
+            display:grid;
+            grid-template-columns:minmax(0,1fr) auto auto;
+            gap:7px;
+          }
+          .client-portal-sticky-controls select{
+            min-width:0;
+            width:100%;
+          }
+          .client-portal-sticky-controls button{
+            min-height:36px;
+            padding:0 10px;
+          }
           .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls,.client-customer-picker{grid-template-columns:1fr!important}
           .client-portal-row{grid-template-columns:1fr!important}
           .client-aging-row{grid-template-columns:1fr!important}
@@ -4764,6 +5333,15 @@ export default function ClientPortal() {
           }
         }
       `}</style>
+      <CompactPortalHeader
+        visible={showCompactHeader}
+        companyName={data?.company?.name || session.companyName}
+        logoDataUrl={data?.company?.logoDataUrl || ""}
+        activeModule={activeModule}
+        onModuleChange={setActiveModule}
+        onRefresh={loadData}
+        onLogout={logout}
+      />
       <div className="client-portal-shell" style={{ width: "min(1760px, calc(100vw - 28px))", margin: "0 auto", display: "grid", gap: 12 }}>
         <header className="client-portal-header" style={{ ...card, padding: 14, borderRadius: 20, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center" }}>
           <CompanyBrand companyName={data?.company?.name || session.companyName} logoDataUrl={data?.company?.logoDataUrl || ""} />
@@ -4816,6 +5394,7 @@ export default function ClientPortal() {
             ) : (
               <>
                 {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
+                {activeModule === "actividad" ? <Activity data={data} onExport={exportData} /> : null}
                 {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
                 {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
                 {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
@@ -4846,7 +5425,7 @@ export default function ClientPortal() {
           body="Vas a generar un archivo de Excel con informacion del portal. Confirma la descarga para evitar reportes accidentales o con filtros equivocados."
           details={[
             { label: "Reporte", value: pendingExport?.label || "" },
-            { label: "Alcance", value: pendingExport?.context?.customerName ? `Cliente: ${pendingExport.context.customerName}` : pendingExport?.context?.filters ? "Filtros actuales" : "Base completa" },
+            { label: "Alcance", value: pendingExport?.context?.activityLabel || (pendingExport?.context?.customerName ? `Cliente: ${pendingExport.context.customerName}` : pendingExport?.context?.filters ? "Filtros actuales" : "Base completa") },
             { label: "Fecha", value: new Date().toLocaleDateString("es-CO") }
           ]}
           onCancel={() => setPendingExport(null)}
