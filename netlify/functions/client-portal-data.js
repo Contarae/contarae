@@ -1,5 +1,5 @@
 import { buildClientPortalHeaders, getClientPortalSessionFromRequest } from "./utils/client-portal-auth.js";
-import { compactCompanyData, loadCompanyData, loadCompanyDataRaw } from "./utils/client-portal-data.js";
+import { loadCompanyData, loadCompactCompanyData } from "./utils/client-portal-data.js";
 
 export default async (req) => {
   const headers = buildClientPortalHeaders();
@@ -20,10 +20,9 @@ export default async (req) => {
   try {
     const url = new URL(req.url);
     const scope = url.searchParams.get("scope") || "full";
-    const data = scope === "summary"
-      ? await loadCompanyDataRaw(session.companyId, session.companyName)
+    const responseData = scope === "summary"
+      ? await loadCompactCompanyData(session.companyId, session.companyName)
       : await loadCompanyData(session.companyId, session.companyName);
-    const responseData = scope === "summary" ? compactCompanyData(data) : data;
     return new Response(JSON.stringify({ ok: true, data: responseData }), { status: 200, headers });
   } catch (error) {
     return new Response(

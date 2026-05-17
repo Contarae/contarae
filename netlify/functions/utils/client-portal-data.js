@@ -519,6 +519,31 @@ export async function loadCompanyDataRaw(companyId, companyName = "") {
   return normalizeData(record, normalizedCompanyId, companyName);
 }
 
+export async function loadCompactCompanyData(companyId, companyName = "") {
+  const rawData = await loadCompanyDataRaw(companyId, companyName);
+  const cache = rawData.summaryCache || {};
+  if (cache.sourceUpdatedAt === rawData.updatedAt && cache.data?.isCompact) {
+    return cache.data;
+  }
+
+  const compact = compactCompanyData(rawData);
+  try {
+    const normalizedCompanyId = cleanText(companyId);
+    const cachedRawData = normalizeData({
+      ...rawData,
+      summaryCache: {
+        sourceUpdatedAt: rawData.updatedAt || "",
+        generatedAt: new Date().toISOString(),
+        data: compact
+      }
+    }, normalizedCompanyId, rawData.company?.name || companyName);
+    await getPortalStore().setJSON(`${COMPANY_PREFIX}${normalizedCompanyId}`, cachedRawData);
+  } catch (error) {
+    // The cache is an optimization only; the portal can continue with the fresh compact payload.
+  }
+  return compact;
+}
+
 export async function saveCompanyData(companyId, data, actor = "portal") {
   const nextData = await saveCompanyDataRaw(companyId, data, actor);
   return withComputedFields(nextData);

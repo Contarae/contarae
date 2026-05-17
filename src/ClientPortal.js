@@ -2249,8 +2249,8 @@ function Dashboard({ data, setModule }) {
         </div>
       </section>
       <div className="client-portal-stats client-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
-        <Stat label="VALOR FACTURADO" value={compactMode ? (dashboard.totalBilledLabel || "$ 0") : money(billedInPeriod)} note={compactMode ? "Vista rapida acumulada. Actualizando detalle por periodo..." : `${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={billedSeries} trend={compactMode ? null : metricVariation(billedInPeriod, previousBilled)} />
-        <Stat label="VALOR ABONADO" value={compactMode ? (dashboard.totalPaidLabel || "$ 0") : money(paidInPeriod)} note={compactMode ? "Vista rapida acumulada. Actualizando detalle por periodo..." : `${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={paidSeries} trend={compactMode ? null : metricVariation(paidInPeriod, previousPaid)} />
+        <Stat label="VALOR FACTURADO" value={compactMode ? (dashboard.totalBilledLabel || "$ 0") : money(billedInPeriod)} note={compactMode ? "Vista rapida acumulada. El detalle por periodo carga al entrar a modulos operativos." : `${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={billedSeries} trend={compactMode ? null : metricVariation(billedInPeriod, previousBilled)} />
+        <Stat label="VALOR ABONADO" value={compactMode ? (dashboard.totalPaidLabel || "$ 0") : money(paidInPeriod)} note={compactMode ? "Vista rapida acumulada. El detalle por periodo carga al entrar a modulos operativos." : `${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={paidSeries} trend={compactMode ? null : metricVariation(paidInPeriod, previousPaid)} />
         <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" icon="portfolio" sparkline={agingSeries} trend={metricShare(overdueTotal, pendingTotal, "vencido")} />
         <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" icon="alert" sparkline={overdueSeries} trend={metricShare(overdueTotal, pendingTotal, "del saldo")} />
         <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" icon="history" sparkline={upcomingSeries} trend={metricShare(upcomingTotal, pendingTotal, "del saldo")} />
@@ -4767,7 +4767,8 @@ export default function ClientPortal() {
     const safeOptions = options && typeof options.preventDefault === "function" ? {} : (options || {});
     const hasData = Boolean(data);
     const forceFull = safeOptions.forceFull === true;
-    const scope = safeOptions.scope || (hasData || forceFull ? "full" : "summary");
+    const defaultScope = forceFull ? "full" : (!hasData || activeModule === "dashboard" ? "summary" : "full");
+    const scope = safeOptions.scope || defaultScope;
     const silentRefresh = hasData && safeOptions.silent !== false;
     const requestId = ++loadRequestRef.current;
 
@@ -4776,7 +4777,7 @@ export default function ClientPortal() {
       setLoadingMessage("Validando sesion...");
     } else {
       setNotice("Actualizando informacion...");
-      if (forceFull || data?.isCompact) setBackgroundLoading(true);
+      if (scope === "full") setBackgroundLoading(true);
     }
     setError("");
     try {
@@ -4807,6 +4808,14 @@ export default function ClientPortal() {
   }
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    if (!notice || notice === "Actualizando informacion...") return undefined;
+    const timer = window.setTimeout(() => {
+      setNotice((current) => (current === notice ? "" : current));
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (!data?.isCompact) {
@@ -4936,7 +4945,8 @@ export default function ClientPortal() {
   }
 
   const moduleNeedsFullData = Boolean(data?.isCompact && activeModule !== "dashboard");
-  const syncingDetails = Boolean(backgroundLoading || (data?.isCompact && !fullDataLoaded));
+  const compactDashboardMode = Boolean(data?.isCompact && activeModule === "dashboard" && !backgroundLoading);
+  const syncingDetails = Boolean(backgroundLoading);
 
   return (
     <main style={{ minHeight: "100vh", background: "radial-gradient(circle at top left, rgba(37,99,235,.12), transparent 28%), linear-gradient(180deg,#EFF6FF,#F8FBFF)", padding: "clamp(10px,1.2vw,18px)" }}>
@@ -5477,10 +5487,19 @@ export default function ClientPortal() {
           </div>
         ) : null}
         {error ? <div style={{ padding: 13, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 900 }}>{error}</div> : null}
-        {syncingDetails ? (
+        {syncingDetails || compactDashboardMode ? (
           <div style={{ padding: "11px 13px", borderRadius: 16, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, fontWeight: 900, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <span>Vista rapida activa. Estamos cargando el detalle completo del portal en segundo plano.</span>
-            <span style={{ color: "#64748B" }}>Puedes revisar el dashboard mientras termina.</span>
+            {syncingDetails ? (
+              <>
+                <span>Cargando detalle completo del portal en segundo plano.</span>
+                <span style={{ color: "#64748B" }}>Puedes seguir trabajando mientras termina.</span>
+              </>
+            ) : (
+              <>
+                <span>Vista rapida activa. El dashboard muestra el resumen acumulado.</span>
+                <span style={{ color: "#64748B" }}>El detalle completo carga al entrar a un modulo operativo.</span>
+              </>
+            )}
           </div>
         ) : null}
 
