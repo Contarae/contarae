@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const F = "'Outfit',sans-serif";
 const FH = "'Libre Baskerville',serif";
@@ -27,6 +27,15 @@ const MODULE_ICONS = {
 const PAYMENT_METHODS = ["Transferencia bancaria", "Nequi", "Daviplata", "Efectivo", "PSE", "Tarjeta", "Otro"];
 const IVA_RATES = [0, 5, 19];
 const DISCOUNT_PERCENTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+const SORT_OPTIONS = [
+  ["recent", "Mas reciente primero"],
+  ["oldest", "Mas antiguo primero"],
+  ["amountDesc", "Mayor valor primero"],
+  ["amountAsc", "Menor valor primero"],
+  ["clientAsc", "Cliente A-Z"],
+  ["clientDesc", "Cliente Z-A"]
+];
+const DISCOUNT_CONCEPTS = ["Comercial", "Pronto pago", "Acuerdo comercial", "Ajuste por diferencia", "Otro"];
 const AGING_BUCKETS = [
   ["current", "No vencida"],
   ["dueToday", "Vence hoy"],
@@ -346,7 +355,68 @@ function openExternalUrl(url) {
   if (win) win.opener = null;
 }
 
-function buildRowsForExport(data, type) {
+function scopedExportData(data = {}, context = {}) {
+  if (!context?.customerId && !context?.filters) return data;
+  const filters = context.filters || {};
+  const customerId = context.customerId || "";
+  const matchesCustomerId = (record) => !customerId || record.customerId === customerId || record.id === customerId;
+  const customerSummary = customerId
+    ? (data.customerSummary || []).filter((customer) => customer.id === customerId)
+    : (context.filters ? getScopedCustomers(data, filters) : (data.customerSummary || []));
+  const customerIds = new Set(customerSummary.map((customer) => customer.id));
+  const matchesScopedCustomer = (record) => {
+    if (customerId) return matchesCustomerId(record);
+    if (!context.filters) return true;
+    return customerIds.has(record.customerId || record.id);
+  };
+  const filterRecord = (records = [], options = {}) => {
+    if (customerId) return records.filter(matchesScopedCustomer);
+    if (context.filters) return sortRecords(filterRecordsByQuery(records, data, filters, options), data, filters.sort || "recent");
+    return records;
+  };
+  const filterInventoryMovements = (records = []) => {
+    if (!context.filters) return records;
+    const q = normalizeText(filters.sku || filters.customerQuery || "");
+    const range = periodRange(filters.period || "all", filters.from, filters.to);
+    return records
+      .filter((movement) => {
+        if (q && !normalizeText(`${movement.sku} ${movement.productNameSnapshot} ${movement.type} ${movement.reference} ${movement.sourceId}`).includes(q)) return false;
+        if ((filters.period || "all") !== "all" && !dateInRange(movement.date, range)) return false;
+        return true;
+      })
+      .sort((left, right) => clean(right.date || right.createdAt).localeCompare(clean(left.date || left.createdAt)) || clean(right.id).localeCompare(clean(left.id), "es"));
+  };
+  return {
+    ...data,
+    customerSummary,
+    invoices: filterRecord(data.invoices || []),
+    payments: filterRecord(data.payments || []),
+    orders: filterRecord(data.orders || []),
+    inventoryMovements: filterInventoryMovements(data.inventoryMovements || []),
+    customers: customerId ? (data.customers || []).filter((customer) => customer.id === customerId) : (data.customers || [])
+  };
+}
+
+function getScopedCustomers(data = {}, filters = {}) {
+  const rows = data.customerSummary || [];
+  const q = normalizeText(filters.customerQuery);
+  return rows.filter((customer) => {
+    const matchesText = !q
+      || (filters.customerSearchType === "id" && normalizeText(customer.id).includes(q))
+      || (filters.customerSearchType === "documentNumber" && isValidDocumentSearch(customer.documentNumber) && onlyDigits(customer.documentNumber) === onlyDigits(filters.customerQuery))
+      || (filters.customerSearchType === "alternateName" && normalizeText(customer.alternateName).includes(q))
+      || ((!filters.customerSearchType || filters.customerSearchType === "name") && normalizeText(customer.name).includes(q));
+    if (!matchesText) return false;
+    const range = periodRange(filters.period || "all", filters.from, filters.to);
+    if ((filters.period || "all") === "all") return true;
+    const hasInvoice = (customer.receivableInvoices || []).some((invoice) => dateInRange(invoice.date, range) || dateInRange(invoice.dueDate, range));
+    const hasPayment = (data.payments || []).some((payment) => payment.customerId === customer.id && dateInRange(payment.date, range));
+    return hasInvoice || hasPayment;
+  });
+}
+
+function buildRowsForExport(data, type, context = {}) {
+  data = scopedExportData(data, context);
   if (type === "clientes") {
     return [
       ["id_cliente", "nombre_cliente", "nombre_alterno", "documento", "telefono", "correo", "direccion", "ciudad", "departamento", "zona", "estado_datos", "facturado", "pagado", "saldo", "cartera_vencida"],
@@ -355,16 +425,39 @@ function buildRowsForExport(data, type) {
   }
   if (type === "facturas") {
     return [
-      ["id_factura", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "subtotal", "iva", "descuentos", "total", "estado", "fuente"],
-      ...(data.invoices || []).map((invoice) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, invoice.dueDate, invoice.subtotal, invoice.taxTotal, invoice.discountTotal, invoice.total, invoice.status, invoice.source])
+      ["id_factura", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "orden_compra", "consecutivo_interno", "condicion_pago", "subtotal_sin_iva", "subtotal_exento_0", "subtotal_iva_5", "subtotal_iva_19", "iva_5", "iva_19", "anticipos_saldos_favor", "observacion_anticipo", "subtotal", "iva", "descuentos", "total", "estado", "fuente"],
+      ...(data.invoices || []).map((invoice) => [
+        invoice.id,
+        invoice.customerId,
+        invoice.customerNameSnapshot,
+        invoice.date,
+        invoice.dueDate,
+        invoice.orderNumber || "",
+        invoice.internalConsecutive || "",
+        invoice.paymentCondition || "credito",
+        invoice.summaryBreakdown?.subtotalNoTax || "",
+        invoice.summaryBreakdown?.subtotalExempt || "",
+        invoice.summaryBreakdown?.subtotalTax5 || "",
+        invoice.summaryBreakdown?.subtotalTax19 || "",
+        invoice.summaryBreakdown?.iva5 || "",
+        invoice.summaryBreakdown?.iva19 || "",
+        invoice.summaryBreakdown?.advanceCredit || "",
+        invoice.summaryBreakdown?.advanceCreditNote || "",
+        invoice.subtotal,
+        invoice.taxTotal,
+        invoice.discountTotal,
+        invoice.total,
+        invoice.status,
+        invoice.source
+      ])
     ];
   }
   if (type === "detalle_facturas") {
     return [
-      ["id_factura", "id_cliente", "nombre_cliente", "fecha", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
+      ["id_factura", "id_cliente", "nombre_cliente", "fecha", "orden_compra", "consecutivo_interno", "condicion_pago", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
       ...(data.invoices || []).flatMap((invoice) => (invoice.lines || []).length
-        ? (invoice.lines || []).map((line) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total])
-        : [[invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, "", "Factura resumida / cargue inicial", 1, invoice.total, 0, "NO", 0, invoice.total, 0, invoice.total]]
+        ? (invoice.lines || []).map((line) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, invoice.orderNumber || "", invoice.internalConsecutive || "", invoice.paymentCondition || "credito", line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total])
+        : [[invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, invoice.orderNumber || "", invoice.internalConsecutive || "", invoice.paymentCondition || "credito", "", "Factura resumida / cargue inicial", 1, invoice.total, 0, "NO", 0, invoice.total, 0, invoice.total]]
       )
     ];
   }
@@ -410,8 +503,8 @@ function buildRowsForExport(data, type) {
   }
   if (type === "abonos") {
     return [
-      ["id_abono", "id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "valor_neto", "medio_pago"],
-      ...(data.payments || []).map((payment) => [payment.id, payment.customerId, payment.customerNameSnapshot, payment.invoiceId, payment.date, payment.grossAmount, payment.retentions?.retefuente, payment.retentions?.reteica, payment.retentions?.reteiva, payment.retentions?.other, payment.netReceived, payment.method])
+      ["id_abono", "id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "nota_devolucion", "valor_neto", "medio_pago", "referencia", "estado"],
+      ...(data.payments || []).map((payment) => [payment.id, payment.customerId, payment.customerNameSnapshot, payment.invoiceId, payment.date, payment.grossAmount, payment.retentions?.retefuente, payment.retentions?.reteica, payment.retentions?.reteiva, payment.retentions?.other, payment.discounts?.amount || 0, payment.discounts?.concept || "", payment.returnCredit?.amount || 0, payment.returnCredit?.note || "", payment.netReceived, payment.method, payment.reference, payment.status])
     ];
   }
   return [
@@ -430,7 +523,8 @@ function buildRowsForExport(data, type) {
   ];
 }
 
-function buildWorkbookForExport(data, type) {
+function buildWorkbookForExport(data, type, context = {}) {
+  data = scopedExportData(data, context);
   const labels = {
     clientes: "Clientes",
     facturas: "Facturas",
@@ -448,10 +542,10 @@ function buildWorkbookForExport(data, type) {
     sheets.push({
       name: "Detalle facturas",
       rows: [
-        ["id_factura", "id_cliente", "nombre_cliente", "fecha", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
+        ["id_factura", "id_cliente", "nombre_cliente", "fecha", "orden_compra", "consecutivo_interno", "condicion_pago", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "subtotal", "iva", "total"],
         ...(data.invoices || []).flatMap((invoice) => (invoice.lines || []).length
-          ? (invoice.lines || []).map((line) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total])
-          : [[invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, "", "Factura resumida / cargue inicial", 1, invoice.total, 0, "NO", 0, invoice.total, 0, invoice.total]]
+          ? (invoice.lines || []).map((line) => [invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, invoice.orderNumber || "", invoice.internalConsecutive || "", invoice.paymentCondition || "credito", line.sku, line.concept, line.quantity, line.unitPrice, line.discount, line.taxable ? "SI" : "NO", line.taxRate, line.subtotal, line.tax, line.total])
+          : [[invoice.id, invoice.customerId, invoice.customerNameSnapshot, invoice.date, invoice.orderNumber || "", invoice.internalConsecutive || "", invoice.paymentCondition || "credito", "", "Factura resumida / cargue inicial", 1, invoice.total, 0, "NO", 0, invoice.total, 0, invoice.total]]
         )
       ]
     });
@@ -487,8 +581,8 @@ function buildWorkbookForExport(data, type) {
     sheets.push({
       name: "Abonos registrados",
       rows: [
-        ["id_cliente", "nombre_cliente", "id_abono", "id_factura", "fecha", "valor_bruto", "retenciones", "neto_recibido", "metodo", "referencia", "estado"],
-        ...(data.payments || []).map((payment) => [payment.customerId, payment.customerNameSnapshot, payment.id, payment.invoiceId || "Global FIFO", payment.date, payment.grossAmount, payment.retentionTotal, payment.netReceived, payment.method, payment.reference, payment.status])
+        ["id_cliente", "nombre_cliente", "id_abono", "id_factura", "fecha", "valor_bruto", "retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "neto_recibido", "metodo", "referencia", "estado"],
+        ...(data.payments || []).map((payment) => [payment.customerId, payment.customerNameSnapshot, payment.id, payment.invoiceId || "Global FIFO", payment.date, payment.grossAmount, payment.retentionTotal, payment.discounts?.amount || 0, payment.discounts?.concept || "", payment.returnCredit?.amount || 0, payment.netReceived, payment.method, payment.reference, payment.status])
       ]
     });
   }
@@ -620,6 +714,94 @@ function dateInRange(value = "", range = {}) {
   return true;
 }
 
+function parseLocalDate(value = "") {
+  const text = clean(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const [year, month, day] = text.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatShortDate(value = "") {
+  const date = parseLocalDate(value);
+  if (!date) return "";
+  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short" }).format(date);
+}
+
+function daysBetween(from = "", to = "") {
+  const start = parseLocalDate(from);
+  const end = parseLocalDate(to);
+  if (!start || !end) return 0;
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+}
+
+function previousComparableRange(period = "month", range = {}) {
+  if (period === "all" || !range.from || !range.to) return null;
+  const start = parseLocalDate(range.from);
+  if (!start) return null;
+  const length = daysBetween(range.from, range.to);
+  const previousTo = addDays(start, -1);
+  const previousFrom = addDays(previousTo, -(length - 1));
+  return { from: isoDate(previousFrom), to: isoDate(previousTo) };
+}
+
+function periodTitle(period = "month") {
+  return PERIOD_OPTIONS.find(([id]) => id === period)?.[1] || "Periodo";
+}
+
+function periodSummary(period = "month", range = {}) {
+  if (period === "all") return "Todo el historico";
+  if (!range.from || !range.to) return "Sin rango definido";
+  if (range.from === range.to) return formatShortDate(range.from);
+  return `${formatShortDate(range.from)} - ${formatShortDate(range.to)}`;
+}
+
+function plusDaysIso(value = "", amount = 15) {
+  const date = parseLocalDate(value) || parseLocalDate(today()) || new Date();
+  return isoDate(addDays(date, amount));
+}
+
+function recordsTotal(records = [], valueGetter = () => 0) {
+  return records.reduce((sum, record) => sum + Number(valueGetter(record) || 0), 0);
+}
+
+function metricVariation(current = 0, previous = 0) {
+  const now = Number(current || 0);
+  const before = Number(previous || 0);
+  if (!before && !now) return { label: "0%", caption: "sin variacion", tone: "#64748B" };
+  if (!before && now) return { label: "+100%", caption: "sin base previa", tone: "#15803D" };
+  const pct = ((now - before) / Math.abs(before)) * 100;
+  const rounded = Math.round(pct);
+  return {
+    label: `${rounded > 0 ? "+" : ""}${rounded}%`,
+    caption: "vs periodo anterior",
+    tone: rounded > 0 ? "#15803D" : rounded < 0 ? "#B91C1C" : "#64748B"
+  };
+}
+
+function metricShare(value = 0, total = 0, caption = "del total") {
+  const base = Math.abs(Number(total || 0));
+  const pct = base > 0 ? Math.round((Math.abs(Number(value || 0)) / base) * 100) : 0;
+  return { label: `${pct}%`, caption, tone: "#64748B" };
+}
+
+function periodSeries(records = [], range = {}, dateField = "date", valueGetter = () => 0, bucketCount = 6) {
+  if (!records.length) return Array.from({ length: bucketCount }, () => 0);
+  const end = parseLocalDate(range.to) || new Date();
+  const start = parseLocalDate(range.from) || addDays(end, -(bucketCount - 1));
+  const totalDays = Math.max(daysBetween(isoDate(start), isoDate(end)), bucketCount);
+  const bucketSize = Math.max(1, Math.ceil(totalDays / bucketCount));
+  const first = addDays(end, -((bucketSize * bucketCount) - 1));
+  const values = Array.from({ length: bucketCount }, () => 0);
+  records.forEach((record) => {
+    const date = parseLocalDate(record[dateField]);
+    if (!date || date < first || date > end) return;
+    const diff = Math.floor((date.getTime() - first.getTime()) / 86400000);
+    const index = Math.min(bucketCount - 1, Math.max(0, Math.floor(diff / bucketSize)));
+    values[index] += Number(valueGetter(record) || 0);
+  });
+  return values;
+}
+
 function customerLabelForRecord(record = {}, data = {}) {
   return customerById(data, record.customerId)?.name || record.customerNameSnapshot || record.customerId || "";
 }
@@ -645,15 +827,92 @@ function filterRecordsByQuery(records = [], data = {}, filters = {}, options = {
   });
 }
 
+function recordAmount(record = {}) {
+  return Number(record.total || record.netReceived || record.grossAmount || record.totalApplied || record.balance || 0) || 0;
+}
+
+function sortRecords(records = [], data = {}, sort = "recent") {
+  const list = [...records];
+  return list.sort((left, right) => {
+    if (sort === "oldest") return clean(left.date || left.createdAt).localeCompare(clean(right.date || right.createdAt));
+    if (sort === "amountDesc") return recordAmount(right) - recordAmount(left);
+    if (sort === "amountAsc") return recordAmount(left) - recordAmount(right);
+    if (sort === "clientAsc") return customerLabelForRecord(left, data).localeCompare(customerLabelForRecord(right, data), "es");
+    if (sort === "clientDesc") return customerLabelForRecord(right, data).localeCompare(customerLabelForRecord(left, data), "es");
+    const dateCompare = clean(right.date || right.createdAt).localeCompare(clean(left.date || left.createdAt));
+    return dateCompare || clean(right.id).localeCompare(clean(left.id), "es");
+  });
+}
+
+function blankPaymentSplit(date = today(), amount = "") {
+  return {
+    id: `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    amount,
+    method: "Transferencia bancaria",
+    date,
+    reference: ""
+  };
+}
+
+function paymentSplitsTotal(splits = []) {
+  return splits.reduce((sum, split) => sum + moneyValue(split.amount), 0);
+}
+
+function normalizePaymentSplits(splits = []) {
+  return splits
+    .map((split) => ({
+      amount: moneyValue(split.amount),
+      method: clean(split.method) || "Transferencia bancaria",
+      date: split.date || today(),
+      reference: clean(split.reference)
+    }))
+    .filter((split) => split.amount > 0);
+}
+
+function blankTotalizedBreakdown() {
+  return {
+    subtotalNoTax: "",
+    subtotalExempt: "",
+    subtotalTax5: "",
+    subtotalTax19: "",
+    advanceCredit: "",
+    advanceCreditNote: ""
+  };
+}
+
+function totalizedInvoiceTotals(breakdown = {}) {
+  const subtotalNoTax = moneyValue(breakdown.subtotalNoTax);
+  const subtotalExempt = moneyValue(breakdown.subtotalExempt);
+  const subtotalTax5 = moneyValue(breakdown.subtotalTax5);
+  const subtotalTax19 = moneyValue(breakdown.subtotalTax19);
+  const advanceCredit = moneyValue(breakdown.advanceCredit);
+  const iva5 = Math.round(subtotalTax5 * 0.05);
+  const iva19 = Math.round(subtotalTax19 * 0.19);
+  const subtotal = subtotalNoTax + subtotalExempt + subtotalTax5 + subtotalTax19;
+  const tax = iva5 + iva19;
+  return {
+    subtotalNoTax,
+    subtotalExempt,
+    subtotalTax5,
+    subtotalTax19,
+    iva5,
+    iva19,
+    subtotal,
+    tax,
+    advanceCredit,
+    total: Math.max(subtotal + tax - advanceCredit, 0)
+  };
+}
+
 function PeriodControls({ filters, setFilters, compact = false }) {
   return (
     <div className="client-period-controls" style={{ display: "grid", gridTemplateColumns: compact ? "minmax(160px,220px) repeat(2,minmax(130px,1fr))" : "minmax(160px,220px) repeat(2,minmax(130px,1fr))", gap: 10 }}>
       <Field label="Periodo">
-        <select style={input} value={filters.period || "month"} onChange={(event) => setFilters((current) => ({ ...current, period: event.target.value }))}>
+        <select style={input} value={filters.period || "all"} onChange={(event) => setFilters((current) => ({ ...current, period: event.target.value }))}>
           {PERIOD_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
       </Field>
-      {(filters.period || "month") === "custom" ? (
+      {(filters.period || "all") === "custom" ? (
         <>
           <Field label="Desde"><input style={input} type="date" value={filters.from || ""} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></Field>
           <Field label="Hasta"><input style={input} type="date" value={filters.to || ""} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></Field>
@@ -663,10 +922,10 @@ function PeriodControls({ filters, setFilters, compact = false }) {
   );
 }
 
-function QueryControls({ filters, setFilters, onSearch, onClear, statusOptions = [], placeholder = "Ej: JOSE" }) {
+function QueryControls({ filters, setFilters, onSearch, onClear, statusOptions = [], placeholder = "Ej: JOSE", sortOptions = SORT_OPTIONS }) {
   return (
     <form onSubmit={(event) => { event.preventDefault(); onSearch?.(); }} style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10 }}>
-      <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(170px,220px) minmax(0,1fr) minmax(160px,220px)", gap: 10, alignItems: "end" }}>
+      <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(170px,220px) minmax(0,1fr) minmax(160px,220px) minmax(170px,220px)", gap: 10, alignItems: "end" }}>
         <Field label="Buscar por">
           <select style={input} value={filters.customerSearchType || "name"} onChange={(event) => setFilters((current) => ({ ...current, customerSearchType: event.target.value }))}>
             {CUSTOMER_SEARCH_TYPES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
@@ -678,6 +937,13 @@ function QueryControls({ filters, setFilters, onSearch, onClear, statusOptions =
             <select style={input} value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
               <option value="">Todos</option>
               {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </Field>
+        ) : <div />}
+        {sortOptions?.length ? (
+          <Field label="Ordenar">
+            <select style={input} value={filters.sort || "recent"} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}>
+              {sortOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
             </select>
           </Field>
         ) : <div />}
@@ -899,16 +1165,17 @@ function CompanyBrand({ companyName = "", logoDataUrl = "" }) {
 
 function moduleCounter(data = {}, id = "") {
   data = data || {};
+  const dashboard = data.dashboard || {};
   const customers = data.customerSummary || [];
   const countMap = {
-    clientes: customers.length,
-    facturas: (data.invoices || []).length,
-    abonos: (data.payments || []).length,
+    clientes: dashboard.customersCount ?? customers.length,
+    facturas: dashboard.invoicesCount ?? (data.invoices || []).length,
+    abonos: dashboard.paymentsCount ?? (data.payments || []).length,
     cartera: customers.filter((customer) => Number(customer.balance || 0) > 0).length,
-    inventario: (data.inventory || []).length,
-    movimientos: (data.inventoryMovements || []).length,
-    ordenes: (data.orders || []).length,
-    "cargues-historial": (data.importBatches || []).length
+    inventario: dashboard.inventoryCount ?? (data.inventory || []).length,
+    movimientos: dashboard.inventoryMovementsCount ?? (data.inventoryMovements || []).length,
+    ordenes: dashboard.ordersCount ?? (data.orders || []).length,
+    "cargues-historial": dashboard.importsCount ?? (data.imports || []).length
   };
   return Object.prototype.hasOwnProperty.call(countMap, id) ? countMap[id] : null;
 }
@@ -1000,7 +1267,13 @@ function printableDocument(type, record, data = {}) {
         <td>${money(total)}</td>
       </tr>`;
     }).join("")
-    : `<tr><td>1</td><td>Cargue inicial / factura resumida</td><td>1</td><td>${money(record.total)}</td><td>$ 0</td><td>No</td><td>${money(record.total)}</td></tr>`;
+    : [
+      ["Subtotal sin IVA", record.summaryBreakdown?.subtotalNoTax || 0, "No"],
+      ["Subtotal exento / IVA 0%", record.summaryBreakdown?.subtotalExempt || 0, "0%"],
+      ["Subtotal gravado IVA 5%", record.summaryBreakdown?.subtotalTax5 || 0, "5%"],
+      ["Subtotal gravado IVA 19%", record.summaryBreakdown?.subtotalTax19 || 0, "19%"],
+      ["Anticipos / saldos a favor", record.summaryBreakdown?.advanceCredit || 0, "Resta"]
+    ].filter(([, value]) => Number(value || 0) > 0).map(([concept, value, tax], index) => `<tr><td>${index + 1}</td><td>${xmlEscape(concept)}</td><td>1</td><td>${money(value)}</td><td>$ 0</td><td>${tax}</td><td>${tax === "Resta" ? `-${money(value)}` : money(value)}</td></tr>`).join("") || `<tr><td>1</td><td>Cargue inicial / factura resumida</td><td>1</td><td>${money(record.total)}</td><td>$ 0</td><td>No</td><td>${money(record.total)}</td></tr>`;
   const logo = company.logoDataUrl ? `<img src="${company.logoDataUrl}" alt="Logo" class="logo" />` : "";
   const html = `<!doctype html>
 <html lang="es">
@@ -1026,7 +1299,7 @@ function printableDocument(type, record, data = {}) {
 <body>
   <button onclick="window.print()" style="padding:10px 14px;border:0;border-radius:10px;background:#1D4ED8;color:#fff;font-weight:700;margin-bottom:18px">Imprimir / guardar PDF</button>
   <section class="top">
-    <div>${logo}<h1>${title}</h1><div class="muted">${xmlEscape(record.id || "")} · Fecha: ${xmlEscape(record.date || "")} · Vence: ${xmlEscape(record.dueDate || "Sin vencimiento")}</div></div>
+    <div>${logo}<h1>${title}</h1><div class="muted">${xmlEscape(record.id || "")} · Fecha: ${xmlEscape(record.date || "")} · Vence: ${xmlEscape(record.dueDate || "Sin vencimiento")}${record.orderNumber ? ` · OC: ${xmlEscape(record.orderNumber)}` : ""}${record.internalConsecutive ? ` · Interno: ${xmlEscape(record.internalConsecutive)}` : ""}</div></div>
     <div class="muted"><strong>${xmlEscape(company.name || "Empresa")}</strong><br/>${xmlEscape(company.nit || "")}<br/>${xmlEscape(company.phone || "")}<br/>${xmlEscape(company.email || "")}</div>
   </section>
   <section class="box">
@@ -1066,7 +1339,25 @@ function Field({ label, children }) {
   );
 }
 
-function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkline = [] }) {
+function MiniBarChart({ values = [], tone = "#1D4ED8" }) {
+  const safeValues = values.map((value) => Math.abs(Number(value) || 0));
+  const max = Math.max(...safeValues, 1);
+  return (
+    <div className="client-stat-bars" aria-hidden="true">
+      {safeValues.map((value, index) => (
+        <span
+          key={`${value}-${index}`}
+          style={{
+            height: `${Math.max(10, Math.round((value / max) * 100))}%`,
+            background: `linear-gradient(180deg, ${tone}, rgba(37,99,235,.20))`
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkline = [], trend = null }) {
   return (
     <div className="client-stat-card" style={{ ...card, padding: 16, borderRadius: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -1074,7 +1365,13 @@ function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkl
         <span className="client-stat-icon" style={{ color: tone }}><Icon name={icon} size={18} /></span>
       </div>
       <div style={{ fontFamily: F, fontSize: "clamp(18px,2vw,25px)", fontWeight: 950, lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
-      <MiniSparkline values={sparkline} tone={tone} />
+      {trend ? (
+        <div className="client-stat-trend">
+          <span style={{ color: trend.tone || tone }}>{trend.label}</span>
+          <small>{trend.caption}</small>
+        </div>
+      ) : null}
+      <MiniBarChart values={sparkline} tone={tone} />
       <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.55, marginTop: 7 }}>{note}</div>
     </div>
   );
@@ -1595,9 +1892,16 @@ function ChangePasswordRequired({ username, companyName, onChanged, onLogout }) 
 
 function Dashboard({ data, setModule }) {
   const dashboard = data.dashboard || {};
+  const compactMode = Boolean(data.isCompact);
   const [filters, setFilters] = useState({ period: "month", from: "", to: "" });
   const range = periodRange(filters.period, filters.from, filters.to);
   const periodActive = (filters.period || "month") !== "all";
+  const previousRange = useMemo(
+    () => previousComparableRange(filters.period || "month", range),
+    [filters.period, range.from, range.to]
+  );
+  const activePeriodTitle = periodTitle(filters.period || "month");
+  const activePeriodSummary = periodSummary(filters.period || "month", range);
   const invoicesInPeriod = useMemo(
     () => (data.invoices || []).filter((invoice) => invoice.status !== "anulada" && (!periodActive || dateInRange(invoice.date, range))),
     [data.invoices, periodActive, range.from, range.to]
@@ -1606,42 +1910,84 @@ function Dashboard({ data, setModule }) {
     () => (data.payments || []).filter((payment) => payment.status !== "anulado" && (!periodActive || dateInRange(payment.date, range))),
     [data.payments, periodActive, range.from, range.to]
   );
+  const previousInvoices = useMemo(
+    () => previousRange ? (data.invoices || []).filter((invoice) => invoice.status !== "anulada" && dateInRange(invoice.date, previousRange)) : [],
+    [data.invoices, previousRange?.from, previousRange?.to]
+  );
+  const previousPayments = useMemo(
+    () => previousRange ? (data.payments || []).filter((payment) => payment.status !== "anulado" && dateInRange(payment.date, previousRange)) : [],
+    [data.payments, previousRange?.from, previousRange?.to]
+  );
   const billedInPeriod = useMemo(
-    () => invoicesInPeriod.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
+    () => recordsTotal(invoicesInPeriod, (invoice) => invoice.total),
     [invoicesInPeriod]
   );
   const paidInPeriod = useMemo(
-    () => paymentsInPeriod.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.grossAmount || payment.netReceived || 0), 0),
+    () => recordsTotal(paymentsInPeriod, (payment) => payment.totalApplied || payment.grossAmount || payment.netReceived),
     [paymentsInPeriod]
   );
+  const previousBilled = useMemo(
+    () => recordsTotal(previousInvoices, (invoice) => invoice.total),
+    [previousInvoices]
+  );
+  const previousPaid = useMemo(
+    () => recordsTotal(previousPayments, (payment) => payment.totalApplied || payment.grossAmount || payment.netReceived),
+    [previousPayments]
+  );
+  const billedSeries = useMemo(
+    () => compactMode ? metricSparkline(dashboard.totalBilled, dashboard.invoicesCount) : periodSeries(invoicesInPeriod, range, "date", (invoice) => invoice.total),
+    [compactMode, dashboard.totalBilled, dashboard.invoicesCount, invoicesInPeriod, range.from, range.to]
+  );
+  const paidSeries = useMemo(
+    () => compactMode ? metricSparkline(dashboard.totalPaid, dashboard.paymentsCount) : periodSeries(paymentsInPeriod, range, "date", (payment) => payment.totalApplied || payment.grossAmount || payment.netReceived),
+    [compactMode, dashboard.totalPaid, dashboard.paymentsCount, paymentsInPeriod, range.from, range.to]
+  );
+  const pendingTotal = Number(dashboard.pending || 0);
+  const overdueTotal = Number(dashboard.overdue || 0);
+  const upcomingTotal = Number(dashboard.upcoming || 0);
+  const creditTotal = Number(dashboard.unappliedCredit || 0);
   const reviewCases = useMemo(
     () => [...(data.customerSummary || [])]
       .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
       .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0)),
     [data.customerSummary]
   );
+  const creditSeries = useMemo(
+    () => {
+      const values = reviewCases.slice(0, 6).map((customer) => Number(customer.unappliedCredit || 0));
+      return values.length ? values : metricSparkline(creditTotal, reviewCases.length);
+    },
+    [reviewCases, creditTotal]
+  );
   const agingTotal = useMemo(
     () => AGING_BUCKETS.reduce((sum, [key]) => sum + Number(dashboard.aging?.[key] || 0), 0),
     [dashboard.aging]
   );
+  const agingSeries = AGING_BUCKETS.map(([key]) => Number(dashboard.aging?.[key] || 0));
+  const overdueSeries = ["overdue0To30", "overdue31To60", "overdue61To90", "overdueOver90"].map((key) => Number(dashboard.aging?.[key] || 0));
+  const upcomingSeries = ["dueToday", "upcoming7", "upcoming15", "upcoming30"].map((key) => Number(dashboard.aging?.[key] || 0));
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <section style={{ ...card, display: "grid", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>RANGO DE ANALISIS</div>
-            <p style={{ margin: "4px 0 0", fontFamily: F, color: "#64748B" }}>Filtra las cifras operativas del dashboard sin alterar la cartera acumulada.</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+              <strong style={{ fontFamily: F, color: "#0B1D3A", fontSize: 20 }}>{activePeriodTitle}</strong>
+              <span style={{ display: "inline-flex", alignItems: "center", minHeight: 30, padding: "6px 12px", borderRadius: 999, color: "#1D4ED8", background: "#EEF4FF", border: "1px solid rgba(37,99,235,.14)", fontFamily: F, fontSize: 12, fontWeight: 950 }}>{activePeriodSummary}</span>
+            </div>
+            <p style={{ margin: "6px 0 0", fontFamily: F, color: "#64748B" }}>Las dos primeras tarjetas comparan contra el periodo anterior equivalente. La cartera se muestra acumulada.</p>
           </div>
           <PeriodControls filters={filters} setFilters={setFilters} compact />
         </div>
       </section>
       <div className="client-portal-stats client-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
-        <Stat label="VALOR FACTURADO" value={money(billedInPeriod)} note={`${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={metricSparkline(billedInPeriod, invoicesInPeriod.length)} />
-        <Stat label="VALOR ABONADO" value={money(paidInPeriod)} note={`${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={metricSparkline(paidInPeriod, paymentsInPeriod.length)} />
-        <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" icon="portfolio" sparkline={metricSparkline(dashboard.pending, dashboard.pendingInvoicesCount)} />
-        <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" icon="alert" sparkline={metricSparkline(dashboard.overdue, dashboard.overdueInvoicesCount)} />
-        <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" icon="history" sparkline={metricSparkline(dashboard.upcoming, dashboard.dueSoonInvoicesCount)} />
-        <Stat label="SALDOS A FAVOR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#6D28D9" icon="gift" sparkline={metricSparkline(dashboard.unappliedCredit, reviewCases.length)} />
+        <Stat label="VALOR FACTURADO" value={compactMode ? (dashboard.totalBilledLabel || "$ 0") : money(billedInPeriod)} note={compactMode ? "Vista rapida acumulada. Actualizando detalle por periodo..." : `${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={billedSeries} trend={compactMode ? null : metricVariation(billedInPeriod, previousBilled)} />
+        <Stat label="VALOR ABONADO" value={compactMode ? (dashboard.totalPaidLabel || "$ 0") : money(paidInPeriod)} note={compactMode ? "Vista rapida acumulada. Actualizando detalle por periodo..." : `${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={paidSeries} trend={compactMode ? null : metricVariation(paidInPeriod, previousPaid)} />
+        <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" icon="portfolio" sparkline={agingSeries} trend={metricShare(overdueTotal, pendingTotal, "vencido")} />
+        <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" icon="alert" sparkline={overdueSeries} trend={metricShare(overdueTotal, pendingTotal, "del saldo")} />
+        <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" icon="history" sparkline={upcomingSeries} trend={metricShare(upcomingTotal, pendingTotal, "del saldo")} />
+        <Stat label="SALDOS A FAVOR" value={dashboard.unappliedCreditLabel || "$ 0"} note={`${reviewCases.length} cliente(s) con abonos superiores a cartera.`} tone="#6D28D9" icon="gift" sparkline={creditSeries} trend={metricShare(creditTotal, Number(dashboard.totalPaid || 0), "del recaudo")} />
       </div>
       {reviewCases.length ? (
         <section style={card}>
@@ -1909,6 +2255,12 @@ function Customers({ data, onSave, onExport }) {
         </div>
         <PaginatedRecordList
           headers={["Cliente", "Facturado", "Pagado", "Saldo", "Accion"]}
+          rowKeys={visibleCustomers.map((customer) => customer.id)}
+          selectedKey={selectedId}
+          onRowClick={(key) => {
+            const customer = visibleCustomers.find((item) => item.id === key);
+            if (customer) edit(customer);
+          }}
           rows={visibleCustomers.map((customer) => [
             <div>
               <strong style={{ fontFamily: F }}>{customer.name || "Cliente reservado pendiente por asignar"}</strong>
@@ -1928,21 +2280,51 @@ function Customers({ data, onSave, onExport }) {
 function Invoices({ data, onSave, onExport }) {
   const customers = data.customerSummary || data.customers || [];
   const [mode, setMode] = useState("detallada");
-  const [draft, setDraft] = useState({ id: "", customerId: "", date: today(), dueDate: "", total: "", status: "emitida", notes: "" });
+  const [draft, setDraft] = useState({
+    id: "",
+    customerId: "",
+    date: today(),
+    dueDate: plusDaysIso(today(), 15),
+    total: "",
+    status: "emitida",
+    notes: "",
+    orderNumber: "",
+    internalConsecutive: "",
+    paymentCondition: "credito",
+    summaryBreakdown: blankTotalizedBreakdown(),
+    paymentSplits: [blankPaymentSplit(today())]
+  });
   const [lines, setLines] = useState([blankLine()]);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" });
   const [searched, setSearched] = useState(false);
   const totals = uiLineTotals(lines);
+  const summaryTotals = totalizedInvoiceTotals(draft.summaryBreakdown);
+  const documentTotal = mode === "detallada" ? totals.total : summaryTotals.total;
+  const splitTotal = paymentSplitsTotal(draft.paymentSplits);
   const invoices = data.invoices || [];
-  const visibleInvoices = searched ? filterRecordsByQuery(invoices, data, filters) : [];
+  const visibleInvoices = searched ? sortRecords(filterRecordsByQuery(invoices, data, filters), data, filters.sort || "recent") : [];
 
   const reset = () => {
-    setDraft({ id: "", customerId: "", date: today(), dueDate: "", total: "", status: "emitida", notes: "" });
+    setDraft({
+      id: "",
+      customerId: "",
+      date: today(),
+      dueDate: plusDaysIso(today(), 15),
+      total: "",
+      status: "emitida",
+      notes: "",
+      orderNumber: "",
+      internalConsecutive: "",
+      paymentCondition: "credito",
+      summaryBreakdown: blankTotalizedBreakdown(),
+      paymentSplits: [blankPaymentSplit(today())]
+    });
     setLines([blankLine()]);
     setMode("detallada");
   };
@@ -1953,14 +2335,29 @@ function Invoices({ data, onSave, onExport }) {
   };
 
   const edit = (invoice) => {
+    setSelectedInvoiceId(invoice.id || "");
     setDraft({
       id: invoice.id || "",
       customerId: invoice.customerId || "",
       date: invoice.date || today(),
-      dueDate: invoice.dueDate || "",
+      dueDate: invoice.dueDate || plusDaysIso(invoice.date || today(), 15),
       total: invoice.lines?.length ? "" : formatCurrencyInput(invoice.total),
       status: invoice.status || "emitida",
-      notes: invoice.notes || ""
+      notes: invoice.notes || "",
+      orderNumber: invoice.orderNumber || "",
+      internalConsecutive: invoice.internalConsecutive || "",
+      paymentCondition: invoice.paymentCondition || "credito",
+      summaryBreakdown: {
+        ...blankTotalizedBreakdown(),
+        ...(invoice.summaryBreakdown || {}),
+        subtotalNoTax: formatCurrencyInput(invoice.summaryBreakdown?.subtotalNoTax),
+        subtotalExempt: formatCurrencyInput(invoice.summaryBreakdown?.subtotalExempt),
+        subtotalTax5: formatCurrencyInput(invoice.summaryBreakdown?.subtotalTax5),
+        subtotalTax19: formatCurrencyInput(invoice.summaryBreakdown?.subtotalTax19),
+        advanceCredit: formatCurrencyInput(invoice.summaryBreakdown?.advanceCredit),
+        advanceCreditNote: invoice.summaryBreakdown?.advanceCreditNote || ""
+      },
+      paymentSplits: [blankPaymentSplit(invoice.date || today())]
     });
     setLines((invoice.lines || []).length ? invoice.lines.map(lineToDraft) : [blankLine()]);
     setMode((invoice.lines || []).length ? "detallada" : "resumida");
@@ -1983,14 +2380,42 @@ function Invoices({ data, onSave, onExport }) {
       window.alert("Agrega al menos una linea de producto, servicio u otro concepto.");
       return;
     }
-    if (mode === "resumida" && moneyValue(draft.total) <= 0) {
-      window.alert("Ingresa el valor total de la factura resumida.");
+    if (mode === "resumida" && summaryTotals.total <= 0) {
+      window.alert("Ingresa al menos una base valida para calcular la factura resumida.");
+      return;
+    }
+    const normalizedSplits = normalizePaymentSplits(draft.paymentSplits);
+    if (draft.paymentCondition !== "credito") {
+      if (!normalizedSplits.length) {
+        window.alert("Registra al menos un medio de pago para la factura de contado o con abono parcial.");
+        return;
+      }
+      if (splitTotal > documentTotal) {
+        window.alert("Los pagos registrados no pueden superar el total de la factura.");
+        return;
+      }
+      if (draft.paymentCondition === "contado" && splitTotal !== documentTotal) {
+        window.alert("Para pago de contado, la suma de los medios de pago debe ser igual al total de la factura.");
+        return;
+      }
+      if (draft.paymentCondition === "parcial" && splitTotal >= documentTotal) {
+        window.alert("Para pago parcial, la suma pagada debe ser menor al total. Si ya esta totalmente pagada, usa contado.");
+        return;
+      }
+    }
+    const missingOptional = [];
+    if (!clean(draft.orderNumber)) missingOptional.push("# orden de compra");
+    if (!clean(draft.internalConsecutive)) missingOptional.push("consecutivo interno");
+    if (missingOptional.length && !window.confirm(`La factura no tiene ${missingOptional.join(" ni ")}. ¿Deseas continuar con el registro sin esos datos?`)) {
       return;
     }
     const payload = {
       ...draft,
-      total: mode === "resumida" ? draft.total : "",
-      lines: payloadLines
+      total: mode === "resumida" ? summaryTotals.total : "",
+      summaryBreakdown: mode === "resumida" ? draft.summaryBreakdown : null,
+      lines: payloadLines,
+      paymentSplits: draft.id || draft.paymentCondition === "credito" ? [] : normalizedSplits,
+      paymentCondition: draft.paymentCondition
     };
     const customer = customerById(data, draft.customerId);
     if (!customer) {
@@ -2004,8 +2429,9 @@ function Invoices({ data, onSave, onExport }) {
       body: "Confirma que la factura esta correcta antes de guardarla. Si el backend rechaza la operacion, el formulario conservara lo digitado.",
       details: [
         { label: "Cliente", value: customer?.name || draft.customerId },
-        { label: "Total", value: mode === "detallada" ? money(totals.total) : formatCurrencyInput(draft.total) },
-        { label: "Estado", value: draft.status }
+        { label: "Total", value: money(documentTotal) },
+        { label: "Estado", value: draft.status },
+        { label: "Condicion", value: draft.paymentCondition === "contado" ? "Pago de contado" : draft.paymentCondition === "parcial" ? `Abono parcial ${money(splitTotal)}` : "Credito" }
       ]
     };
     if (customerNeedsUpdate(customer)) {
@@ -2027,6 +2453,10 @@ function Invoices({ data, onSave, onExport }) {
         date: invoice.date,
         dueDate: invoice.dueDate,
         total: (invoice.lines || []).length ? "" : invoice.total,
+        orderNumber: invoice.orderNumber || "",
+        internalConsecutive: invoice.internalConsecutive || "",
+        paymentCondition: invoice.paymentCondition || "credito",
+        summaryBreakdown: invoice.summaryBreakdown || null,
         status: "anulada",
         notes: invoice.notes || "Factura anulada desde el portal.",
         lines: invoice.lines || []
@@ -2056,8 +2486,23 @@ function Invoices({ data, onSave, onExport }) {
     }
   }
 
+  function updatePaymentSplit(id, patch) {
+    setDraft((current) => ({
+      ...current,
+      paymentSplits: (current.paymentSplits || []).map((split) => split.id === id ? { ...split, ...patch } : split)
+    }));
+  }
+
+  function addPaymentSplit() {
+    setDraft((current) => ({ ...current, paymentSplits: [...(current.paymentSplits || []), blankPaymentSplit(current.date)] }));
+  }
+
+  function removePaymentSplit(id) {
+    setDraft((current) => ({ ...current, paymentSplits: (current.paymentSplits || []).length > 1 ? current.paymentSplits.filter((split) => split.id !== id) : [blankPaymentSplit(current.date)] }));
+  }
+
   return (
-    <ModuleWithForm title="Facturas" count={(data.invoices || []).length} onExport={() => onExport("facturas")}>
+    <ModuleWithForm title="Facturas" count={(data.invoices || []).length} onExport={() => onExport("facturas", searched ? { filters } : {})}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Registra facturas detalladas o cargues iniciales resumidos.</p>
         <button type="button" onClick={openNew} style={button}>Nueva factura</button>
@@ -2067,7 +2512,7 @@ function Invoices({ data, onSave, onExport }) {
         setFilters={setFilters}
         statusOptions={["emitida", "pagada", "anulada"]}
         onSearch={() => setSearched(true)}
-        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" }); setSearched(false); }}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" }); setSearched(false); }}
         placeholder="Cliente, ID o documento"
       />
       <PortalModal open={modalOpen} title={draft.id ? "Editar factura" : "Nueva factura"} eyebrow={draft.id || "FACTURA"} onClose={() => { if (!busy) setModalOpen(false); }}>
@@ -2093,8 +2538,29 @@ function Invoices({ data, onSave, onExport }) {
               </select>
             </Field>
             <Field label="Consecutivo"><input style={{ ...input, background: "#F8FBFF" }} readOnly value={draft.id || `Automatico: ${data.nextInvoiceId || "FAC-000001"}`} /></Field>
-            <Field label="Fecha"><input required style={input} type="date" value={draft.date} onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))} /></Field>
+            <Field label="Fecha"><input required style={input} type="date" value={draft.date} onChange={(event) => setDraft((current) => {
+              const oldDefaultDueDate = plusDaysIso(current.date, 15);
+              const shouldRefreshDueDate = !current.dueDate || current.dueDate === oldDefaultDueDate;
+              return { ...current, date: event.target.value, dueDate: shouldRefreshDueDate ? plusDaysIso(event.target.value, 15) : current.dueDate, paymentSplits: (current.paymentSplits || []).map((split) => ({ ...split, date: split.date || event.target.value })) };
+            })} /></Field>
             <Field label="Vencimiento"><input style={input} type="date" value={draft.dueDate} onChange={(event) => setDraft((current) => ({ ...current, dueDate: event.target.value }))} /></Field>
+            <Field label="# orden de compra"><input style={input} value={draft.orderNumber} onChange={(event) => setDraft((current) => ({ ...current, orderNumber: event.target.value }))} placeholder="Opcional" /></Field>
+            <Field label="Consecutivo interno"><input style={input} value={draft.internalConsecutive} onChange={(event) => setDraft((current) => ({ ...current, internalConsecutive: event.target.value }))} placeholder="Opcional" /></Field>
+            <Field label="Forma de pago">
+              <select style={input} value={draft.paymentCondition} onChange={(event) => {
+                const nextCondition = event.target.value;
+                setDraft((current) => ({
+                  ...current,
+                  paymentCondition: nextCondition,
+                  status: nextCondition === "contado" ? "pagada" : current.status,
+                  paymentSplits: nextCondition === "credito" ? current.paymentSplits : (current.paymentSplits || [blankPaymentSplit(current.date)])
+                }));
+              }}>
+                <option value="credito">Credito</option>
+                <option value="contado">Pago de contado</option>
+                <option value="parcial">Abono parcial y saldo a credito</option>
+              </select>
+            </Field>
           </div>
           {mode === "detallada" ? (
             <>
@@ -2107,13 +2573,54 @@ function Invoices({ data, onSave, onExport }) {
               ) : null}
             </>
           ) : (
-            <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(180px,320px) 1fr", gap: 10 }}>
-              <Field label="Valor total"><input required style={input} value={draft.total} onChange={(event) => setDraft((current) => ({ ...current, total: formatCurrencyInput(event.target.value) }))} /></Field>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
+                {[
+                  ["subtotalNoTax", "Subtotal sin IVA"],
+                  ["subtotalExempt", "Subtotal exento / IVA 0%"],
+                  ["subtotalTax5", "Subtotal gravado IVA 5%"],
+                  ["subtotalTax19", "Subtotal gravado IVA 19%"]
+                ].map(([field, label]) => (
+                  <Field key={field} label={label}>
+                    <input style={input} value={draft.summaryBreakdown[field] || ""} onChange={(event) => setDraft((current) => ({ ...current, summaryBreakdown: { ...current.summaryBreakdown, [field]: formatCurrencyInput(event.target.value) } }))} />
+                  </Field>
+                ))}
+                <Field label="IVA 5% calculado"><input readOnly style={{ ...input, background: "#F8FBFF" }} value={money(summaryTotals.iva5)} /></Field>
+                <Field label="IVA 19% calculado"><input readOnly style={{ ...input, background: "#F8FBFF" }} value={money(summaryTotals.iva19)} /></Field>
+                <Field label="Anticipos / saldo a favor"><input style={input} value={draft.summaryBreakdown.advanceCredit || ""} onChange={(event) => setDraft((current) => ({ ...current, summaryBreakdown: { ...current.summaryBreakdown, advanceCredit: formatCurrencyInput(event.target.value) } }))} /></Field>
+                <Field label="Total automatico"><input readOnly style={{ ...input, background: "#F8FBFF", fontWeight: 900, color: "#1D4ED8" }} value={money(summaryTotals.total)} /></Field>
+              </div>
+              <textarea style={{ ...input, minHeight: 70 }} placeholder="Observacion del anticipo o saldo a favor por devolucion" value={draft.summaryBreakdown.advanceCreditNote || ""} onChange={(event) => setDraft((current) => ({ ...current, summaryBreakdown: { ...current.summaryBreakdown, advanceCreditNote: event.target.value } }))} />
               <div style={{ padding: 13, borderRadius: 16, background: "rgba(37,99,235,.06)", color: "#1D4ED8", fontFamily: F, lineHeight: 1.7 }}>
-                Usa esta opcion para cargar facturas historicas sin detalle producto por producto.
+                Usa esta opcion para cargar facturas historicas sin detalle producto por producto. Los totales quedan formulados y bloqueados.
               </div>
             </div>
           )}
+          {draft.paymentCondition !== "credito" ? (
+            <section style={{ display: "grid", gap: 10, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 12, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PAGO DE LA FACTURA</div>
+                  <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>Puedes registrar un pago total o parcial, incluso fraccionado por varios medios.</p>
+                </div>
+                <button type="button" onClick={addPaymentSplit} style={ghostButton}>Agregar medio</button>
+              </div>
+              {(draft.paymentSplits || []).map((split) => (
+                <div key={split.id} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) minmax(140px,1fr) minmax(130px,1fr) minmax(160px,1fr) auto", gap: 8, alignItems: "end" }}>
+                  <Field label="Valor pagado"><input style={input} value={split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
+                  <Field label="Metodo"><select style={input} value={split.method} onChange={(event) => updatePaymentSplit(split.id, { method: event.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
+                  <Field label="Fecha pago"><input type="date" style={input} value={split.date || draft.date} onChange={(event) => updatePaymentSplit(split.id, { date: event.target.value })} /></Field>
+                  <Field label="Referencia"><input style={input} value={split.reference || ""} onChange={(event) => updatePaymentSplit(split.id, { reference: event.target.value })} placeholder="Opcional" /></Field>
+                  <button type="button" onClick={() => removePaymentSplit(split.id)} style={dangerGhostButton}>Quitar</button>
+                </div>
+              ))}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontFamily: F, color: "#0B1D3A" }}>
+                <strong>Total factura: {money(documentTotal)}</strong>
+                <strong>Pagado ahora: {money(splitTotal)}</strong>
+                <strong>Saldo: {money(Math.max(documentTotal - splitTotal, 0))}</strong>
+              </div>
+            </section>
+          ) : null}
           <textarea style={{ ...input, minHeight: 82 }} placeholder="Notas internas, cargue inicial o detalle adicional" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button type="button" onClick={() => setModalOpen(false)} style={ghostButton}>Cancelar</button>
@@ -2148,7 +2655,18 @@ function Invoices({ data, onSave, onExport }) {
         {viewRecord ? (
           <div style={{ display: "grid", gap: 12, fontFamily: F }}>
             <Stat label="TOTAL" value={viewRecord.totalLabel || money(viewRecord.total)} note={`${viewRecord.customerNameSnapshot} · ${viewRecord.status}`} />
-            <RecordList headers={["#", "Concepto", "Cant.", "Unitario", "IVA"]} rows={(viewRecord.lines || []).map((line, index) => [index + 1, line.concept || line.sku, line.quantity, money(line.unitPrice), line.taxable ? `${line.taxRate}%` : "No"])} />
+            <RecordList
+              headers={["#", "Concepto", "Cant.", "Unitario", "IVA"]}
+              rows={(viewRecord.lines || []).length
+                ? (viewRecord.lines || []).map((line, index) => [index + 1, line.concept || line.sku, line.quantity, money(line.unitPrice), line.taxable ? `${line.taxRate}%` : "No"])
+                : [
+                  [1, "Subtotal sin IVA", 1, money(viewRecord.summaryBreakdown?.subtotalNoTax || 0), "No"],
+                  [2, "Subtotal exento / IVA 0%", 1, money(viewRecord.summaryBreakdown?.subtotalExempt || 0), "0%"],
+                  [3, "Subtotal gravado IVA 5%", 1, money(viewRecord.summaryBreakdown?.subtotalTax5 || 0), "5%"],
+                  [4, "Subtotal gravado IVA 19%", 1, money(viewRecord.summaryBreakdown?.subtotalTax19 || 0), "19%"],
+                  [5, "Anticipos / saldo a favor", 1, money(viewRecord.summaryBreakdown?.advanceCredit || 0), "Resta"]
+                ].filter((row) => row[3] !== "$ 0")}
+            />
             <div className="client-action-group">
               <button type="button" onClick={() => printableDocument("invoice", viewRecord, data)} style={button}>Imprimir / PDF</button>
               <button type="button" onClick={() => { setViewRecord(null); edit(viewRecord); }} style={ghostButton}>Editar</button>
@@ -2157,31 +2675,43 @@ function Invoices({ data, onSave, onExport }) {
         ) : null}
       </PortalModal>
       <PaginatedRecordList rows={visibleInvoices.map((invoice) => [invoice.id, invoice.customerNameSnapshot, invoice.date, money(invoice.subtotal), money(invoice.taxTotal), invoice.totalLabel || money(invoice.total), invoice.status, <div className="client-action-group">
-        <button type="button" onClick={() => setViewRecord(invoice)} style={ghostButton}>Ver</button>
+        <button type="button" onClick={() => { setSelectedInvoiceId(invoice.id); setViewRecord(invoice); }} style={ghostButton}>Ver</button>
         <button type="button" onClick={() => edit(invoice)} style={ghostButton}>Editar</button>
         <button type="button" onClick={() => duplicate(invoice)} style={ghostButton}>Duplicar</button>
         <button type="button" onClick={() => printableDocument("invoice", invoice, data)} style={ghostButton}>PDF</button>
         {invoice.status !== "anulada" ? <button type="button" onClick={() => voidInvoice(invoice)} style={dangerGhostButton}>Anular</button> : null}
-      </div>])} headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron facturas con esos filtros." : "Usa los filtros para consultar facturas sin cargar todo el historial."} />
+      </div>])}
+      rowKeys={visibleInvoices.map((invoice) => invoice.id)}
+      selectedKey={selectedInvoiceId}
+      onRowClick={(key) => {
+        const invoice = visibleInvoices.find((item) => item.id === key);
+        if (invoice) {
+          setSelectedInvoiceId(invoice.id);
+          setViewRecord(invoice);
+        }
+      }}
+      headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron facturas con esos filtros." : "Usa los filtros para consultar facturas sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
 
 function Payments({ data, onSave, onExport }) {
   const customers = data.customerSummary || data.customers || [];
-  const blank = () => ({ id: "", customerId: "", invoiceId: "", date: today(), grossAmount: "", retefuente: "", reteica: "", reteiva: "", otherRetentions: "", netReceived: "", method: "Transferencia bancaria", reference: "", notes: "", status: "aplicado" });
+  const blank = () => ({ id: "", customerId: "", invoiceId: "", date: today(), grossAmount: "", retefuente: "", reteica: "", reteiva: "", otherRetentions: "", discountAmount: "", discountConcept: "Comercial", returnCreditAmount: "", returnCreditNote: "", method: "Transferencia bancaria", reference: "", notes: "", status: "aplicado" });
   const [draft, setDraft] = useState(blank());
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
+  const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" });
   const [searched, setSearched] = useState(false);
   const customerInvoices = (data.invoices || []).filter((invoice) => !draft.customerId || invoice.customerId === draft.customerId);
   const retentionTotal = moneyValue(draft.retefuente) + moneyValue(draft.reteica) + moneyValue(draft.reteiva) + moneyValue(draft.otherRetentions);
-  const calculatedNet = Math.max(moneyValue(draft.grossAmount) - retentionTotal, 0);
-  const visiblePayments = searched ? filterRecordsByQuery(data.payments || [], data, filters) : [];
+  const discountTotal = moneyValue(draft.discountAmount) + moneyValue(draft.returnCreditAmount);
+  const calculatedNet = Math.max(moneyValue(draft.grossAmount) - retentionTotal - discountTotal, 0);
+  const visiblePayments = searched ? sortRecords(filterRecordsByQuery(data.payments || [], data, filters), data, filters.sort || "recent") : [];
 
   const openNew = () => {
     setDraft(blank());
@@ -2189,6 +2719,7 @@ function Payments({ data, onSave, onExport }) {
   };
 
   const edit = (payment) => {
+    setSelectedPaymentId(payment.id || "");
     setDraft({
       id: payment.id || "",
       customerId: payment.customerId || "",
@@ -2199,7 +2730,10 @@ function Payments({ data, onSave, onExport }) {
       reteica: formatCurrencyInput(payment.retentions?.reteica),
       reteiva: formatCurrencyInput(payment.retentions?.reteiva),
       otherRetentions: formatCurrencyInput(payment.retentions?.other),
-      netReceived: formatCurrencyInput(payment.netReceived),
+      discountAmount: formatCurrencyInput(payment.discounts?.amount),
+      discountConcept: payment.discounts?.concept || "Comercial",
+      returnCreditAmount: formatCurrencyInput(payment.returnCredit?.amount),
+      returnCreditNote: payment.returnCredit?.note || "",
       method: payment.method || "Transferencia bancaria",
       reference: payment.reference || "",
       notes: payment.notes || "",
@@ -2232,6 +2766,9 @@ function Payments({ data, onSave, onExport }) {
       details: [
         { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Valor bruto", value: formatCurrencyInput(draft.grossAmount) },
+        { label: "Retenciones", value: money(retentionTotal) },
+        { label: "Descuentos / devoluciones", value: money(discountTotal) },
+        { label: "Neto recibido", value: money(calculatedNet) },
         { label: "Medio", value: draft.method }
       ]
     };
@@ -2258,7 +2795,10 @@ function Payments({ data, onSave, onExport }) {
         reteica: payment.retentions?.reteica,
         reteiva: payment.retentions?.reteiva,
         otherRetentions: payment.retentions?.other,
-        netReceived: payment.netReceived,
+        discountAmount: payment.discounts?.amount,
+        discountConcept: payment.discounts?.concept,
+        returnCreditAmount: payment.returnCredit?.amount,
+        returnCreditNote: payment.returnCredit?.note,
         method: payment.method,
         reference: payment.reference,
         notes: payment.notes || "Abono anulado desde el portal.",
@@ -2290,7 +2830,7 @@ function Payments({ data, onSave, onExport }) {
   }
 
   return (
-    <ModuleWithForm title="Abonos" count={(data.payments || []).length} onExport={() => onExport("abonos")}>
+    <ModuleWithForm title="Abonos" count={(data.payments || []).length} onExport={() => onExport("abonos", searched ? { filters } : {})}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Registra pagos, retenciones y medios de recaudo.</p>
         <button type="button" onClick={openNew} style={button}>Nuevo abono</button>
@@ -2300,7 +2840,7 @@ function Payments({ data, onSave, onExport }) {
         setFilters={setFilters}
         statusOptions={["aplicado", "anulado"]}
         onSearch={() => setSearched(true)}
-        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" }); setSearched(false); }}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" }); setSearched(false); }}
         placeholder="Cliente, ID o documento"
       />
       <PortalModal open={modalOpen} title={draft.id ? "Editar abono" : "Nuevo abono"} eyebrow={draft.id || "ABONO"} onClose={() => { if (!busy) setModalOpen(false); }}>
@@ -2316,12 +2856,21 @@ function Payments({ data, onSave, onExport }) {
           <Field label="Fecha"><input required type="date" style={input} value={draft.date} onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))} /></Field>
           <Field label="Medio"><select style={input} value={draft.method} onChange={(event) => setDraft((current) => ({ ...current, method: event.target.value }))}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
           <Field label="Estado"><select style={input} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}><option value="aplicado">Aplicado</option><option value="anulado">Anulado</option></select></Field>
-          {["grossAmount", "retefuente", "reteica", "reteiva", "otherRetentions", "netReceived"].map((field) => (
+          {["grossAmount", "retefuente", "reteica", "reteiva", "otherRetentions"].map((field) => (
             <Field key={field} label={{ grossAmount: "Valor bruto", retefuente: "ReteFuente", reteica: "ReteICA", reteiva: "ReteIVA", otherRetentions: "Otras retenciones", netReceived: "Neto recibido" }[field]}>
-              <input required={field === "grossAmount"} style={input} value={field === "netReceived" && !draft.netReceived ? money(calculatedNet) : draft[field]} onChange={(event) => setDraft((current) => ({ ...current, [field]: formatCurrencyInput(event.target.value) }))} />
+              <input required={field === "grossAmount"} style={input} value={draft[field]} onChange={(event) => setDraft((current) => ({ ...current, [field]: formatCurrencyInput(event.target.value) }))} />
             </Field>
           ))}
+          <Field label="Descuento"><input style={input} value={draft.discountAmount} onChange={(event) => setDraft((current) => ({ ...current, discountAmount: formatCurrencyInput(event.target.value) }))} /></Field>
+          <Field label="Concepto descuento">
+            <select style={input} value={draft.discountConcept} onChange={(event) => setDraft((current) => ({ ...current, discountConcept: event.target.value }))}>
+              {DISCOUNT_CONCEPTS.map((concept) => <option key={concept}>{concept}</option>)}
+            </select>
+          </Field>
+          <Field label="Saldo a favor por devolucion"><input style={input} value={draft.returnCreditAmount} onChange={(event) => setDraft((current) => ({ ...current, returnCreditAmount: formatCurrencyInput(event.target.value) }))} /></Field>
+          <Field label="Neto recibido"><input readOnly style={{ ...input, background: "#F8FBFF", fontWeight: 900, color: "#15803D" }} value={money(calculatedNet)} /></Field>
           <Field label="Referencia"><input style={input} value={draft.reference} onChange={(event) => setDraft((current) => ({ ...current, reference: event.target.value }))} /></Field>
+          <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 64, gridColumn: "1/-1" }} placeholder="Observacion del saldo a favor por devolucion, si aplica" value={draft.returnCreditNote} onChange={(event) => setDraft((current) => ({ ...current, returnCreditNote: event.target.value }))} />
           <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 78, gridColumn: "1/-1" }} placeholder="Notas internas del abono" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
           <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setModalOpen(false)} style={ghostButton}>Cancelar</button>
@@ -2356,7 +2905,7 @@ function Payments({ data, onSave, onExport }) {
         {viewRecord ? (
           <div style={{ display: "grid", gap: 12, fontFamily: F }}>
             <Stat label="NETO RECIBIDO" value={money(viewRecord.netReceived)} note={`${viewRecord.customerNameSnapshot} · ${viewRecord.method}`} tone="#15803D" />
-            <RecordList headers={["Bruto", "Retenciones", "Neto", "Estado"]} rows={[[money(viewRecord.grossAmount), money(viewRecord.retentionTotal), money(viewRecord.netReceived), viewRecord.status]]} />
+            <RecordList headers={["Bruto", "Retenciones", "Descuentos", "Devolucion", "Neto", "Estado"]} rows={[[money(viewRecord.grossAmount), money(viewRecord.retentionTotal), money(viewRecord.discounts?.amount), money(viewRecord.returnCredit?.amount), money(viewRecord.netReceived), viewRecord.status]]} />
             <div className="client-action-group">
               <button type="button" onClick={() => { setViewRecord(null); edit(viewRecord); }} style={ghostButton}>Editar</button>
               {viewRecord.status !== "anulado" ? <button type="button" onClick={() => { setViewRecord(null); voidPayment(viewRecord); }} style={dangerGhostButton}>Anular</button> : null}
@@ -2364,12 +2913,22 @@ function Payments({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <PaginatedRecordList rows={visiblePayments.map((payment) => [payment.id, payment.customerNameSnapshot, payment.invoiceId || "Sin factura", payment.date, money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method, <div className="client-action-group">
-        <button type="button" onClick={() => setViewRecord(payment)} style={ghostButton}>Ver</button>
+      <PaginatedRecordList rows={visiblePayments.map((payment) => [payment.id, payment.customerNameSnapshot, payment.invoiceId || "Sin factura", payment.date, money(payment.grossAmount), money(payment.retentionTotal), money((payment.discounts?.amount || 0) + (payment.returnCredit?.amount || 0)), money(payment.netReceived), payment.method, <div className="client-action-group">
+        <button type="button" onClick={() => { setSelectedPaymentId(payment.id); setViewRecord(payment); }} style={ghostButton}>Ver</button>
         <button type="button" onClick={() => edit(payment)} style={ghostButton}>Editar</button>
         <button type="button" onClick={() => duplicate(payment)} style={ghostButton}>Duplicar</button>
         {payment.status !== "anulado" ? <button type="button" onClick={() => voidPayment(payment)} style={dangerGhostButton}>Anular</button> : null}
-      </div>])} headers={["ID", "Cliente", "Factura", "Fecha", "Bruto", "Retenciones", "Neto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
+      </div>])}
+      rowKeys={visiblePayments.map((payment) => payment.id)}
+      selectedKey={selectedPaymentId}
+      onRowClick={(key) => {
+        const payment = visiblePayments.find((item) => item.id === key);
+        if (payment) {
+          setSelectedPaymentId(payment.id);
+          setViewRecord(payment);
+        }
+      }}
+      headers={["ID", "Cliente", "Factura", "Fecha", "Bruto", "Retenciones", "Desc./favor", "Neto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -2394,6 +2953,9 @@ function Portfolio({ data, onExport, onSave }) {
   const reviewRows = [...rows]
     .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
     .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0));
+  const pendingRows = [...rows]
+    .filter((customer) => Number(customer.balance || 0) > 0)
+    .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
   const getFilteredRows = (sourceFilters = filters) => rows.filter((customer) => {
     const localRange = periodRange(sourceFilters.period || "all", sourceFilters.from, sourceFilters.to);
     const localPeriodActive = (sourceFilters.period || "all") !== "all";
@@ -2433,8 +2995,7 @@ function Portfolio({ data, onExport, onSave }) {
   }
 
   function openCustomer(customer) {
-    setSelectedId(customer.id);
-    setTab("detalle");
+    showCustomerProfile(customer);
     setMatchesOpen(false);
   }
 
@@ -2473,12 +3034,12 @@ function Portfolio({ data, onExport, onSave }) {
         {[
           ["consulta", "Consulta"],
           ["revision", `Creditos a revisar (${reviewRows.length})`],
-          ["detalle", "Detalle del cliente"]
+          ["pendientes", `Cartera pendiente (${pendingRows.length})`]
         ].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)} style={id === tab ? smallButton : ghostButton}>{label}</button>
         ))}
-        <button type="button" onClick={() => onExport("cartera_detallada")} style={ghostButton}>Reporte cartera detallada</button>
-        <button type="button" onClick={() => onExport("detalle_facturas")} style={ghostButton}>Detalle productos por factura</button>
+        <button type="button" onClick={() => onExport("cartera_detallada", selected ? { customerId: selected.id, customerName: selected.name } : searched ? { filters } : {})} style={ghostButton}>Reporte cartera detallada</button>
+        <button type="button" onClick={() => onExport("detalle_facturas", selected ? { customerId: selected.id, customerName: selected.name } : searched ? { filters } : {})} style={ghostButton}>Detalle productos por factura</button>
       </div>
       {tab === "consulta" ? (
         <>
@@ -2488,6 +3049,7 @@ function Portfolio({ data, onExport, onSave }) {
             onSearch={handleSearch}
             onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "" }); setSearched(false); setMatchesOpen(false); }}
             placeholder="Cliente, ID o documento"
+            sortOptions={[]}
           />
           {multipleNamedMatches ? (
             <div style={{ padding: 14, borderRadius: 18, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, lineHeight: 1.55, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -2511,38 +3073,37 @@ function Portfolio({ data, onExport, onSave }) {
                   </div>
                 ];
               })}
+              rowKeys={filteredRows.map((customer) => customer.id)}
+              selectedKey={selectedId}
+              onRowClick={(key) => {
+                const customer = filteredRows.find((item) => item.id === key);
+                if (customer) showCustomerProfile(customer);
+              }}
               emptyMessage={searched ? "No se encontraron clientes con esos filtros." : "Usa los filtros para consultar cartera sin cargar todos los clientes."}
             />
           )}
         </>
       ) : null}
-      {selected && tab === "detalle" ? (
-        <section style={{ padding: 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
-          <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
-            <Stat label="FACTURADO" value={selected.billedLabel} note={`${selectedInvoices.length} factura(s).`} />
-            <Stat label="ABONADO" value={selected.paidLabel} note={`${selectedPayments.length} abono(s).`} tone="#15803D" />
-            <Stat label={selectedView.label.toUpperCase()} value={selectedView.value} note={selectedView.label === "Saldo a favor" ? "Abonos superiores a la cartera." : "Pendiente a la fecha de corte."} tone={selectedView.tone} />
-            <Stat label="VENCIDO" value={selected.overdueLabel || "$ 0"} note={`${selected.overdueInvoicesCount || 0} factura(s) vencida(s).`} tone="#B91C1C" />
-          </div>
-          {selectedView.label === "Saldo a favor" ? (
-            <div style={{ padding: 13, borderRadius: 16, background: "rgba(109,40,217,.10)", border: "1px solid rgba(109,40,217,.16)", color: "#4C1D95", fontFamily: F, lineHeight: 1.6 }}>
-              Este cliente tiene saldo a favor. Revisa si corresponde a anticipo, pago duplicado, nota credito o compensacion futura.
-            </div>
-          ) : null}
-          <div style={{ display: "grid", gap: 8 }}>
-            {AGING_BUCKETS.filter(([key]) => Number(selected.aging?.[key] || 0) > 0).map(([key, label]) => (
-              <div key={key} className="client-aging-row" style={{ display: "grid", gridTemplateColumns: "170px minmax(0,1fr) 110px", gap: 10, alignItems: "center", fontFamily: F, fontSize: 13 }}>
-                <strong style={{ color: key.startsWith("overdue") ? "#B91C1C" : "#334155" }}>{label}</strong>
-                <div style={{ height: 10, borderRadius: 999, background: "#EAF1FF", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min(100, Math.max(8, (Number(selected.aging?.[key] || 0) / Math.max(Number(selected.balance || 1), 1)) * 100))}%`, height: "100%", background: key.startsWith("overdue") ? "#DC2626" : "#2563EB" }} />
-                </div>
-                <strong style={{ textAlign: "right" }}>{money(selected.aging?.[key] || 0)}</strong>
-              </div>
-            ))}
-          </div>
-          <RecordList rows={selectedInvoices.map((invoice) => [invoice.id, invoice.date, invoice.dueDate || "Sin vencimiento", invoice.totalLabel || money(invoice.total), invoice.paidLabel || money(invoice.paid), invoice.balanceLabel || money(invoice.balance), invoice.ageLabel || invoice.status])} headers={["Factura", "Fecha", "Vence", "Total", "Aplicado", "Saldo", "Edad"]} />
-          <RecordList rows={selectedPayments.map((payment) => [payment.id, payment.date, payment.invoiceId || "Global FIFO", money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Aplicacion", "Bruto", "Retenciones", "Neto", "Medio"]} />
-        </section>
+      {tab === "pendientes" ? (
+        <PaginatedRecordList
+          headers={["Cliente", "ID", "Facturado", "Abonado", "Saldo pendiente", "Vencido", "Accion"]}
+          rows={pendingRows.map((customer) => [
+            customer.name,
+            customer.id,
+            customer.billedLabel,
+            customer.paidLabel,
+            <strong style={{ color: "#C2410C" }}>{customer.balanceLabel}</strong>,
+            customer.overdueLabel || "$ 0",
+            <button type="button" onClick={() => showCustomerProfile(customer)} style={ghostButton}>Abrir ficha</button>
+          ])}
+          rowKeys={pendingRows.map((customer) => customer.id)}
+          selectedKey={selectedId}
+          onRowClick={(key) => {
+            const customer = pendingRows.find((item) => item.id === key);
+            if (customer) showCustomerProfile(customer);
+          }}
+          emptyMessage="No hay clientes con saldo pendiente."
+        />
       ) : null}
       {tab === "revision" ? (
         <PaginatedRecordList
@@ -2555,6 +3116,12 @@ function Portfolio({ data, onExport, onSave }) {
             <strong style={{ color: "#6D28D9" }}>{customer.unappliedCreditLabel}</strong>,
             <button type="button" onClick={() => showCustomerProfile(customer)} style={ghostButton}>Revisar</button>
           ])}
+          rowKeys={reviewRows.map((customer) => customer.id)}
+          selectedKey={selectedId}
+          onRowClick={(key) => {
+            const customer = reviewRows.find((item) => item.id === key);
+            if (customer) showCustomerProfile(customer);
+          }}
           emptyMessage="No hay saldos a favor por revisar."
         />
       ) : null}
@@ -2617,8 +3184,8 @@ function Portfolio({ data, onExport, onSave }) {
               <button type="button" onClick={() => requestWhatsapp(activeCustomer)} style={{ ...smallButton, background: "#25D366" }}>{Number(activeCustomer.balance || 0) > 0 ? "Cobrar por WhatsApp" : "Contactar por WhatsApp"}</button>
               <button type="button" onClick={() => copyCollectionMessage(activeCustomer)} style={ghostButton}>{Number(activeCustomer.balance || 0) > 0 ? "Copiar mensaje de cobro" : "Copiar mensaje de contacto"}</button>
               <button type="button" onClick={() => setCustomerDetailOpen((current) => !current)} style={button}>{customerDetailOpen ? "Ocultar detalle" : "Consultar detalles"}</button>
-              <button type="button" onClick={() => onExport("cartera_detallada")} style={ghostButton}>Excel cartera detallada</button>
-              <button type="button" onClick={() => onExport("detalle_facturas")} style={ghostButton}>Excel productos por factura</button>
+              <button type="button" onClick={() => onExport("cartera_detallada", { customerId: activeCustomer.id, customerName: activeCustomer.name })} style={ghostButton}>Excel cartera detallada</button>
+              <button type="button" onClick={() => onExport("detalle_facturas", { customerId: activeCustomer.id, customerName: activeCustomer.name })} style={ghostButton}>Excel productos por factura</button>
             </div>
             {customerDetailOpen ? (
               <section style={{ display: "grid", gap: 12 }}>
@@ -2671,13 +3238,15 @@ function Inventory({ data, onSave, onExport }) {
   const [draft, setDraft] = useState({ sku: "", name: "", salePrice: "", cost: "", taxable: true, taxRate: 19, status: "activo", notes: "" });
   const [editingSku, setEditingSku] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [viewItem, setViewItem] = useState(null);
+  const [selectedSku, setSelectedSku] = useState("");
   const [confirmSave, setConfirmSave] = useState(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const visibleItems = (data.inventory || []).filter((item) => {
     const q = normalizeText(query);
     return !q || normalizeText(item.sku).includes(q) || normalizeText(item.name).includes(q) || normalizeText(item.status).includes(q);
-  });
+  }).sort((left, right) => clean(left.name || left.sku).localeCompare(clean(right.name || right.sku), "es"));
   const reset = () => setDraft({ sku: "", name: "", salePrice: "", cost: "", taxable: true, taxRate: 19, status: "activo", notes: "" });
   const openNew = () => {
     reset();
@@ -2686,6 +3255,7 @@ function Inventory({ data, onSave, onExport }) {
   };
   const edit = (item) => {
     setEditingSku(true);
+    setSelectedSku(item.sku || "");
     setDraft({
       sku: item.sku || "",
       name: item.name || "",
@@ -2696,6 +3266,7 @@ function Inventory({ data, onSave, onExport }) {
       status: item.status || "activo",
       notes: item.notes || ""
     });
+    setViewItem(null);
     setModalOpen(true);
   };
 
@@ -2765,23 +3336,73 @@ function Inventory({ data, onSave, onExport }) {
         onConfirm={confirmInventorySave}
         confirmLabel="Guardar"
       />
-      <PaginatedRecordList rows={visibleItems.map((item) => [item.sku, item.name, money(item.salePrice), money(item.cost), item.stock, item.stock < 0 ? "Inventario negativo" : item.status || "activo", <button type="button" onClick={() => edit(item)} style={ghostButton}>Editar</button>])} headers={["SKU", "Nombre", "Precio", "Costo", "Stock", "Estado", "Accion"]} />
+      <PortalModal open={Boolean(viewItem)} title={viewItem?.name || "Producto"} eyebrow={viewItem?.sku || "INVENTARIO"} onClose={() => setViewItem(null)} wide={false}>
+        {viewItem ? (
+          <div style={{ display: "grid", gap: 12, fontFamily: F }}>
+            <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+              <Stat label="STOCK" value={viewItem.stock ?? 0} note={Number(viewItem.stock || 0) < 0 ? "Inventario negativo para revisar." : "Existencia actual."} tone={Number(viewItem.stock || 0) < 0 ? "#B91C1C" : "#15803D"} icon="boxes" />
+              <Stat label="PRECIO" value={money(viewItem.salePrice)} note={viewItem.salePrice ? "Precio de venta sugerido." : "Sin precio asignado."} icon="invoice" />
+              <Stat label="COSTO" value={money(viewItem.cost)} note={viewItem.cost ? "Costo de referencia." : "Sin costo asignado."} icon="wallet" />
+            </div>
+            <RecordList
+              headers={["Campo", "Valor"]}
+              rows={[
+                ["SKU", viewItem.sku],
+                ["Nombre", viewItem.name],
+                ["IVA", viewItem.taxable ? `${viewItem.taxRate || 0}%` : "No aplica"],
+                ["Estado", viewItem.status || "activo"],
+                ["Notas", viewItem.notes || "Sin notas"]
+              ]}
+            />
+            <div className="client-action-group client-sticky-actions">
+              <button type="button" onClick={() => edit(viewItem)} style={button}>Editar producto</button>
+              <button type="button" onClick={() => setViewItem(null)} style={ghostButton}>Cerrar</button>
+            </div>
+          </div>
+        ) : null}
+      </PortalModal>
+      <PaginatedRecordList
+        rows={visibleItems.map((item) => [
+          item.sku,
+          item.name,
+          money(item.salePrice),
+          money(item.cost),
+          item.stock,
+          item.stock < 0 ? "Inventario negativo" : item.status || "activo",
+          <div className="client-action-group">
+            <button type="button" onClick={() => { setSelectedSku(item.sku); setViewItem(item); }} style={ghostButton}>Ver</button>
+            <button type="button" onClick={() => edit(item)} style={ghostButton}>Editar</button>
+          </div>
+        ])}
+        rowKeys={visibleItems.map((item) => item.sku)}
+        selectedKey={selectedSku}
+        onRowClick={(key) => {
+          const item = visibleItems.find((candidate) => candidate.sku === key);
+          if (item) {
+            setSelectedSku(item.sku);
+            setViewItem(item);
+          }
+        }}
+        headers={["SKU", "Nombre", "Precio", "Costo", "Stock", "Estado", "Accion"]}
+      />
     </ModuleWithForm>
   );
 }
 
 function InventoryMovements({ data, onSave, onExport }) {
   const [draft, setDraft] = useState({ sku: "", type: "entrada", quantity: "", date: today(), unitCost: "", reference: "", notes: "" });
+  const [viewMovement, setViewMovement] = useState(null);
+  const [selectedMovementId, setSelectedMovementId] = useState("");
   const [confirmSave, setConfirmSave] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState({ period: "month", from: "", to: "", sku: "" });
-  const range = periodRange(filters.period || "month", filters.from, filters.to);
+  const [filters, setFilters] = useState({ period: "all", from: "", to: "", sku: "" });
+  const range = periodRange(filters.period || "all", filters.from, filters.to);
   const visibleMovements = (data.inventoryMovements || []).filter((movement) => {
     const q = normalizeText(filters.sku);
     if (q && !normalizeText(`${movement.sku} ${movement.productNameSnapshot} ${movement.type} ${movement.reference}`).includes(q)) return false;
-    if ((filters.period || "month") !== "all" && !dateInRange(movement.date, range)) return false;
+    if ((filters.period || "all") !== "all" && !dateInRange(movement.date, range)) return false;
     return true;
-  });
+  }).sort((left, right) => clean(right.date || right.createdAt).localeCompare(clean(left.date || left.createdAt)) || clean(right.id).localeCompare(clean(left.id), "es"));
   const reset = () => setDraft({ sku: "", type: "entrada", quantity: "", date: today(), unitCost: "", reference: "", notes: "" });
   const product = (data.inventory || []).find((item) => item.sku === draft.sku);
 
@@ -2821,7 +3442,7 @@ function InventoryMovements({ data, onSave, onExport }) {
   }
 
   return (
-    <ModuleWithForm title="Movimientos de inventario" count={(data.inventoryMovements || []).length} onExport={() => onExport("movimientos")}>
+    <ModuleWithForm title="Movimientos de inventario" count={(data.inventoryMovements || []).length} onExport={() => onExport("movimientos", { filters })}>
       <section style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10 }}>
         <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(220px,420px)", gap: 10 }}>
           <Field label="Buscar por SKU, producto, tipo o referencia"><input style={input} value={filters.sku} placeholder="Ej: SKU-001" onChange={(event) => setFilters((current) => ({ ...current, sku: event.target.value }))} /></Field>
@@ -2848,7 +3469,49 @@ function InventoryMovements({ data, onSave, onExport }) {
         onConfirm={confirmMovementSave}
         confirmLabel="Registrar"
       />
-      <PaginatedRecordList rows={visibleMovements.map((movement) => [movement.id, movement.date, movement.sku, movement.type, movement.quantity, movement.effect, movement.stockAfter, movement.reference || movement.sourceId || ""]) } headers={["ID", "Fecha", "SKU", "Tipo", "Cantidad", "Efecto", "Stock final", "Referencia"]} />
+      <PortalModal open={Boolean(viewMovement)} title={`Movimiento ${viewMovement?.id || ""}`} eyebrow="KARDEX" onClose={() => setViewMovement(null)} wide={false}>
+        {viewMovement ? (
+          <div style={{ display: "grid", gap: 12, fontFamily: F }}>
+            <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+              <Stat label="CANTIDAD" value={viewMovement.quantity} note={viewMovement.type || "Movimiento"} icon="transfer" />
+              <Stat label="EFECTO" value={viewMovement.effect} note="Impacto en inventario." tone={Number(viewMovement.effect || 0) < 0 ? "#B91C1C" : "#15803D"} icon="boxes" />
+              <Stat label="STOCK FINAL" value={viewMovement.stockAfter} note={Number(viewMovement.stockAfter || 0) < 0 ? "Quedo negativo." : "Despues del movimiento."} tone={Number(viewMovement.stockAfter || 0) < 0 ? "#B91C1C" : "#1D4ED8"} icon="portfolio" />
+            </div>
+            <RecordList
+              headers={["Campo", "Valor"]}
+              rows={[
+                ["Producto", `${viewMovement.sku || ""} · ${viewMovement.productNameSnapshot || ""}`],
+                ["Fecha", viewMovement.date || ""],
+                ["Referencia", viewMovement.reference || viewMovement.sourceId || "-"],
+                ["Costo unitario", money(viewMovement.unitCost)],
+                ["Notas", viewMovement.notes || "Sin notas"]
+              ]}
+            />
+          </div>
+        ) : null}
+      </PortalModal>
+      <PaginatedRecordList
+        rows={visibleMovements.map((movement) => [
+          movement.id,
+          movement.date,
+          movement.sku,
+          movement.type,
+          movement.quantity,
+          movement.effect,
+          movement.stockAfter,
+          movement.reference || movement.sourceId || ""
+        ])}
+        rowKeys={visibleMovements.map((movement) => movement.id)}
+        selectedKey={selectedMovementId}
+        onRowClick={(key) => {
+          const movement = visibleMovements.find((item) => item.id === key);
+          if (movement) {
+            setSelectedMovementId(movement.id);
+            setViewMovement(movement);
+          }
+        }}
+        headers={["ID", "Fecha", "SKU", "Tipo", "Cantidad", "Efecto", "Stock final", "Referencia"]}
+      />
     </ModuleWithForm>
   );
 }
@@ -2859,13 +3522,14 @@ function Orders({ data, onSave, onExport }) {
   const [lines, setLines] = useState([blankLine()]);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" });
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" });
   const [searched, setSearched] = useState(false);
   const totals = uiLineTotals(lines);
-  const visibleOrders = searched ? filterRecordsByQuery(data.orders || [], data, filters) : [];
+  const visibleOrders = searched ? sortRecords(filterRecordsByQuery(data.orders || [], data, filters), data, filters.sort || "recent") : [];
   const reset = () => {
     setDraft({ id: "", customerId: "", date: today(), dueDate: "", status: "borrador", showDiscountOnPdf: true, notes: "" });
     setLines([blankLine()]);
@@ -2877,6 +3541,7 @@ function Orders({ data, onSave, onExport }) {
   };
 
   const edit = (order) => {
+    setSelectedOrderId(order.id || "");
     setDraft({
       id: order.id || "",
       customerId: order.customerId || "",
@@ -2887,6 +3552,7 @@ function Orders({ data, onSave, onExport }) {
       notes: order.notes || ""
     });
     setLines((order.lines || []).length ? order.lines.map(lineToDraft) : [blankLine()]);
+    setViewRecord(null);
     setModalOpen(true);
   };
 
@@ -2999,7 +3665,7 @@ function Orders({ data, onSave, onExport }) {
   }
 
   return (
-    <ModuleWithForm title="Ordenes / cotizaciones" count={(data.orders || []).length} onExport={() => onExport("ordenes")}>
+    <ModuleWithForm title="Ordenes / cotizaciones" count={(data.orders || []).length} onExport={() => onExport("ordenes", searched ? { filters } : {})}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <p style={{ margin: 0, color: "#64748B", fontFamily: F }}>Crea cotizaciones tipo factura y conviertelas cuando el cliente apruebe.</p>
         <button type="button" onClick={openNew} style={button}>Nueva orden</button>
@@ -3009,7 +3675,7 @@ function Orders({ data, onSave, onExport }) {
         setFilters={setFilters}
         statusOptions={["borrador", "enviada", "aprobada", "facturada", "anulada"]}
         onSearch={() => setSearched(true)}
-        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "month", from: "", to: "", status: "" }); setSearched(false); }}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" }); setSearched(false); }}
         placeholder="Cliente, ID o documento"
       />
       <PortalModal open={modalOpen} title={draft.id ? "Editar orden / cotizacion" : "Nueva orden / cotizacion"} eyebrow={draft.id || "ORDEN"} onClose={() => { if (!busy) setModalOpen(false); }}>
@@ -3093,14 +3759,24 @@ function Orders({ data, onSave, onExport }) {
         order.totalLabel || money(order.total),
         order.status,
         <div className="client-action-group">
-          <button type="button" onClick={() => setViewRecord(order)} style={ghostButton}>Ver</button>
+          <button type="button" onClick={() => { setSelectedOrderId(order.id); setViewRecord(order); }} style={ghostButton}>Ver</button>
           <button type="button" onClick={() => edit(order)} style={ghostButton}>Editar</button>
           <button type="button" onClick={() => duplicate(order)} style={ghostButton}>Duplicar</button>
           <button type="button" onClick={() => printableDocument("order", order, data)} style={ghostButton}>PDF</button>
           {order.status !== "facturada" && order.status !== "anulada" ? <button type="button" onClick={() => convert(order)} style={{ ...smallButton, background: "linear-gradient(135deg,#15803D,#22C55E)" }}>Convertir</button> : null}
           {order.status !== "anulada" && order.status !== "facturada" ? <button type="button" onClick={() => voidOrder(order)} style={dangerGhostButton}>Anular</button> : null}
         </div>
-      ])} headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron ordenes con esos filtros." : "Usa los filtros para consultar ordenes sin cargar todo el historial."} />
+      ])}
+      rowKeys={visibleOrders.map((order) => order.id)}
+      selectedKey={selectedOrderId}
+      onRowClick={(key) => {
+        const order = visibleOrders.find((item) => item.id === key);
+        if (order) {
+          setSelectedOrderId(order.id);
+          setViewRecord(order);
+        }
+      }}
+      headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron ordenes con esos filtros." : "Usa los filtros para consultar ordenes sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -3121,22 +3797,42 @@ function ModuleWithForm({ title, count, onExport, children }) {
   );
 }
 
-function RecordList({ headers, rows }) {
+function RecordList({ headers, rows, rowKeys = [], selectedKey = "", onRowClick }) {
   return (
     <>
       <div className="client-record-table" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 8px", fontFamily: F, minWidth: 680 }}>
-          <thead><tr>{headers.map((header) => <th key={header} style={{ textAlign: "left", fontSize: 11, letterSpacing: "1px", color: "#64748B", padding: "0 10px" }}>{header}</th>)}</tr></thead>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 6px", fontFamily: F, minWidth: 680 }}>
+          <thead><tr>{headers.map((header) => <th key={header} style={{ textAlign: "left", fontSize: 10, letterSpacing: ".9px", color: "#64748B", padding: "0 9px 2px" }}>{header}</th>)}</tr></thead>
           <tbody>
-            {rows.length ? rows.map((row, index) => (
-              <tr key={index} style={{ background: "#F8FBFF" }}>{row.map((cell, cellIndex) => <td key={cellIndex} style={{ padding: 12, borderTop: "1px solid rgba(37,99,235,.10)", borderBottom: "1px solid rgba(37,99,235,.10)", verticalAlign: "middle" }}>{cell}</td>)}</tr>
-            )) : <tr><td colSpan={headers.length} style={{ padding: 16, color: "#64748B" }}>No hay registros.</td></tr>}
+            {rows.length ? rows.map((row, index) => {
+              const key = rowKeys[index] || index;
+              const selected = selectedKey && key === selectedKey;
+              return (
+                <tr
+                  key={key}
+                  onClick={onRowClick ? (event) => {
+                    if (event.target.closest("button,a,input,select,textarea")) return;
+                    onRowClick(key, index);
+                  } : undefined}
+                  className={selected ? "client-record-row selected" : "client-record-row"}
+                  style={{ background: selected ? "#EEF4FF" : "#F8FBFF", cursor: onRowClick ? "pointer" : "default" }}
+                >
+                  {row.map((cell, cellIndex) => <td key={cellIndex} style={{ padding: "9px 10px", borderTop: selected ? "1px solid rgba(37,99,235,.34)" : "1px solid rgba(37,99,235,.10)", borderBottom: selected ? "1px solid rgba(37,99,235,.34)" : "1px solid rgba(37,99,235,.10)", verticalAlign: "middle", fontSize: 13, lineHeight: 1.3 }}>{cell}</td>)}
+                </tr>
+              );
+            }) : <tr><td colSpan={headers.length} style={{ padding: 16, color: "#64748B" }}>No hay registros.</td></tr>}
           </tbody>
         </table>
       </div>
       <div className="client-record-cards">
-        {rows.length ? rows.map((row, rowIndex) => (
-          <div key={rowIndex} style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 8, fontFamily: F }}>
+        {rows.length ? rows.map((row, rowIndex) => {
+          const key = rowKeys[rowIndex] || rowIndex;
+          const selected = selectedKey && key === selectedKey;
+          return (
+          <div key={key} onClick={onRowClick ? (event) => {
+            if (event.target.closest("button,a,input,select,textarea")) return;
+            onRowClick(key, rowIndex);
+          } : undefined} style={{ padding: 13, borderRadius: 16, background: selected ? "#EEF4FF" : "#F8FBFF", border: selected ? "1px solid rgba(37,99,235,.34)" : "1px solid rgba(37,99,235,.10)", display: "grid", gap: 7, fontFamily: F, cursor: onRowClick ? "pointer" : "default" }}>
             {row.map((cell, cellIndex) => (
               <div key={cellIndex} style={{ display: "grid", gap: 2 }}>
                 <span style={{ fontSize: 10, letterSpacing: "1px", color: "#64748B", fontWeight: 900 }}>{headers[cellIndex]}</span>
@@ -3144,17 +3840,18 @@ function RecordList({ headers, rows }) {
               </div>
             ))}
           </div>
-        )) : <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", color: "#64748B", fontFamily: F }}>No hay registros.</div>}
+        );}) : <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", color: "#64748B", fontFamily: F }}>No hay registros.</div>}
       </div>
     </>
   );
 }
 
-function PaginatedRecordList({ headers, rows, pageSize = DEFAULT_PAGE_SIZE, emptyMessage = "No hay registros para la consulta." }) {
+function PaginatedRecordList({ headers, rows, rowKeys = [], selectedKey = "", onRowClick, pageSize = DEFAULT_PAGE_SIZE, emptyMessage = "No hay registros para la consulta." }) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil((rows.length || 0) / pageSize));
   const safePage = Math.min(page, totalPages);
   const visibleRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const visibleKeys = rowKeys.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   useEffect(() => {
     setPage(1);
@@ -3172,7 +3869,7 @@ function PaginatedRecordList({ headers, rows, pageSize = DEFAULT_PAGE_SIZE, empt
           </div>
         </div>
       ) : <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", color: "#64748B", fontFamily: F }}>{emptyMessage}</div>}
-      {rows.length ? <RecordList headers={headers} rows={visibleRows} /> : null}
+      {rows.length ? <RecordList headers={headers} rows={visibleRows} rowKeys={visibleKeys} selectedKey={selectedKey} onRowClick={onRowClick} /> : null}
     </div>
   );
 }
@@ -3190,9 +3887,9 @@ function Imports({ data, onData, onGoHistory }) {
   function downloadTemplate() {
     const examples = {
       clientes: ["", "Cliente Ejemplo SAS", "Cliente Alterno", "900123456", "3001234567", "cliente@correo.com", "Carrera 1 # 2-3", "Bogota", "Norte", "Cliente cargado por plantilla"],
-      facturas_historicas: ["FAC-EXT-001", "C0001", "Cliente Ejemplo SAS", today(), today(), 1000000, "Cargue inicial sin detalle"],
-      facturas_detalladas: ["FAC-EXT-002", "C0001", "Cliente Ejemplo SAS", today(), today(), "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "Factura detallada"],
-      abonos: ["C0001", "Cliente Ejemplo SAS", "FAC-000001", today(), 500000, 0, 0, 0, 0, 500000, "Transferencia bancaria", "REF123", "Abono ejemplo"],
+      facturas_historicas: ["FAC-EXT-001", "C0001", "Cliente Ejemplo SAS", today(), today(), "OC-001", "INT-001", "credito", 1000000, "Cargue inicial sin detalle"],
+      facturas_detalladas: ["FAC-EXT-002", "C0001", "Cliente Ejemplo SAS", today(), today(), "OC-002", "INT-002", "credito", "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "Factura detallada"],
+      abonos: ["C0001", "Cliente Ejemplo SAS", "FAC-000001", today(), 500000, 0, 0, 0, 0, 0, "Comercial", 0, "", 500000, "Transferencia bancaria", "REF123", "Abono ejemplo"],
       inventario: ["SKU-001", "Producto ejemplo", "", "", "SI", 19, "activo", "Producto creado sin stock inicial"],
       actualizacion_productos: ["SKU-001", "", 120000, 80000, "SI", 19, "activo", "Actualizacion por SKU"],
       movimientos_inventario: [today(), "SKU-001", "entrada", 10, 80000, "CARGUE-INICIAL", "Saldo inicial"],
@@ -3387,6 +4084,12 @@ function ImportHistory({ data, onSave, onExport }) {
       </p>
       <PaginatedRecordList
         headers={["ID", "Modulo", "Filas", "Estado", "Afectados", "Fecha", "Acciones"]}
+        rowKeys={imports.map((item) => item.id)}
+        selectedKey={selected?.id || ""}
+        onRowClick={(key) => {
+          const item = imports.find((candidate) => candidate.id === key);
+          if (item) setSelected(item);
+        }}
         rows={imports.map((item) => [
           item.id,
           moduleLabels[item.module] || item.module,
@@ -3495,39 +4198,89 @@ export default function ClientPortal() {
   const [error, setError] = useState("");
   const [operationSuccess, setOperationSuccess] = useState(null);
   const [pendingExport, setPendingExport] = useState(null);
+  const [fullDataLoaded, setFullDataLoaded] = useState(false);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
+  const loadRequestRef = useRef(0);
+  const fullDataModuleRequestRef = useRef("");
+
+  async function fetchPortalData(scope = "full") {
+    const dataResponse = await fetch(`/api/client-portal-data?scope=${encodeURIComponent(scope)}`);
+    const dataPayload = await dataResponse.json();
+    if (!dataResponse.ok) throw new Error(dataPayload.error || "No fue posible cargar datos.");
+    return dataPayload.data;
+  }
 
   async function loadData(options = {}) {
-    const silentRefresh = Boolean(data) && options?.forceFull !== true;
+    const safeOptions = options && typeof options.preventDefault === "function" ? {} : (options || {});
+    const hasData = Boolean(data);
+    const forceFull = safeOptions.forceFull === true;
+    const scope = safeOptions.scope || (hasData || forceFull ? "full" : "summary");
+    const silentRefresh = hasData && safeOptions.silent !== false;
+    const requestId = ++loadRequestRef.current;
+
     if (!silentRefresh) {
       setLoading(true);
       setLoadingMessage("Validando sesion...");
     } else {
       setNotice("Actualizando informacion...");
+      if (forceFull || data?.isCompact) setBackgroundLoading(true);
     }
     setError("");
     try {
       const sessionResponse = await fetch("/api/client-portal-session");
       const sessionPayload = await sessionResponse.json();
+      if (requestId !== loadRequestRef.current) return;
       setSession(sessionPayload);
       if (!sessionPayload.authenticated) {
         setData(null);
+        setFullDataLoaded(false);
         return;
       }
-      if (!silentRefresh) setLoadingMessage("Cargando informacion financiera...");
-      const dataResponse = await fetch("/api/client-portal-data");
-      const dataPayload = await dataResponse.json();
-      if (!dataResponse.ok) throw new Error(dataPayload.error || "No fue posible cargar datos.");
-      setData(dataPayload.data);
+      if (!silentRefresh) setLoadingMessage(scope === "summary" ? "Cargando resumen financiero..." : "Cargando informacion financiera...");
+      const nextData = await fetchPortalData(scope);
+      if (requestId !== loadRequestRef.current) return;
+      setData(nextData);
+      setFullDataLoaded(!nextData?.isCompact);
       if (silentRefresh) setNotice("Informacion actualizada.");
+      if (scope === "summary") {
+        setLoading(false);
+        setBackgroundLoading(true);
+        try {
+          const fullData = await fetchPortalData("full");
+          if (requestId !== loadRequestRef.current) return;
+          setData(fullData);
+          setFullDataLoaded(true);
+        } catch (detailError) {
+          if (requestId === loadRequestRef.current) {
+            setNotice("Vista rapida cargada. El detalle completo se cargara al actualizar.");
+          }
+        } finally {
+          if (requestId === loadRequestRef.current) setBackgroundLoading(false);
+        }
+      }
     } catch (err) {
       setError(err.message);
       if (silentRefresh) setNotice("");
     } finally {
-      if (!silentRefresh) setLoading(false);
+      if (requestId === loadRequestRef.current) {
+        if (!silentRefresh) setLoading(false);
+        if (silentRefresh) setBackgroundLoading(false);
+      }
     }
   }
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    if (!data?.isCompact) {
+      fullDataModuleRequestRef.current = "";
+      return;
+    }
+    if (activeModule !== "dashboard" && !backgroundLoading && fullDataModuleRequestRef.current !== activeModule) {
+      fullDataModuleRequestRef.current = activeModule;
+      loadData({ forceFull: true });
+    }
+  }, [activeModule, data?.isCompact, backgroundLoading]);
 
   async function save(type, payload) {
     setNotice("");
@@ -3561,7 +4314,10 @@ export default function ClientPortal() {
         inventoryMovement: "Movimiento registrado",
         revertImport: "Cargue reversado"
       };
+      loadRequestRef.current += 1;
       setNotice("Informacion guardada correctamente.");
+      setFullDataLoaded(true);
+      setBackgroundLoading(false);
       if (!silentSuccess) {
         setOperationSuccess({
           title: labels[type] || "Operacion completada",
@@ -3584,7 +4340,7 @@ export default function ClientPortal() {
     setData(null);
   }
 
-  function exportData(type) {
+  function exportData(type, context = {}) {
     const labels = {
       clientes: "Clientes",
       facturas: "Facturas",
@@ -3597,12 +4353,12 @@ export default function ClientPortal() {
       movimientos: "Movimientos",
       ordenes: "Ordenes"
     };
-    setPendingExport({ type, label: labels[type] || "Reporte" });
+    setPendingExport({ type, label: labels[type] || "Reporte", context });
   }
 
   function confirmExport() {
     if (!pendingExport) return;
-    downloadExcelWorkbook(`${pendingExport.type}-${new Date().toISOString().slice(0, 10)}.xls`, buildWorkbookForExport(data, pendingExport.type));
+    downloadExcelWorkbook(`${pendingExport.type}-${new Date().toISOString().slice(0, 10)}.xls`, buildWorkbookForExport(data, pendingExport.type, pendingExport.context || {}));
     setPendingExport(null);
     setOperationSuccess({
       title: "Reporte descargado",
@@ -3628,6 +4384,9 @@ export default function ClientPortal() {
       />
     );
   }
+
+  const moduleNeedsFullData = Boolean(data?.isCompact && activeModule !== "dashboard");
+  const syncingDetails = Boolean(backgroundLoading || (data?.isCompact && !fullDataLoaded));
 
   return (
     <main style={{ minHeight: "100vh", background: "radial-gradient(circle at top left, rgba(37,99,235,.12), transparent 28%), linear-gradient(180deg,#EFF6FF,#F8FBFF)", padding: "clamp(10px,1.2vw,18px)" }}>
@@ -3661,6 +4420,26 @@ export default function ClientPortal() {
         .client-portal-modal-body{padding:24px 28px 28px}
         .client-record-cards{display:none}
         .client-action-group{display:flex;gap:8px;flex-wrap:wrap}
+        .client-action-group button{
+          min-height:34px;
+          padding:7px 10px!important;
+          border-radius:11px!important;
+          font-size:12px!important;
+        }
+        .client-record-row td:first-child{
+          border-left:1px solid rgba(37,99,235,.10);
+          border-radius:13px 0 0 13px;
+        }
+        .client-record-row td:last-child{
+          border-right:1px solid rgba(37,99,235,.10);
+          border-radius:0 13px 13px 0;
+        }
+        .client-record-row.selected td:first-child{
+          border-left-color:rgba(37,99,235,.34);
+        }
+        .client-record-row.selected td:last-child{
+          border-right-color:rgba(37,99,235,.34);
+        }
         .client-customer-picker{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.25fr);gap:14px}
         .client-customer-picker-results{
           max-height:68vh;
@@ -3896,6 +4675,48 @@ export default function ClientPortal() {
           display:block;
           margin-top:8px;
         }
+        .client-stat-trend{
+          display:flex;
+          align-items:center;
+          gap:7px;
+          margin-top:8px;
+          min-height:24px;
+          font-family:${F};
+        }
+        .client-stat-trend span{
+          display:inline-flex;
+          align-items:center;
+          padding:4px 8px;
+          border-radius:999px;
+          background:#F8FBFF;
+          border:1px solid rgba(37,99,235,.10);
+          font-size:12px;
+          font-weight:950;
+          line-height:1;
+        }
+        .client-stat-trend small{
+          color:#64748B;
+          font-size:11px;
+          font-weight:800;
+          line-height:1.2;
+        }
+        .client-stat-bars{
+          height:36px;
+          display:flex;
+          align-items:flex-end;
+          gap:5px;
+          margin-top:9px;
+          padding:7px 7px 5px;
+          border-radius:13px;
+          background:#F8FBFF;
+          border:1px solid rgba(37,99,235,.08);
+        }
+        .client-stat-bars span{
+          flex:1;
+          min-width:0;
+          border-radius:999px 999px 4px 4px;
+          opacity:.82;
+        }
         @media(max-width:980px){
           .client-portal-stats,.client-portal-form-grid,.client-portal-line-grid,.client-portal-totals,.client-period-controls,.client-customer-picker{grid-template-columns:1fr!important}
           .client-portal-row{grid-template-columns:1fr!important}
@@ -3959,6 +4780,12 @@ export default function ClientPortal() {
           </div>
         ) : null}
         {error ? <div style={{ padding: 13, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 900 }}>{error}</div> : null}
+        {syncingDetails ? (
+          <div style={{ padding: "11px 13px", borderRadius: 16, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, fontWeight: 900, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <span>Vista rapida activa. Estamos cargando el detalle completo del portal en segundo plano.</span>
+            <span style={{ color: "#64748B" }}>Puedes revisar el dashboard mientras termina.</span>
+          </div>
+        ) : null}
 
         <div className="client-portal-mobile-module">
           <Field label="Ir a modulo">
@@ -3975,17 +4802,32 @@ export default function ClientPortal() {
         <div className="client-portal-layout">
           <ModuleNavigation activeModule={activeModule} onChange={setActiveModule} data={data} />
           <section className="client-portal-workspace">
-            {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
-            {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} onSave={save} /> : null}
-            {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
-            {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
-            {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
+            {moduleNeedsFullData ? (
+              <section style={{ ...card, display: "grid", gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 16, display: "grid", placeItems: "center", background: "#EEF4FF", color: "#1D4ED8" }}>
+                  <Icon name="portfolio" size={22} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>CARGANDO DETALLE</div>
+                  <h2 style={{ margin: "4px 0 6px", fontFamily: F, color: "#0B1D3A", fontSize: 24 }}>Preparando modulo completo</h2>
+                  <p style={{ margin: 0, fontFamily: F, color: "#52647F", lineHeight: 1.65 }}>El dashboard ya esta disponible. Este modulo necesita facturas, pagos y movimientos completos; lo estamos trayendo sin recargar toda la pagina.</p>
+                </div>
+              </section>
+            ) : (
+              <>
+                {activeModule === "dashboard" ? <Dashboard data={data} setModule={setActiveModule} /> : null}
+                {activeModule === "clientes" ? <Customers data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "facturas" ? <Invoices data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "abonos" ? <Payments data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "cartera" ? <Portfolio data={data} onExport={exportData} onSave={save} /> : null}
+                {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
+                {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
+                {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
+              </>
+            )}
           </section>
         </div>
         <ContaraeSignature />
@@ -4004,6 +4846,7 @@ export default function ClientPortal() {
           body="Vas a generar un archivo de Excel con informacion del portal. Confirma la descarga para evitar reportes accidentales o con filtros equivocados."
           details={[
             { label: "Reporte", value: pendingExport?.label || "" },
+            { label: "Alcance", value: pendingExport?.context?.customerName ? `Cliente: ${pendingExport.context.customerName}` : pendingExport?.context?.filters ? "Filtros actuales" : "Base completa" },
             { label: "Fecha", value: new Date().toLocaleDateString("es-CO") }
           ]}
           onCancel={() => setPendingExport(null)}

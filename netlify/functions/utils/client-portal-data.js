@@ -12,15 +12,15 @@ const IMPORT_TEMPLATES = {
   },
   facturas_historicas: {
     label: "Facturas historicas",
-    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "valor_total", "notas"]
+    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "orden_compra", "consecutivo_interno", "condicion_pago", "valor_total", "notas"]
   },
   facturas_detalladas: {
     label: "Facturas detalladas",
-    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "notas"]
+    headers: ["referencia_origen", "id_cliente", "nombre_cliente", "fecha", "fecha_vencimiento", "orden_compra", "consecutivo_interno", "condicion_pago", "sku", "concepto", "cantidad", "precio_unitario", "descuento", "aplica_iva", "tarifa_iva", "notas"]
   },
   abonos: {
     label: "Abonos",
-    headers: ["id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "valor_neto", "medio_pago", "referencia", "notas"]
+    headers: ["id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "nota_devolucion", "valor_neto", "medio_pago", "referencia", "notas"]
   },
   inventario: {
     label: "Inventario maestro",
@@ -308,6 +308,55 @@ function calculateInvoiceTotals(lines = [], totalOverride = 0) {
   }
 
   return lineTotals;
+}
+
+function calculateTotalizedInvoiceTotals(summaryBreakdown = {}, totalOverride = 0) {
+  const subtotalNoTax = parseCurrency(summaryBreakdown.subtotalNoTax);
+  const subtotalExempt = parseCurrency(summaryBreakdown.subtotalExempt);
+  const subtotalTax5 = parseCurrency(summaryBreakdown.subtotalTax5);
+  const subtotalTax19 = parseCurrency(summaryBreakdown.subtotalTax19);
+  const advanceCredit = parseCurrency(summaryBreakdown.advanceCredit);
+  const subtotal = subtotalNoTax + subtotalExempt + subtotalTax5 + subtotalTax19;
+  const iva5 = Math.round(subtotalTax5 * 0.05);
+  const iva19 = Math.round(subtotalTax19 * 0.19);
+  const tax = iva5 + iva19;
+  const total = Math.max(subtotal + tax - advanceCredit, 0);
+
+  if (subtotal <= 0 && totalOverride > 0) {
+    return {
+      subtotal: totalOverride,
+      discount: 0,
+      tax: 0,
+      total: totalOverride,
+      summaryBreakdown: {
+        subtotalNoTax: totalOverride,
+        subtotalExempt: 0,
+        subtotalTax5: 0,
+        subtotalTax19: 0,
+        iva5: 0,
+        iva19: 0,
+        advanceCredit: 0,
+        advanceCreditNote: ""
+      }
+    };
+  }
+
+  return {
+    subtotal,
+    discount: advanceCredit,
+    tax,
+    total,
+    summaryBreakdown: {
+      subtotalNoTax,
+      subtotalExempt,
+      subtotalTax5,
+      subtotalTax19,
+      iva5,
+      iva19,
+      advanceCredit,
+      advanceCreditNote: cleanText(summaryBreakdown.advanceCreditNote)
+    }
+  };
 }
 
 function movementEffect(type = "", quantity = 0) {
@@ -1026,6 +1075,7 @@ function buildDashboard(data = {}, balances = null) {
     inventoryCount: data.inventory.length,
     inventoryMovementsCount: data.inventoryMovements.length,
     ordersCount: data.orders.length,
+    importsCount: data.imports.length,
     totalBilled,
     totalPaid,
     pending,
@@ -1064,6 +1114,32 @@ function withComputedFields(data = {}) {
     templates: IMPORT_TEMPLATES,
     customerSummary: balances,
     dashboard: buildDashboard(normalized, balances)
+  };
+}
+
+export function compactCompanyData(data = {}) {
+  const dashboard = data.dashboard || {};
+  return {
+    companyId: data.companyId || "",
+    company: data.company || {},
+    currency: data.currency || DEFAULT_CURRENCY,
+    customers: [],
+    invoices: [],
+    payments: [],
+    inventory: [],
+    inventoryMovements: [],
+    orders: [],
+    imports: [],
+    auditTrail: [],
+    nextCustomerId: data.nextCustomerId || "",
+    nextInvoiceId: data.nextInvoiceId || "",
+    nextPaymentId: data.nextPaymentId || "",
+    nextOrderId: data.nextOrderId || "",
+    nextMovementId: data.nextMovementId || "",
+    templates: data.templates || IMPORT_TEMPLATES,
+    customerSummary: Array.isArray(data.customerSummary) ? data.customerSummary : [],
+    dashboard,
+    isCompact: true
   };
 }
 
@@ -1137,8 +1213,10 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     if (!customer) throw new Error("Selecciona un cliente valido para la factura.");
     const lines = (Array.isArray(payload.lines) ? payload.lines : []).map((line) => normalizeLine(line, data.inventory));
     const totalOverride = parseCurrency(payload.total);
-    const totals = calculateInvoiceTotals(lines, totalOverride);
+    const summaryTotals = !lines.length ? calculateTotalizedInvoiceTotals(payload.summaryBreakdown || {}, totalOverride) : null;
+    const totals = lines.length ? calculateInvoiceTotals(lines, totalOverride) : summaryTotals;
     const nextStatus = cleanText(payload.status) || "emitida";
+    const paymentCondition = cleanText(payload.paymentCondition) || "credito";
     if (existingIndex >= 0 && (existing.lines || []).length && existing.status !== "anulada") {
       reverseInventorySale(data, existing.lines, actor, id, `Reversion automatica por actualizacion o anulacion de factura ${id}.`);
     }
@@ -1153,8 +1231,12 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       status: nextStatus,
       source: lines.length ? "manual_detallada" : "manual_resumida",
       notes: cleanText(payload.notes),
+      orderNumber: cleanText(payload.orderNumber),
+      internalConsecutive: cleanText(payload.internalConsecutive),
+      paymentCondition,
       externalReference: cleanText(payload.externalReference || existing.externalReference),
       lines,
+      summaryBreakdown: lines.length ? null : summaryTotals.summaryBreakdown,
       subtotal: totals.subtotal,
       discountTotal: totals.discount,
       taxTotal: totals.tax,
@@ -1170,6 +1252,40 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.invoices = existingIndex >= 0
       ? data.invoices.map((item, index) => index === existingIndex ? invoice : item)
       : [...data.invoices, invoice];
+    if (existingIndex < 0 && Array.isArray(payload.paymentSplits) && payload.paymentSplits.length) {
+      payload.paymentSplits.forEach((split) => {
+        const amount = parseCurrency(split.amount);
+        if (amount <= 0) return;
+        const paymentId = nextPaymentId(data);
+        data.payments = [
+          ...data.payments,
+          {
+            id: paymentId,
+            customerId: customer.id,
+            customerNameSnapshot: customer.name,
+            invoiceId: id,
+            date: normalizeDate(split.date) || invoice.date,
+            grossAmount: amount,
+            retentions: { retefuente: 0, reteica: 0, reteiva: 0, other: 0 },
+            retentionTotal: 0,
+            discounts: { amount: 0, concept: "" },
+            returnCredit: { amount: 0, note: "" },
+            netReceived: amount,
+            totalApplied: amount,
+            method: cleanText(split.method) || "No especificado",
+            reference: cleanText(split.reference),
+            notes: `Pago automatico registrado con la factura ${id}.`,
+            status: "aplicado",
+            source: paymentCondition === "contado" ? "factura_contado" : "factura_abono_parcial",
+            createdAt: now,
+            createdBy: actor,
+            updatedAt: now,
+            updatedBy: actor,
+            auditTrail: [createAudit("payment_created_from_invoice", actor, { invoiceId: id })]
+          }
+        ];
+      });
+    }
   } else if (type === "order") {
     const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "ORD") : nextOrderId(data);
     const existingIndex = data.orders.findIndex((order) => order.id === id);
@@ -1272,9 +1388,9 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       other: parseCurrency(payload.otherRetentions)
     };
     const retentionTotal = retentions.retefuente + retentions.reteica + retentions.reteiva + retentions.other;
-    const netReceived = payload.netReceived !== undefined && String(payload.netReceived).trim()
-      ? parseCurrency(payload.netReceived)
-      : Math.max(grossAmount - retentionTotal, 0);
+    const discountAmount = parseCurrency(payload.discountAmount);
+    const returnCreditAmount = parseCurrency(payload.returnCreditAmount);
+    const netReceived = Math.max(grossAmount - retentionTotal - discountAmount - returnCreditAmount, 0);
     const payment = {
       ...existing,
       id,
@@ -1285,6 +1401,14 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       grossAmount,
       retentions,
       retentionTotal,
+      discounts: {
+        amount: discountAmount,
+        concept: cleanText(payload.discountConcept)
+      },
+      returnCredit: {
+        amount: returnCreditAmount,
+        note: cleanText(payload.returnCreditNote)
+      },
       netReceived,
       totalApplied: grossAmount,
       method: cleanText(payload.method) || "No especificado",
@@ -1452,7 +1576,10 @@ export function validateImportRows(data, module, rows = [], options = {}) {
           normalizeCustomerId(row.id_cliente),
           cleanText(row.nombre_cliente),
           normalizeDate(row.fecha),
-          normalizeDate(row.fecha_vencimiento)
+          normalizeDate(row.fecha_vencimiento),
+          cleanText(row.orden_compra),
+          cleanText(row.consecutivo_interno),
+          cleanText(row.condicion_pago)
         ].join("|");
         const previous = detailedDocuments.get(`${normalizedModule}:${documentKey}`);
         if (previous && previous !== signature) {
@@ -1620,8 +1747,21 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         status: "emitida",
         source: "cargue_inicial_resumido",
         notes: cleanText(row.notas),
+        orderNumber: cleanText(row.orden_compra),
+        internalConsecutive: cleanText(row.consecutivo_interno),
+        paymentCondition: cleanText(row.condicion_pago) || "credito",
         externalReference: cleanText(row.referencia_origen || row.id_factura),
         lines: [],
+        summaryBreakdown: {
+          subtotalNoTax: total,
+          subtotalExempt: 0,
+          subtotalTax5: 0,
+          subtotalTax19: 0,
+          iva5: 0,
+          iva19: 0,
+          advanceCredit: 0,
+          advanceCreditNote: ""
+        },
         subtotal: total,
         discountTotal: 0,
         taxTotal: 0,
@@ -1672,6 +1812,9 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         status: module === "ordenes_detalladas" ? "borrador" : "emitida",
         source: "cargue_detallado",
         notes: cleanText(first.notas),
+        orderNumber: cleanText(first.orden_compra),
+        internalConsecutive: cleanText(first.consecutivo_interno),
+        paymentCondition: cleanText(first.condicion_pago) || "credito",
         externalReference: id,
         showDiscountsOnPdf: normalizeBoolean(first.mostrar_descuento_pdf),
         lines,
@@ -1697,6 +1840,8 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
     rows.forEach((row) => {
       const customer = ensureHistoricalCustomer(data, row.id_cliente, row.nombre_cliente, actor, warnings);
       const grossAmount = parseCurrency(row.valor_bruto);
+      const discountAmount = parseCurrency(row.descuento);
+      const returnCreditAmount = parseCurrency(row.saldo_favor_devolucion);
       const retentions = {
         retefuente: parseCurrency(row.retefuente),
         reteica: parseCurrency(row.reteica),
@@ -1704,7 +1849,7 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         other: parseCurrency(row.otras_retenciones)
       };
       const retentionTotal = retentions.retefuente + retentions.reteica + retentions.reteiva + retentions.other;
-      const netReceived = parseCurrency(row.valor_neto) || Math.max(grossAmount - retentionTotal, 0);
+      const netReceived = parseCurrency(row.valor_neto) || Math.max(grossAmount - retentionTotal - discountAmount - returnCreditAmount, 0);
       const paymentId = nextPaymentId(data);
       data.payments.push({
         id: paymentId,
@@ -1715,6 +1860,14 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         grossAmount,
         retentions,
         retentionTotal,
+        discounts: {
+          amount: discountAmount,
+          concept: cleanText(row.concepto_descuento)
+        },
+        returnCredit: {
+          amount: returnCreditAmount,
+          note: cleanText(row.nota_devolucion)
+        },
         netReceived,
         totalApplied: grossAmount,
         method: cleanText(row.medio_pago) || "No especificado",

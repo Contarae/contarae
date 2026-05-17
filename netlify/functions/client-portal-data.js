@@ -1,5 +1,5 @@
 import { buildClientPortalHeaders, getClientPortalSessionFromRequest } from "./utils/client-portal-auth.js";
-import { loadCompanyData } from "./utils/client-portal-data.js";
+import { compactCompanyData, loadCompanyData } from "./utils/client-portal-data.js";
 
 export default async (req) => {
   const headers = buildClientPortalHeaders();
@@ -18,8 +18,11 @@ export default async (req) => {
   }
 
   try {
+    const url = new URL(req.url);
+    const scope = url.searchParams.get("scope") || "full";
     const data = await loadCompanyData(session.companyId, session.companyName);
-    return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers });
+    const responseData = scope === "summary" ? compactCompanyData(data) : data;
+    return new Response(JSON.stringify({ ok: true, data: responseData }), { status: 200, headers });
   } catch (error) {
     return new Response(
       JSON.stringify({ error: "No fue posible cargar la informacion del portal", detail: error.message }),
