@@ -22,9 +22,9 @@ export default async (req) => {
     const type = String(body?.type || "").trim();
     const payload = body?.payload || {};
     const actor = session.impersonatedBy ? `soporte:${session.impersonatedBy}` : session.username;
-    const data = await upsertPortalEntity(session.companyId, type, payload, actor);
+    const result = await upsertPortalEntity(session.companyId, type, payload, actor);
 
-    return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers });
+    return new Response(JSON.stringify({ ok: true, ...result }), { status: 200, headers });
   } catch (error) {
     return new Response(
       JSON.stringify({

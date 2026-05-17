@@ -502,6 +502,11 @@ function getPortalStore() {
 }
 
 export async function loadCompanyData(companyId, companyName = "") {
+  const rawData = await loadCompanyDataRaw(companyId, companyName);
+  return withComputedFields(rawData);
+}
+
+export async function loadCompanyDataRaw(companyId, companyName = "") {
   const normalizedCompanyId = cleanText(companyId);
   if (!normalizedCompanyId) throw new Error("No se pudo identificar la empresa del portal.");
   const store = getPortalStore();
@@ -509,12 +514,17 @@ export async function loadCompanyData(companyId, companyName = "") {
   if (!record) {
     const initial = defaultData(normalizedCompanyId, companyName);
     await store.setJSON(`${COMPANY_PREFIX}${normalizedCompanyId}`, initial);
-    return withComputedFields(initial);
+    return normalizeData(initial, normalizedCompanyId, companyName);
   }
-  return withComputedFields(normalizeData(record, normalizedCompanyId, companyName));
+  return normalizeData(record, normalizedCompanyId, companyName);
 }
 
 export async function saveCompanyData(companyId, data, actor = "portal") {
+  const nextData = await saveCompanyDataRaw(companyId, data, actor);
+  return withComputedFields(nextData);
+}
+
+export async function saveCompanyDataRaw(companyId, data, actor = "portal") {
   const normalizedCompanyId = cleanText(companyId);
   if (!normalizedCompanyId) throw new Error("No se pudo identificar la empresa del portal.");
   const {
@@ -537,7 +547,7 @@ export async function saveCompanyData(companyId, data, actor = "portal") {
     ]
   }, normalizedCompanyId, persistableData?.company?.name);
   await getPortalStore().setJSON(`${COMPANY_PREFIX}${normalizedCompanyId}`, nextData);
-  return withComputedFields(nextData);
+  return nextData;
 }
 
 function findCustomer(data, customerId) {
@@ -808,32 +818,99 @@ function buildReceivableLedger(data = {}, customerId = "", cutoffValue = new Dat
 
 function customerBalances(data = {}, grouped = null) {
   const groups = grouped || groupPortfolioRecords(data);
+  return (data.customers || []).map((customer) => buildCustomerBalanceRecord(data, customer, groups));
+}
+
+function buildCustomerBalanceRecord(data = {}, customer = {}, grouped = null) {
+  const ledger = buildReceivableLedger(data, customer.id, new Date(), grouped);
+  return {
+    ...customer,
+    invoicesCount: ledger.invoices.length,
+    paymentsCount: ledger.payments.length,
+    receivableInvoices: ledger.invoices,
+    aging: ledger.aging,
+    agingLabels: ledger.agingLabels,
+    billed: ledger.billed,
+    paid: ledger.paid,
+    balance: ledger.balance,
+    overdue: ledger.overdue,
+    upcoming: ledger.upcoming,
+    unappliedCredit: ledger.unappliedCredit,
+    billedLabel: ledger.billedLabel,
+    paidLabel: ledger.paidLabel,
+    balanceLabel: ledger.balanceLabel,
+    overdueLabel: ledger.overdueLabel,
+    upcomingLabel: ledger.upcomingLabel,
+    unappliedCreditLabel: ledger.unappliedCreditLabel,
+    overdueInvoicesCount: ledger.overdueInvoicesCount,
+    dueSoonInvoicesCount: ledger.dueSoonInvoicesCount,
+    missingFields: ["documentNumber", "phone", "city", "department"].filter((field) => !cleanText(customer[field]))
+  };
+}
+
+function fastCustomerBalances(data = {}) {
+  const invoiceTotals = new Map();
+  const invoiceCounts = new Map();
+  const paymentTotals = new Map();
+  const paymentCounts = new Map();
+
+  (data.invoices || []).forEach((invoice) => {
+    if (invoice.status === "anulada") return;
+    const id = normalizeCustomerId(invoice.customerId);
+    if (!id) return;
+    invoiceTotals.set(id, (invoiceTotals.get(id) || 0) + (Number(invoice.total || 0) || 0));
+    invoiceCounts.set(id, (invoiceCounts.get(id) || 0) + 1);
+  });
+
+  (data.payments || []).forEach((payment) => {
+    if (payment.status === "anulado") return;
+    const id = normalizeCustomerId(payment.customerId);
+    if (!id) return;
+    paymentTotals.set(id, (paymentTotals.get(id) || 0) + paymentAmount(payment));
+    paymentCounts.set(id, (paymentCounts.get(id) || 0) + 1);
+  });
+
   return (data.customers || []).map((customer) => {
-    const ledger = buildReceivableLedger(data, customer.id, new Date(), groups);
+    const id = normalizeCustomerId(customer.id);
+    const billed = Math.round(invoiceTotals.get(id) || 0);
+    const paid = Math.round(paymentTotals.get(id) || 0);
+    const balance = Math.max(billed - paid, 0);
+    const unappliedCredit = Math.max(paid - billed, 0);
+    const aging = emptyAgingBuckets();
     return {
       ...customer,
-      invoicesCount: ledger.invoices.length,
-      paymentsCount: ledger.payments.length,
-      receivableInvoices: ledger.invoices,
-      aging: ledger.aging,
-      agingLabels: ledger.agingLabels,
-      billed: ledger.billed,
-      paid: ledger.paid,
-      balance: ledger.balance,
-      overdue: ledger.overdue,
-      upcoming: ledger.upcoming,
-      unappliedCredit: ledger.unappliedCredit,
-      billedLabel: ledger.billedLabel,
-      paidLabel: ledger.paidLabel,
-      balanceLabel: ledger.balanceLabel,
-      overdueLabel: ledger.overdueLabel,
-      upcomingLabel: ledger.upcomingLabel,
-      unappliedCreditLabel: ledger.unappliedCreditLabel,
-      overdueInvoicesCount: ledger.overdueInvoicesCount,
-      dueSoonInvoicesCount: ledger.dueSoonInvoicesCount,
+      invoicesCount: invoiceCounts.get(id) || 0,
+      paymentsCount: paymentCounts.get(id) || 0,
+      receivableInvoices: [],
+      aging,
+      agingLabels: Object.fromEntries(Object.entries(aging).map(([key, value]) => [key, formatMoney(value)])),
+      billed,
+      paid,
+      balance,
+      overdue: 0,
+      upcoming: 0,
+      unappliedCredit,
+      billedLabel: formatMoney(billed),
+      paidLabel: formatMoney(paid),
+      balanceLabel: formatMoney(balance),
+      overdueLabel: formatMoney(0),
+      upcomingLabel: formatMoney(0),
+      unappliedCreditLabel: formatMoney(unappliedCredit),
+      overdueInvoicesCount: 0,
+      dueSoonInvoicesCount: 0,
       missingFields: ["documentNumber", "phone", "city", "department"].filter((field) => !cleanText(customer[field]))
     };
   });
+}
+
+function customerBalancesForIds(data = {}, customerIds = []) {
+  const normalized = normalizeData(data, data.companyId, data.company?.name);
+  const groups = groupPortfolioRecords(normalized);
+  const uniqueIds = [...new Set(customerIds.map(normalizeCustomerId).filter(Boolean))];
+  return uniqueIds
+    .map((id) => normalized.customers.find((customer) => customer.id === id))
+    .filter(Boolean)
+    .map((customer) => buildCustomerBalanceRecord(normalized, customer, groups));
 }
 
 function customerFinancialSnapshot(data, customerId) {
@@ -1118,11 +1195,15 @@ function withComputedFields(data = {}) {
 }
 
 export function compactCompanyData(data = {}) {
-  const dashboard = data.dashboard || {};
+  const normalized = normalizeData(data, data.companyId, data.company?.name);
+  const balances = Array.isArray(data.customerSummary) && data.customerSummary.length
+    ? data.customerSummary
+    : fastCustomerBalances(normalized);
+  const dashboard = buildDashboard(normalized, balances);
   return {
-    companyId: data.companyId || "",
-    company: data.company || {},
-    currency: data.currency || DEFAULT_CURRENCY,
+    companyId: normalized.companyId || "",
+    company: normalized.company || {},
+    currency: normalized.currency || DEFAULT_CURRENCY,
     customers: [],
     invoices: [],
     payments: [],
@@ -1131,21 +1212,79 @@ export function compactCompanyData(data = {}) {
     orders: [],
     imports: [],
     auditTrail: [],
-    nextCustomerId: data.nextCustomerId || "",
-    nextInvoiceId: data.nextInvoiceId || "",
-    nextPaymentId: data.nextPaymentId || "",
-    nextOrderId: data.nextOrderId || "",
-    nextMovementId: data.nextMovementId || "",
+    nextCustomerId: data.nextCustomerId || nextCustomerId(normalized.customers),
+    nextInvoiceId: data.nextInvoiceId || nextInvoiceId(normalized),
+    nextPaymentId: data.nextPaymentId || nextPaymentId(normalized),
+    nextOrderId: data.nextOrderId || nextOrderId(normalized),
+    nextMovementId: data.nextMovementId || nextMovementId(normalized),
     templates: data.templates || IMPORT_TEMPLATES,
-    customerSummary: Array.isArray(data.customerSummary) ? data.customerSummary : [],
+    customerSummary: balances,
     dashboard,
     isCompact: true
   };
 }
 
+function createChangeTracker() {
+  const sets = {
+    customers: new Set(),
+    invoices: new Set(),
+    payments: new Set(),
+    inventory: new Set(),
+    inventoryMovements: new Set(),
+    orders: new Set(),
+    imports: new Set(),
+    affectedCustomerIds: new Set()
+  };
+  return {
+    sets,
+    add(collection, id) {
+      const value = cleanText(id);
+      if (value && sets[collection]) sets[collection].add(value);
+    },
+    customer(id) {
+      const value = normalizeCustomerId(id);
+      if (value) sets.affectedCustomerIds.add(value);
+    }
+  };
+}
+
+function recordsByIds(records = [], ids = new Set(), field = "id") {
+  if (!ids?.size) return [];
+  return records.filter((record) => ids.has(cleanText(record[field])));
+}
+
+function buildPortalPatch(data = {}, tracker = createChangeTracker()) {
+  const normalized = normalizeData(data, data.companyId, data.company?.name);
+  const changed = tracker.sets || tracker;
+  return {
+    companyId: normalized.companyId,
+    company: normalized.company,
+    currency: normalized.currency,
+    updatedAt: normalized.updatedAt,
+    nextCustomerId: nextCustomerId(normalized.customers),
+    nextInvoiceId: nextInvoiceId(normalized),
+    nextPaymentId: nextPaymentId(normalized),
+    nextOrderId: nextOrderId(normalized),
+    nextMovementId: nextMovementId(normalized),
+    templates: IMPORT_TEMPLATES,
+    records: {
+      customers: recordsByIds(normalized.customers, changed.customers),
+      invoices: recordsByIds(normalized.invoices, changed.invoices),
+      payments: recordsByIds(normalized.payments, changed.payments),
+      inventory: recordsByIds(normalized.inventory, changed.inventory, "sku"),
+      inventoryMovements: recordsByIds(normalized.inventoryMovements, changed.inventoryMovements),
+      orders: recordsByIds(normalized.orders, changed.orders),
+      imports: recordsByIds(normalized.imports, changed.imports)
+    },
+    customerSummary: customerBalancesForIds(normalized, [...(changed.affectedCustomerIds || [])])
+  };
+}
+
 export async function upsertPortalEntity(companyId, type, payload = {}, actor = "portal") {
-  const data = await loadCompanyData(companyId);
+  const data = await loadCompanyDataRaw(companyId);
   const now = new Date().toISOString();
+  const tracker = createChangeTracker();
+  let requiresFullRefresh = false;
 
   if (type === "company") {
     data.company = {
@@ -1192,6 +1331,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.customers = existingIndex >= 0
       ? data.customers.map((item, index) => index === existingIndex ? customer : item)
       : [...data.customers, customer];
+    tracker.add("customers", customer.id);
+    tracker.customer(customer.id);
   } else if (type === "mergeCustomers") {
     const incoming = payload.incomingCustomer || {};
     const documentKey = normalizeDocument(payload.documentNumber || incoming.documentNumber);
@@ -1205,10 +1346,12 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       id: primaryId,
       documentNumber: documentKey || incoming.documentNumber
     }, actor);
+    requiresFullRefresh = true;
   } else if (type === "invoice") {
     const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "FAC") : nextInvoiceId(data);
     const existingIndex = data.invoices.findIndex((invoice) => invoice.id === id);
     const existing = existingIndex >= 0 ? data.invoices[existingIndex] : {};
+    const movementStartIndex = data.inventoryMovements.length;
     const customer = findCustomer(data, payload.customerId);
     if (!customer) throw new Error("Selecciona un cliente valido para la factura.");
     const lines = (Array.isArray(payload.lines) ? payload.lines : []).map((line) => normalizeLine(line, data.inventory));
@@ -1252,11 +1395,16 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.invoices = existingIndex >= 0
       ? data.invoices.map((item, index) => index === existingIndex ? invoice : item)
       : [...data.invoices, invoice];
+    tracker.add("invoices", invoice.id);
+    tracker.customer(existing.customerId);
+    tracker.customer(customer.id);
+    [...(existing.lines || []), ...lines].forEach((line) => tracker.add("inventory", line.sku));
     if (existingIndex < 0 && Array.isArray(payload.paymentSplits) && payload.paymentSplits.length) {
       payload.paymentSplits.forEach((split) => {
         const amount = parseCurrency(split.amount);
         if (amount <= 0) return;
         const paymentId = nextPaymentId(data);
+        tracker.add("payments", paymentId);
         data.payments = [
           ...data.payments,
           {
@@ -1286,6 +1434,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
         ];
       });
     }
+    data.inventoryMovements.slice(movementStartIndex).forEach((movement) => tracker.add("inventoryMovements", movement.id));
   } else if (type === "order") {
     const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "ORD") : nextOrderId(data);
     const existingIndex = data.orders.findIndex((order) => order.id === id);
@@ -1323,11 +1472,15 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.orders = existingIndex >= 0
       ? data.orders.map((item, index) => index === existingIndex ? order : item)
       : [...data.orders, order];
+    tracker.add("orders", order.id);
+    tracker.customer(existing.customerId);
+    tracker.customer(customer.id);
   } else if (type === "invoiceFromOrder") {
     const orderId = normalizeRecordId(payload.orderId, "ORD");
     const orderIndex = data.orders.findIndex((order) => order.id === orderId);
     if (orderIndex < 0) throw new Error("No se encontro la orden indicada.");
     const order = data.orders[orderIndex];
+    const movementStartIndex = data.inventoryMovements.length;
     if (order.status === "facturada" && order.convertedInvoiceId) {
       throw new Error(`La orden ya fue convertida en la factura ${order.convertedInvoiceId}.`);
     }
@@ -1374,6 +1527,11 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       updatedBy: actor,
       auditTrail: [...(order.auditTrail || []), createAudit("order_converted_to_invoice", actor, { invoiceId: id })]
     };
+    tracker.add("invoices", id);
+    tracker.add("orders", order.id);
+    tracker.customer(customer.id);
+    lines.forEach((line) => tracker.add("inventory", line.sku));
+    data.inventoryMovements.slice(movementStartIndex).forEach((movement) => tracker.add("inventoryMovements", movement.id));
   } else if (type === "payment") {
     const id = cleanText(payload.id) ? normalizeRecordId(payload.id, "ABO") : nextPaymentId(data);
     const existingIndex = data.payments.findIndex((payment) => payment.id === id);
@@ -1425,6 +1583,9 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.payments = existingIndex >= 0
       ? data.payments.map((item, index) => index === existingIndex ? payment : item)
       : [...data.payments, payment];
+    tracker.add("payments", payment.id);
+    tracker.customer(existing.customerId);
+    tracker.customer(customer.id);
   } else if (type === "inventory") {
     const sku = normalizeSku(payload.sku);
     if (!sku) throw new Error("Ingresa el SKU del producto.");
@@ -1450,6 +1611,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     data.inventory = existingIndex >= 0
       ? data.inventory.map((current, index) => index === existingIndex ? item : current)
       : [...data.inventory, item];
+    tracker.add("inventory", item.sku);
   } else if (type === "inventoryMovement") {
     const movementType = cleanText(payload.type || payload.tipo_movimiento).toLowerCase();
     if (!INVENTORY_MOVEMENT_TYPES.has(movementType)) throw new Error("Selecciona un tipo de movimiento valido.");
@@ -1457,7 +1619,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     if (!sku || !data.inventory.some((item) => item.sku === sku)) throw new Error("Selecciona un SKU existente.");
     const quantity = Math.abs(Number(payload.quantity || payload.cantidad || 0) || 0);
     if (quantity <= 0) throw new Error("Ingresa una cantidad valida para el movimiento.");
-    createInventoryMovement(data, {
+    const movement = createInventoryMovement(data, {
       id: cleanText(payload.id),
       date: payload.date,
       sku,
@@ -1468,13 +1630,22 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       sourceType: "manual",
       notes: payload.notes
     }, actor);
+    if (movement) {
+      tracker.add("inventoryMovements", movement.id);
+      tracker.add("inventory", movement.sku);
+    }
   } else if (type === "revertImport") {
     revertImportRows(data, payload.importId, actor);
+    requiresFullRefresh = true;
   } else {
     throw new Error(`Tipo de operacion no soportado: ${cleanText(type) || "sin tipo"}.`);
   }
 
-  return saveCompanyData(companyId, data, actor);
+  const saved = await saveCompanyDataRaw(companyId, data, actor);
+  if (requiresFullRefresh) {
+    return { data: withComputedFields(saved), fullRefresh: true };
+  }
+  return { patch: buildPortalPatch(saved, tracker) };
 }
 
 function addImportError(errors, row, field, value, message, fix = "") {
@@ -2099,14 +2270,14 @@ function revertImportRows(data, importId = "", actor = "portal") {
 }
 
 export async function validateOrCommitImport(companyId, module, rows = [], commit = false, actor = "portal", options = {}) {
-  const data = await loadCompanyData(companyId);
+  const data = await loadCompanyDataRaw(companyId);
   const validation = validateImportRows(data, module, rows, options);
-  if (!validation.ok) return { ...validation, committed: false, data: withComputedFields(data) };
-  if (!commit) return { ...validation, committed: false, data: withComputedFields(data) };
+  if (!validation.ok) return { ...validation, committed: false };
+  if (!commit) return { ...validation, committed: false };
 
   const warnings = [...validation.warnings];
   const nextData = commitRows(data, cleanText(module), rows, actor, warnings, options);
-  const saved = await saveCompanyData(companyId, nextData, actor);
+  const saved = await saveCompanyDataRaw(companyId, nextData, actor);
   return {
     ok: true,
     errors: [],
@@ -2116,6 +2287,6 @@ export async function validateOrCommitImport(companyId, module, rows = [], commi
       warnings: warnings.length
     },
     committed: true,
-    data: saved
+    data: compactCompanyData(saved)
   };
 }

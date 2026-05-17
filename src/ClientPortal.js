@@ -333,6 +333,118 @@ function customerBalanceView(customer = {}) {
   };
 }
 
+function emptyAging() {
+  return AGING_BUCKETS.reduce((totals, [key]) => ({ ...totals, [key]: 0 }), {});
+}
+
+function mergeRecordsByKey(current = [], incoming = [], key = "id") {
+  if (!incoming.length) return current || [];
+  const merged = new Map((current || []).map((item) => [clean(item?.[key]), item]));
+  incoming.forEach((item) => {
+    const recordKey = clean(item?.[key]);
+    if (recordKey) merged.set(recordKey, item);
+  });
+  return [...merged.values()];
+}
+
+function rebuildDashboardFromData(data = {}) {
+  const previous = data.dashboard || {};
+  const summaries = data.customerSummary || [];
+  const invoices = (data.invoices || []).filter((invoice) => invoice.status !== "anulada");
+  const payments = (data.payments || []).filter((payment) => payment.status !== "anulado");
+  const orders = (data.orders || []).filter((order) => order.status !== "anulada");
+  const pending = summaries.reduce((sum, customer) => sum + Math.max(0, Number(customer.balance || 0)), 0);
+  const credit = summaries.reduce((sum, customer) => sum + Math.max(0, Number(customer.unappliedCredit || 0), Number(customer.balance || 0) < 0 ? Math.abs(Number(customer.balance || 0)) : 0), 0);
+  const overdueInvoicesCount = summaries.reduce((sum, customer) => sum + Number(customer.overdueInvoicesCount || 0), 0);
+  const dueSoonInvoicesCount = summaries.reduce((sum, customer) => sum + Number(customer.dueSoonInvoicesCount || 0), 0);
+  const billed = summaries.length
+    ? summaries.reduce((sum, customer) => sum + Number(customer.billed || 0), 0)
+    : invoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const paid = summaries.length
+    ? summaries.reduce((sum, customer) => sum + Number(customer.paid || 0), 0)
+    : payments.reduce((sum, payment) => sum + Number(payment.totalApplied || payment.netReceived || payment.grossAmount || 0), 0);
+  const aging = summaries.reduce((totals, customer) => {
+    Object.entries(customer.aging || {}).forEach(([key, value]) => {
+      totals[key] = Number(totals[key] || 0) + Number(value || 0);
+    });
+    return totals;
+  }, emptyAging());
+  const topDebtors = [...summaries]
+    .filter((customer) => Number(customer.balance || 0) > 0)
+    .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0))
+    .slice(0, 20);
+  const creditsToReview = [...summaries]
+    .filter((customer) => Number(customer.unappliedCredit || 0) > 0 || Number(customer.balance || 0) < 0)
+    .sort((a, b) => {
+      const left = Number(a.unappliedCredit || 0) || Math.abs(Math.min(0, Number(a.balance || 0)));
+      const right = Number(b.unappliedCredit || 0) || Math.abs(Math.min(0, Number(b.balance || 0)));
+      return right - left;
+    });
+  const overdue = Number(aging.overdue0To30 || 0) + Number(aging.overdue31To60 || 0) + Number(aging.overdue61To90 || 0) + Number(aging.overdueOver90 || 0);
+  const upcoming = Number(aging.dueToday || 0) + Number(aging.upcoming7 || 0) + Number(aging.upcoming15 || 0) + Number(aging.upcoming30 || 0);
+
+  return {
+    ...previous,
+    customersCount: (data.customers || []).length || previous.customersCount || summaries.length,
+    invoicesCount: invoices.length || previous.invoicesCount || 0,
+    paymentsCount: payments.length || previous.paymentsCount || 0,
+    ordersCount: orders.length || previous.ordersCount || 0,
+    inventoryCount: (data.inventory || []).length || previous.inventoryCount || 0,
+    importsCount: (data.imports || []).length || previous.importsCount || 0,
+    totalBilled: billed,
+    totalBilledLabel: money(billed),
+    totalPaid: paid,
+    totalPaidLabel: money(paid),
+    pending,
+    pendingLabel: money(pending),
+    aging,
+    agingLabels: Object.fromEntries(Object.entries(aging).map(([key, value]) => [key, money(value)])),
+    overdue,
+    overdueLabel: money(overdue),
+    upcoming,
+    upcomingLabel: money(upcoming),
+    currentLabel: money(aging.current || 0),
+    dueTodayLabel: money(aging.dueToday || 0),
+    overdueInvoicesCount,
+    dueSoonInvoicesCount,
+    unappliedCredit: credit,
+    unappliedCreditLabel: money(credit),
+    outdatedCustomersCount: summaries.filter((customer) => (customer.missingFields || []).length).length,
+    negativeInventoryCount: (data.inventory || []).filter((item) => Number(item.stock || 0) < 0).length,
+    topDebtors,
+    creditsToReview
+  };
+}
+
+function applyPortalPatch(current = {}, patch = {}) {
+  if (!patch || typeof patch !== "object") return current;
+  const records = patch.records || {};
+  const next = {
+    ...current,
+    companyId: patch.companyId || current.companyId,
+    company: patch.company || current.company,
+    currency: patch.currency || current.currency,
+    updatedAt: patch.updatedAt || current.updatedAt,
+    nextCustomerId: patch.nextCustomerId || current.nextCustomerId,
+    nextInvoiceId: patch.nextInvoiceId || current.nextInvoiceId,
+    nextPaymentId: patch.nextPaymentId || current.nextPaymentId,
+    nextOrderId: patch.nextOrderId || current.nextOrderId,
+    nextMovementId: patch.nextMovementId || current.nextMovementId,
+    templates: patch.templates || current.templates,
+    customers: mergeRecordsByKey(current.customers || [], records.customers || []),
+    invoices: mergeRecordsByKey(current.invoices || [], records.invoices || []),
+    payments: mergeRecordsByKey(current.payments || [], records.payments || []),
+    inventory: mergeRecordsByKey(current.inventory || [], records.inventory || [], "sku"),
+    inventoryMovements: mergeRecordsByKey(current.inventoryMovements || [], records.inventoryMovements || []),
+    orders: mergeRecordsByKey(current.orders || [], records.orders || []),
+    imports: mergeRecordsByKey(current.imports || [], records.imports || []),
+    customerSummary: mergeRecordsByKey(current.customerSummary || [], patch.customerSummary || []),
+    isCompact: current.isCompact
+  };
+  next.dashboard = rebuildDashboardFromData(next);
+  return next;
+}
+
 function customerCollectionMessage(customer = {}) {
   return `Hola ${customer.name || "cliente"}, cordial saludo. Te contactamos para compartir el estado de cartera registrado a la fecha. Actualmente figura un saldo pendiente por valor de ${customer.balanceLabel || money(customer.balance)}. Agradecemos confirmar la fecha estimada de pago o enviarnos el soporte si ya fue cancelado.`;
 }
@@ -3365,10 +3477,21 @@ function Portfolio({ data, onExport, onSave }) {
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [copyNotice, setCopyNotice] = useState("");
   const rows = data.customerSummary || [];
+  const paymentsByCustomer = useMemo(() => {
+    const grouped = new Map();
+    (data.payments || []).forEach((payment) => {
+      if (payment.status === "anulado") return;
+      const key = clean(payment.customerId);
+      if (!key) return;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(payment);
+    });
+    return grouped;
+  }, [data.payments]);
   const selected = rows.find((customer) => customer.id === selectedId);
   const selectedView = selected ? customerBalanceView(selected) : null;
   const selectedInvoices = selected?.receivableInvoices || [];
-  const selectedPayments = (data.payments || []).filter((payment) => payment.customerId === selectedId && payment.status !== "anulado");
+  const selectedPayments = paymentsByCustomer.get(selectedId) || [];
   const reviewRows = [...rows]
     .filter((customer) => Number(customer.unappliedCredit || 0) > 0)
     .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0));
@@ -3387,7 +3510,7 @@ function Portfolio({ data, onExport, onSave }) {
     if (!matchesText) return false;
     if (!localPeriodActive) return true;
     const hasInvoice = (customer.receivableInvoices || []).some((invoice) => dateInRange(invoice.date, localRange) || dateInRange(invoice.dueDate, localRange));
-    const hasPayment = (data.payments || []).some((payment) => payment.customerId === customer.id && dateInRange(payment.date, localRange));
+    const hasPayment = (paymentsByCustomer.get(customer.id) || []).some((payment) => dateInRange(payment.date, localRange));
     return hasInvoice || hasPayment;
   });
   const filteredRows = searched ? getFilteredRows(filters) : [];
@@ -3397,7 +3520,7 @@ function Portfolio({ data, onExport, onSave }) {
   const activeCustomer = rows.find((customer) => customer.id === customerModalId);
   const activeView = activeCustomer ? customerBalanceView(activeCustomer) : null;
   const activeInvoices = activeCustomer?.receivableInvoices || [];
-  const activePayments = activeCustomer ? (data.payments || []).filter((payment) => payment.customerId === activeCustomer.id && payment.status !== "anulado") : [];
+  const activePayments = activeCustomer ? (paymentsByCustomer.get(activeCustomer.id) || []) : [];
 
   function handleSearch() {
     const matches = getFilteredRows(filters);
@@ -4672,22 +4795,6 @@ export default function ClientPortal() {
       setData(nextData);
       setFullDataLoaded(!nextData?.isCompact);
       if (silentRefresh) setNotice("Informacion actualizada.");
-      if (scope === "summary") {
-        setLoading(false);
-        setBackgroundLoading(true);
-        try {
-          const fullData = await fetchPortalData("full");
-          if (requestId !== loadRequestRef.current) return;
-          setData(fullData);
-          setFullDataLoaded(true);
-        } catch (detailError) {
-          if (requestId === loadRequestRef.current) {
-            setNotice("Vista rapida cargada. El detalle completo se cargara al actualizar.");
-          }
-        } finally {
-          if (requestId === loadRequestRef.current) setBackgroundLoading(false);
-        }
-      }
     } catch (err) {
       setError(err.message);
       if (silentRefresh) setNotice("");
@@ -4712,6 +4819,14 @@ export default function ClientPortal() {
     }
   }, [activeModule, data?.isCompact, backgroundLoading]);
 
+  function replacePortalData(nextData) {
+    loadRequestRef.current += 1;
+    setData(nextData);
+    setFullDataLoaded(!nextData?.isCompact);
+    setBackgroundLoading(false);
+    fullDataModuleRequestRef.current = "";
+  }
+
   async function save(type, payload) {
     setNotice("");
     setError("");
@@ -4731,7 +4846,12 @@ export default function ClientPortal() {
         saveError.duplicate = result.duplicate || null;
         throw saveError;
       }
-      setData(result.data);
+      if (result.data) {
+        setData(result.data);
+        setFullDataLoaded(!result.data?.isCompact);
+      } else if (result.patch) {
+        setData((current) => applyPortalPatch(current || {}, result.patch));
+      }
       const labels = {
         company: "Configuracion guardada",
         customer: "Cliente guardado",
@@ -4746,7 +4866,6 @@ export default function ClientPortal() {
       };
       loadRequestRef.current += 1;
       setNotice("Informacion guardada correctamente.");
-      setFullDataLoaded(true);
       setBackgroundLoading(false);
       if (!silentSuccess) {
         setOperationSuccess({
@@ -5402,7 +5521,7 @@ export default function ClientPortal() {
                 {activeModule === "inventario" ? <Inventory data={data} onSave={save} onExport={exportData} /> : null}
                 {activeModule === "movimientos" ? <InventoryMovements data={data} onSave={save} onExport={exportData} /> : null}
                 {activeModule === "ordenes" ? <Orders data={data} onSave={save} onExport={exportData} /> : null}
-                {activeModule === "cargues" ? <Imports data={data} onData={setData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
+                {activeModule === "cargues" ? <Imports data={data} onData={replacePortalData} onGoHistory={() => setActiveModule("cargues-historial")} /> : null}
                 {activeModule === "cargues-historial" ? <ImportHistory data={data} onSave={save} onExport={exportData} /> : null}
                 {activeModule === "configuracion" ? <Config data={data} onSave={save} /> : null}
               </>
