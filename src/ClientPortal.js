@@ -1033,11 +1033,11 @@ function activityDataset(data = {}, filters = {}) {
   const orders = (data.orders || []).filter((order) => activityDateInRange(order, filters));
   const movements = (data.inventoryMovements || []).filter((movement) => activityDateInRange(movement, filters));
   return {
-    customers: sortRecords(customers, data, "recent"),
-    invoices: sortRecords(invoices, data, "recent"),
-    payments: sortRecords(payments, data, "recent"),
-    orders: sortRecords(orders, data, "recent"),
-    movements: sortRecords(movements, data, "recent")
+    customers: sortRecords(customers, data, "idDesc"),
+    invoices: sortRecords(invoices, data, "idDesc"),
+    payments: sortRecords(payments, data, "idDesc"),
+    orders: sortRecords(orders, data, "idDesc"),
+    movements: sortRecords(movements, data, "idDesc")
   };
 }
 
@@ -1088,8 +1088,19 @@ function buildActivityWorkbook(data = {}, filters = {}, section = "all") {
   const range = activityRange(filters);
   const activity = activityDataset(data, filters);
   const periodLabel = periodSummary(filters.period || "today", range);
-  const invoiceTotal = recordsTotal(activity.invoices.filter((invoice) => invoice.status !== "anulada"), (invoice) => invoice.total);
-  const paymentTotal = recordsTotal(activity.payments.filter((payment) => payment.status !== "anulado"), (payment) => payment.netReceived);
+  const activeInvoices = activity.invoices.filter((invoice) => invoice.status !== "anulada");
+  const activePayments = activity.payments.filter((payment) => payment.status !== "anulado");
+  const invoiceTotal = recordsTotal(activeInvoices, (invoice) => invoice.total);
+  const paymentGrossTotal = recordsTotal(activePayments, (payment) => payment.grossAmount);
+  const paymentNetTotal = recordsTotal(activePayments, (payment) => payment.netReceived);
+  const voidInvoiceTotal = recordsTotal(activity.invoices.filter((invoice) => invoice.status === "anulada"), (invoice) => invoice.total);
+  const voidPaymentGrossTotal = recordsTotal(activity.payments.filter((payment) => payment.status === "anulado"), (payment) => payment.grossAmount);
+  const customerActivityIds = new Set([
+    ...activity.invoices.map((invoice) => invoice.customerId),
+    ...activity.payments.map((payment) => payment.customerId),
+    ...activity.orders.map((order) => order.customerId)
+  ].map(clean).filter(Boolean));
+  const ticketAverage = activeInvoices.length ? Math.round(invoiceTotal / activeInvoices.length) : 0;
   const sheets = [
     {
       name: "Resumen",
@@ -1101,7 +1112,18 @@ function buildActivityWorkbook(data = {}, filters = {}, section = "all") {
         ["facturas_registradas", activity.invoices.length],
         ["total_facturado", invoiceTotal],
         ["abonos_registrados", activity.payments.length],
-        ["total_abonado_neto", paymentTotal],
+        ["total_abonado_bruto", paymentGrossTotal],
+        ["total_abonado_neto", paymentNetTotal],
+        ["retenciones_descuentos_y_favor", Math.max(paymentGrossTotal - paymentNetTotal, 0)],
+        ["clientes_con_actividad", customerActivityIds.size],
+        ["ticket_promedio_factura", ticketAverage],
+        ["cartera_generada_periodo", invoiceTotal - paymentGrossTotal],
+        ["facturas_anuladas", activity.invoices.filter((invoice) => invoice.status === "anulada").length],
+        ["valor_facturas_anuladas", voidInvoiceTotal],
+        ["abonos_anulados", activity.payments.filter((payment) => payment.status === "anulado").length],
+        ["valor_abonos_anulados_bruto", voidPaymentGrossTotal],
+        ["ultima_factura", activeInvoices[0]?.id || ""],
+        ["ultimo_abono", activePayments[0]?.id || ""],
         ["ordenes_creadas", activity.orders.length],
         ["movimientos_inventario", activity.movements.length]
       ]
@@ -2428,8 +2450,27 @@ function Activity({ data, onExport }) {
   const activity = useMemo(() => activityDataset(data, filters), [data, filters.period, filters.from, filters.to, filters.dateMode]);
   const range = activityRange(filters);
   const periodLabel = periodSummary(filters.period || "today", range);
-  const invoiceTotal = recordsTotal(activity.invoices.filter((invoice) => invoice.status !== "anulada"), (invoice) => invoice.total);
-  const paymentTotal = recordsTotal(activity.payments.filter((payment) => payment.status !== "anulado"), (payment) => payment.netReceived);
+  const activeInvoices = activity.invoices.filter((invoice) => invoice.status !== "anulada");
+  const voidInvoices = activity.invoices.filter((invoice) => invoice.status === "anulada");
+  const activePayments = activity.payments.filter((payment) => payment.status !== "anulado");
+  const voidPayments = activity.payments.filter((payment) => payment.status === "anulado");
+  const activeOrders = activity.orders.filter((order) => order.status !== "anulada");
+  const invoiceTotal = recordsTotal(activeInvoices, (invoice) => invoice.total);
+  const paymentGrossTotal = recordsTotal(activePayments, (payment) => payment.grossAmount);
+  const paymentNetTotal = recordsTotal(activePayments, (payment) => payment.netReceived);
+  const retentionDiscountTotal = Math.max(paymentGrossTotal - paymentNetTotal, 0);
+  const voidInvoiceTotal = recordsTotal(voidInvoices, (invoice) => invoice.total);
+  const voidPaymentGrossTotal = recordsTotal(voidPayments, (payment) => payment.grossAmount);
+  const orderTotal = recordsTotal(activeOrders, (order) => order.total);
+  const customerActivityIds = new Set([
+    ...activity.invoices.map((invoice) => invoice.customerId),
+    ...activity.payments.map((payment) => payment.customerId),
+    ...activity.orders.map((order) => order.customerId)
+  ].map(clean).filter(Boolean));
+  const ticketAverage = activeInvoices.length ? Math.round(invoiceTotal / activeInvoices.length) : 0;
+  const generatedReceivable = invoiceTotal - paymentGrossTotal;
+  const lastInvoiceId = activeInvoices[0]?.id || "-";
+  const lastPaymentId = activePayments[0]?.id || "-";
 
   const sectionMeta = {
     customers: {
@@ -2472,14 +2513,14 @@ function Activity({ data, onExport }) {
       label: "abonos",
       icon: "wallet",
       count: activity.payments.length,
-      totalLabel: money(paymentTotal),
-      headers: ["ID", "Cliente", "Registro", "Abono", "Neto", "Medio", "Acciones"],
+      totalLabel: money(paymentGrossTotal),
+      headers: ["ID", "Cliente", "Registro", "Abono", "Bruto", "Medio", "Acciones"],
       rows: activity.payments.map((payment) => [
         payment.id,
         payment.customerNameSnapshot || customerById(data, payment.customerId)?.name || payment.customerId,
         clean(payment.createdAt).slice(0, 10) || "-",
         payment.date || "-",
-        money(payment.netReceived),
+        money(payment.grossAmount),
         payment.method || "-",
         <button type="button" onClick={() => setSelectedDetail({ type: "payment", record: payment })} style={ghostButton}>Ver</button>
       ]),
@@ -2490,7 +2531,7 @@ function Activity({ data, onExport }) {
       label: "ordenes",
       icon: "clipboard",
       count: activity.orders.length,
-      totalLabel: money(recordsTotal(activity.orders.filter((order) => order.status !== "anulada"), (order) => order.total)),
+      totalLabel: money(orderTotal),
       headers: ["ID", "Cliente", "Registro", "Orden", "Total", "Estado", "Acciones"],
       rows: activity.orders.map((order) => [
         order.id,
@@ -2623,11 +2664,42 @@ function Activity({ data, onExport }) {
       <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
         <Stat label="CLIENTES CREADOS" value={activity.customers.length} note="Registros de clientes creados en el periodo." icon="users" />
         <Stat label="FACTURAS REGISTRADAS" value={activity.invoices.length} note={money(invoiceTotal)} icon="invoice" sparkline={activity.invoices.map((invoice) => invoice.total)} />
-        <Stat label="ABONOS REGISTRADOS" value={activity.payments.length} note={money(paymentTotal)} tone="#15803D" icon="wallet" sparkline={activity.payments.map((payment) => payment.netReceived)} />
-        <Stat label="ORDENES CREADAS" value={activity.orders.length} note="Ordenes o cotizaciones creadas." tone="#B45309" icon="clipboard" />
-        <Stat label="MOVIMIENTOS INVENTARIO" value={activity.movements.length} note="Entradas, salidas y ajustes registrados." tone="#6D28D9" icon="transfer" />
+        <Stat label="ABONOS REGISTRADOS" value={activity.payments.length} note={money(paymentGrossTotal)} tone="#15803D" icon="wallet" sparkline={activity.payments.map((payment) => payment.grossAmount)} />
         <Stat label="TOTAL FACTURADO" value={money(invoiceTotal)} note="Suma de facturas no anuladas del periodo." tone="#C2410C" icon="money" sparkline={activity.invoices.map((invoice) => invoice.total)} />
+        <Stat label="TOTAL ABONADO BRUTO" value={money(paymentGrossTotal)} note="Valor recibido antes de retenciones y descuentos." tone="#15803D" icon="wallet" sparkline={activity.payments.map((payment) => payment.grossAmount)} />
+        <Stat label="NETO RECIBIDO" value={money(paymentNetTotal)} note="Abonos netos despues de retenciones, descuentos y saldos a favor." tone="#047857" icon="money" sparkline={activity.payments.map((payment) => payment.netReceived)} />
+        <Stat label="RETENCIONES / DESCUENTOS" value={money(retentionDiscountTotal)} note="Diferencia entre abonos brutos y netos del periodo." tone="#B45309" icon="alert" />
+        <Stat label="CLIENTES CON ACTIVIDAD" value={customerActivityIds.size} note="Clientes con facturas, abonos u ordenes en el periodo." tone="#6D28D9" icon="users" />
+        <Stat label="TICKET PROMEDIO" value={money(ticketAverage)} note="Promedio de facturas no anuladas del periodo." tone="#1D4ED8" icon="portfolio" />
+        <Stat label="CARTERA GENERADA" value={money(generatedReceivable)} note="Total facturado menos abonos brutos del periodo." tone={generatedReceivable < 0 ? "#15803D" : "#C2410C"} icon="activity" />
+        <Stat label="ORDENES CREADAS" value={activity.orders.length} note={money(orderTotal)} tone="#B45309" icon="clipboard" />
+        <Stat label="MOVIMIENTOS INVENTARIO" value={activity.movements.length} note="Entradas, salidas y ajustes registrados." tone="#6D28D9" icon="transfer" />
       </div>
+
+      <section style={{ padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff", display: "grid", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>AUDITORIA RAPIDA</div>
+          <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F }}>Indicadores para validar anulaciones, continuidad de consecutivos y novedades del periodo.</p>
+        </div>
+        <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
+          <div style={{ padding: 13, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(220,38,38,.12)", fontFamily: F }}>
+            <span style={{ fontSize: 10, letterSpacing: "1.1px", color: "#B91C1C", fontWeight: 900 }}>FACTURAS ANULADAS</span>
+            <strong style={{ display: "block", marginTop: 6, color: "#0B1D3A" }}>{voidInvoices.length} · {money(voidInvoiceTotal)}</strong>
+          </div>
+          <div style={{ padding: 13, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(220,38,38,.12)", fontFamily: F }}>
+            <span style={{ fontSize: 10, letterSpacing: "1.1px", color: "#B91C1C", fontWeight: 900 }}>ABONOS ANULADOS</span>
+            <strong style={{ display: "block", marginTop: 6, color: "#0B1D3A" }}>{voidPayments.length} · {money(voidPaymentGrossTotal)}</strong>
+          </div>
+          <div style={{ padding: 13, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F }}>
+            <span style={{ fontSize: 10, letterSpacing: "1.1px", color: "#1D4ED8", fontWeight: 900 }}>ULTIMA FACTURA</span>
+            <strong style={{ display: "block", marginTop: 6, color: "#0B1D3A" }}>{lastInvoiceId}</strong>
+          </div>
+          <div style={{ padding: 13, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F }}>
+            <span style={{ fontSize: 10, letterSpacing: "1.1px", color: "#1D4ED8", fontWeight: 900 }}>ULTIMO ABONO</span>
+            <strong style={{ display: "block", marginTop: 6, color: "#0B1D3A" }}>{lastPaymentId}</strong>
+          </div>
+        </div>
+      </section>
 
       <section style={{ padding: 14, borderRadius: 18, border: "1px solid rgba(37,99,235,.10)", background: "#fff", display: "grid", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -4456,16 +4528,16 @@ function Orders({ data, onSave, onExport }) {
 
 function ModuleWithForm({ title, count, onExport, children }) {
   return (
-    <section style={{ ...card, borderRadius: 22 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+    <section className="client-module-card" style={{ ...card, borderRadius: 22 }}>
+      <div className="client-module-head" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>MODULO</div>
           <h2 style={{ margin: 0, fontFamily: F, fontSize: "clamp(23px,2.6vw,31px)", fontWeight: 950, color: "#0B1D3A", lineHeight: 1.05 }}>{title}</h2>
           <p style={{ fontFamily: F, color: "#64748B", margin: "5px 0 0", fontSize: 13 }}>{count} registro(s)</p>
         </div>
-        {onExport ? <button type="button" onClick={onExport} style={button}>Descargar Excel</button> : null}
+        {onExport ? <button className="client-module-export" type="button" onClick={onExport} style={button}>Descargar Excel</button> : null}
       </div>
-      <div style={{ display: "grid", gap: 18 }}>{children}</div>
+      <div className="client-module-content" style={{ display: "grid", gap: 18 }}>{children}</div>
     </section>
   );
 }
@@ -4502,14 +4574,14 @@ function RecordList({ headers, rows, rowKeys = [], selectedKey = "", onRowClick 
           const key = rowKeys[rowIndex] || rowIndex;
           const selected = selectedKey && key === selectedKey;
           return (
-          <div key={key} onClick={onRowClick ? (event) => {
+          <div className={`client-record-card${selected ? " selected" : ""}`} key={key} onClick={onRowClick ? (event) => {
             if (event.target.closest("button,a,input,select,textarea,details,summary")) return;
             onRowClick(key, rowIndex);
           } : undefined} style={{ padding: 13, borderRadius: 16, background: selected ? "#EEF4FF" : "#F8FBFF", border: selected ? "1px solid rgba(37,99,235,.34)" : "1px solid rgba(37,99,235,.10)", display: "grid", gap: 7, fontFamily: F, cursor: onRowClick ? "pointer" : "default" }}>
             {row.map((cell, cellIndex) => (
-              <div key={cellIndex} style={{ display: "grid", gap: 2 }}>
-                <span style={{ fontSize: 10, letterSpacing: "1px", color: "#64748B", fontWeight: 900 }}>{headers[cellIndex]}</span>
-                <div style={{ color: "#0F172A", overflowWrap: "anywhere" }}>{cell}</div>
+              <div className="client-record-card-field" key={cellIndex} style={{ display: "grid", gap: 2 }}>
+                <span className="client-record-card-label" style={{ fontSize: 10, letterSpacing: "1px", color: "#64748B", fontWeight: 900 }}>{headers[cellIndex]}</span>
+                <div className="client-record-card-value" style={{ color: "#0F172A", overflowWrap: "anywhere" }}>{cell}</div>
               </div>
             ))}
           </div>
@@ -5645,22 +5717,129 @@ export default function ClientPortal() {
           .client-portal-row{grid-template-columns:1fr!important}
           .client-aging-row{grid-template-columns:1fr!important}
           .client-aging-row span,.client-aging-row strong{text-align:left!important}
-          .client-portal-shell{padding:16px!important;width:100%!important}
-          .client-portal-header{grid-template-columns:1fr!important}
-          .client-portal-actions{justify-content:stretch!important}
-          .client-portal-actions button{width:100%!important}
-          .client-portal-modal-backdrop{align-items:end;padding:10px}
-          .client-portal-modal{border-radius:24px 24px 16px 16px;max-height:94vh}
-          .client-portal-modal-head{padding:20px}
-          .client-portal-modal-body{padding:18px}
+          .client-portal-shell{
+            padding:0!important;
+            width:100%!important;
+            box-sizing:border-box!important;
+            gap:10px!important;
+          }
+          .client-portal-header{
+            grid-template-columns:1fr!important;
+            padding:12px!important;
+            border-radius:18px!important;
+          }
+          .client-portal-actions{
+            display:grid!important;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            width:100%;
+            gap:8px!important;
+          }
+          .client-portal-actions button{
+            width:100%!important;
+            min-height:42px;
+          }
+          .client-module-card{
+            padding:14px!important;
+            border-radius:18px!important;
+          }
+          .client-module-head{
+            align-items:stretch!important;
+            margin-bottom:12px!important;
+          }
+          .client-module-head > div{
+            min-width:0;
+          }
+          .client-module-export{
+            width:100%!important;
+            min-height:42px;
+          }
+          .client-module-content{
+            gap:12px!important;
+          }
+          .client-portal-form-grid > *,
+          .client-portal-form-wide{
+            grid-column:auto!important;
+          }
+          .client-portal-modal-backdrop{
+            align-items:end;
+            padding:8px;
+          }
+          .client-portal-modal{
+            width:100%!important;
+            border-radius:22px 22px 14px 14px;
+            max-height:92vh;
+            box-sizing:border-box;
+          }
+          .client-portal-modal-head{
+            padding:16px 16px 13px;
+            align-items:center;
+          }
+          .client-portal-modal-head button{
+            width:40px!important;
+            height:40px!important;
+            flex:0 0 auto;
+          }
+          .client-portal-modal-body{
+            padding:14px;
+          }
           .client-record-table{display:none}
           .client-record-cards{display:grid;gap:10px}
-          .client-action-group button{width:100%}
-          .client-portal-layout{grid-template-columns:1fr}
+          .client-record-card{
+            padding:11px!important;
+            border-radius:14px!important;
+            gap:6px!important;
+          }
+          .client-record-card-field{
+            grid-template-columns:minmax(76px,.36fr) minmax(0,1fr);
+            gap:8px!important;
+            align-items:start;
+            padding:2px 0;
+          }
+          .client-record-card-label{
+            font-size:9px!important;
+            line-height:1.25;
+          }
+          .client-record-card-value{
+            font-size:13px;
+            line-height:1.35;
+          }
+          .client-action-group{
+            display:grid!important;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:7px!important;
+            width:100%;
+          }
+          .client-action-group button,
+          .client-row-more,
+          .client-row-more summary{
+            width:100%;
+          }
+          .client-row-more div{
+            left:0;
+            right:auto;
+            min-width:100%;
+          }
+          .client-portal-layout{grid-template-columns:1fr;gap:10px!important}
           .client-portal-sidebar{display:none}
           .client-portal-mobile-module{display:block}
-          .client-customer-picker-results{max-height:none;overflow:visible;padding-right:0}
-          .client-customer-picker-preview{position:static}
+          .client-portal-mobile-module{
+            padding:12px;
+            border-radius:18px;
+            background:rgba(255,255,255,.94);
+            border:1px solid rgba(37,99,235,.10);
+            box-shadow:0 14px 30px rgba(15,23,42,.06);
+          }
+          .client-customer-picker-results{
+            max-height:48vh;
+            overflow:auto;
+            padding-right:0;
+          }
+          .client-customer-picker-preview{
+            order:-1;
+            position:sticky;
+            top:0;
+            z-index:4;
+          }
           .client-sticky-actions{position:static}
           .client-company-brand{
             grid-template-columns:auto minmax(0,1fr);
@@ -5684,6 +5863,63 @@ export default function ClientPortal() {
           .client-contarae-signature img{
             width:70px;
             max-height:23px;
+          }
+        }
+        @media(max-width:640px){
+          .client-portal-sticky-controls{
+            grid-template-columns:1fr 1fr!important;
+          }
+          .client-portal-sticky-controls select{
+            grid-column:1/-1;
+          }
+          .client-company-name{
+            font-size:20px!important;
+            line-height:1.08!important;
+          }
+          .client-company-brand p{
+            font-size:12px!important;
+          }
+          .client-company-logo-frame{
+            width:48px!important;
+            height:44px!important;
+            border-radius:14px!important;
+          }
+          .client-portal-stats{
+            gap:9px!important;
+          }
+          .client-stat-card{
+            padding:12px!important;
+            border-radius:16px!important;
+          }
+          .client-stat-icon{
+            width:30px;
+            height:30px;
+            border-radius:11px;
+          }
+          .client-stat-bars{
+            height:28px;
+            margin-top:7px;
+          }
+          .client-portal-modal-head h2{
+            font-size:21px!important;
+          }
+          .client-record-card-field{
+            grid-template-columns:1fr;
+            gap:2px!important;
+            padding:4px 0;
+            border-bottom:1px solid rgba(37,99,235,.07);
+          }
+          .client-record-card-field:last-child{
+            border-bottom:0;
+          }
+          .client-action-group{
+            grid-template-columns:1fr;
+          }
+          .client-action-group-compact{
+            grid-template-columns:repeat(2,minmax(0,1fr));
+          }
+          .client-action-group-compact .client-row-more{
+            grid-column:1/-1;
           }
         }
       `}</style>
