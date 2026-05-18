@@ -198,14 +198,14 @@ export function getClientPortalSessionFromRequest(req) {
   };
 }
 
-export function buildClientPortalSessionCookie(req, token, maxAgeSeconds = SESSION_MAX_AGE_SECONDS) {
+export function buildClientPortalSessionCookie(req, token, maxAgeSeconds = null) {
   const secure = req.url.startsWith("https://") || process.env.CONTEXT === "production";
   return [
     `${CLIENT_PORTAL_SESSION_COOKIE}=${encodeURIComponent(token)}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
-    `Max-Age=${maxAgeSeconds}`,
+    Number(maxAgeSeconds) > 0 ? `Max-Age=${maxAgeSeconds}` : "",
     secure ? "Secure" : ""
   ]
     .filter(Boolean)

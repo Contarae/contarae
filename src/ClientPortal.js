@@ -28,6 +28,7 @@ const MODULE_ICONS = {
 const PAYMENT_METHODS = ["Transferencia bancaria", "Nequi", "Daviplata", "Efectivo", "PSE", "Tarjeta", "Otro"];
 const IVA_RATES = [0, 5, 19];
 const DISCOUNT_PERCENTS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+const CLIENT_PORTAL_ACTIVE_SESSION_KEY = "contarae_client_portal_active_session";
 const SORT_OPTIONS = [
   ["recent", "Mas reciente primero"],
   ["oldest", "Mas antiguo primero"],
@@ -54,6 +55,30 @@ const CUSTOMER_SEARCH_TYPES = [
   ["alternateName", "Nombre alterno"],
   ["documentNumber", "Documento"]
 ];
+
+function markActivePortalSession() {
+  try {
+    window.sessionStorage.setItem(CLIENT_PORTAL_ACTIVE_SESSION_KEY, "1");
+  } catch {
+    // If sessionStorage is unavailable, the HttpOnly cookie still protects the session.
+  }
+}
+
+function clearActivePortalSession() {
+  try {
+    window.sessionStorage.removeItem(CLIENT_PORTAL_ACTIVE_SESSION_KEY);
+  } catch {
+    // Ignore storage restrictions.
+  }
+}
+
+function hasActivePortalSession() {
+  try {
+    return window.sessionStorage.getItem(CLIENT_PORTAL_ACTIVE_SESSION_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
 
 const CITY_DEPARTMENT_MAP = {
   armenia: ["Armenia", "Quindio"],
@@ -2169,6 +2194,11 @@ function Dashboard({ data, setModule }) {
   );
   const activePeriodTitle = periodTitle(filters.period || "month");
   const activePeriodSummary = periodSummary(filters.period || "month", range);
+  const dashboardTitle = compactMode ? "Resumen general" : activePeriodTitle;
+  const dashboardSummary = compactMode ? "Historico acumulado" : activePeriodSummary;
+  const dashboardIntro = compactMode
+    ? "Indicadores acumulados del negocio. Para revisar movimientos por fecha, abre Actividad, Facturas, Abonos o Cartera."
+    : "Las dos primeras tarjetas comparan contra el periodo anterior equivalente. La cartera se muestra acumulada.";
   const invoicesInPeriod = useMemo(
     () => (data.invoices || []).filter((invoice) => invoice.status !== "anulada" && (!periodActive || dateInRange(invoice.date, range))),
     [data.invoices, periodActive, range.from, range.to]
@@ -2238,19 +2268,23 @@ function Dashboard({ data, setModule }) {
       <section style={{ ...card, display: "grid", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>RANGO DE ANALISIS</div>
+            <div style={{ fontSize: 12, letterSpacing: "1.4px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>{compactMode ? "RESUMEN FINANCIERO" : "RANGO DE ANALISIS"}</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
-              <strong style={{ fontFamily: F, color: "#0B1D3A", fontSize: 20 }}>{activePeriodTitle}</strong>
-              <span style={{ display: "inline-flex", alignItems: "center", minHeight: 30, padding: "6px 12px", borderRadius: 999, color: "#1D4ED8", background: "#EEF4FF", border: "1px solid rgba(37,99,235,.14)", fontFamily: F, fontSize: 12, fontWeight: 950 }}>{activePeriodSummary}</span>
+              <strong style={{ fontFamily: F, color: "#0B1D3A", fontSize: 20 }}>{dashboardTitle}</strong>
+              <span style={{ display: "inline-flex", alignItems: "center", minHeight: 30, padding: "6px 12px", borderRadius: 999, color: "#1D4ED8", background: "#EEF4FF", border: "1px solid rgba(37,99,235,.14)", fontFamily: F, fontSize: 12, fontWeight: 950 }}>{dashboardSummary}</span>
             </div>
-            <p style={{ margin: "6px 0 0", fontFamily: F, color: "#64748B" }}>Las dos primeras tarjetas comparan contra el periodo anterior equivalente. La cartera se muestra acumulada.</p>
+            <p style={{ margin: "6px 0 0", fontFamily: F, color: "#64748B" }}>{dashboardIntro}</p>
           </div>
-          <PeriodControls filters={filters} setFilters={setFilters} compact />
+          {compactMode ? (
+            <button type="button" onClick={() => setModule("actividad")} style={{ ...button, background: "#fff", color: "#1D4ED8", border: "1px solid rgba(37,99,235,.14)" }}>Ver actividad por periodo</button>
+          ) : (
+            <PeriodControls filters={filters} setFilters={setFilters} compact />
+          )}
         </div>
       </section>
       <div className="client-portal-stats client-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
-        <Stat label="VALOR FACTURADO" value={compactMode ? (dashboard.totalBilledLabel || "$ 0") : money(billedInPeriod)} note={compactMode ? "Vista rapida acumulada. El detalle por periodo carga al entrar a modulos operativos." : `${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={billedSeries} trend={compactMode ? null : metricVariation(billedInPeriod, previousBilled)} />
-        <Stat label="VALOR ABONADO" value={compactMode ? (dashboard.totalPaidLabel || "$ 0") : money(paidInPeriod)} note={compactMode ? "Vista rapida acumulada. El detalle por periodo carga al entrar a modulos operativos." : `${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={paidSeries} trend={compactMode ? null : metricVariation(paidInPeriod, previousPaid)} />
+        <Stat label="VALOR FACTURADO" value={compactMode ? (dashboard.totalBilledLabel || "$ 0") : money(billedInPeriod)} note={compactMode ? `${dashboard.invoicesCount || 0} factura(s) registradas.` : `${invoicesInPeriod.length} factura(s) en el rango.`} icon="invoice" sparkline={billedSeries} trend={compactMode ? null : metricVariation(billedInPeriod, previousBilled)} />
+        <Stat label="VALOR ABONADO" value={compactMode ? (dashboard.totalPaidLabel || "$ 0") : money(paidInPeriod)} note={compactMode ? `${dashboard.paymentsCount || 0} abono(s) registrados.` : `${paymentsInPeriod.length} abono(s) en el rango.`} tone="#15803D" icon="wallet" sparkline={paidSeries} trend={compactMode ? null : metricVariation(paidInPeriod, previousPaid)} />
         <Stat label="SALDO TOTAL PENDIENTE" value={dashboard.pendingLabel || "$ 0"} note="Cartera acumulada por cobrar." tone="#C2410C" icon="portfolio" sparkline={agingSeries} trend={metricShare(overdueTotal, pendingTotal, "vencido")} />
         <Stat label="CARTERA VENCIDA" value={dashboard.overdueLabel || "$ 0"} note={`${dashboard.overdueInvoicesCount || 0} factura(s) con saldo vencido.`} tone="#B91C1C" icon="alert" sparkline={overdueSeries} trend={metricShare(overdueTotal, pendingTotal, "del saldo")} />
         <Stat label="PROXIMA A VENCER" value={dashboard.upcomingLabel || "$ 0"} note={`${dashboard.dueSoonInvoicesCount || 0} factura(s) vencen hoy o en 7 dias.`} tone="#B45309" icon="history" sparkline={upcomingSeries} trend={metricShare(upcomingTotal, pendingTotal, "del saldo")} />
@@ -4745,6 +4779,25 @@ export default function ClientPortal() {
   const [backgroundLoading, setBackgroundLoading] = useState(false);
   const loadRequestRef = useRef(0);
   const fullDataModuleRequestRef = useRef("");
+  const noticeTimerRef = useRef(null);
+
+  function clearNoticeTimer() {
+    if (noticeTimerRef.current) {
+      window.clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = null;
+    }
+  }
+
+  function showNotice(message = "", timeoutMs = 3500) {
+    clearNoticeTimer();
+    setNotice(message);
+    if (message && timeoutMs > 0) {
+      noticeTimerRef.current = window.setTimeout(() => {
+        setNotice("");
+        noticeTimerRef.current = null;
+      }, timeoutMs);
+    }
+  }
 
   useEffect(() => {
     function updateCompactHeader() {
@@ -4755,6 +4808,8 @@ export default function ClientPortal() {
     window.addEventListener("scroll", updateCompactHeader, { passive: true });
     return () => window.removeEventListener("scroll", updateCompactHeader);
   }, []);
+
+  useEffect(() => () => clearNoticeTimer(), []);
 
   async function fetchPortalData(scope = "full") {
     const dataResponse = await fetch(`/api/client-portal-data?scope=${encodeURIComponent(scope)}`);
@@ -4767,6 +4822,7 @@ export default function ClientPortal() {
     const safeOptions = options && typeof options.preventDefault === "function" ? {} : (options || {});
     const hasData = Boolean(data);
     const forceFull = safeOptions.forceFull === true;
+    const quietRefresh = safeOptions.quiet === true;
     const defaultScope = forceFull ? "full" : (!hasData || activeModule === "dashboard" ? "summary" : "full");
     const scope = safeOptions.scope || defaultScope;
     const silentRefresh = hasData && safeOptions.silent !== false;
@@ -4776,7 +4832,7 @@ export default function ClientPortal() {
       setLoading(true);
       setLoadingMessage("Validando sesion...");
     } else {
-      setNotice("Actualizando informacion...");
+      if (!quietRefresh) showNotice("Actualizando informacion...", 0);
       if (scope === "full") setBackgroundLoading(true);
     }
     setError("");
@@ -4788,6 +4844,15 @@ export default function ClientPortal() {
       if (!sessionPayload.authenticated) {
         setData(null);
         setFullDataLoaded(false);
+        clearActivePortalSession();
+        return;
+      }
+      if (!sessionPayload.impersonatedBy && !hasActivePortalSession()) {
+        await fetch("/api/client-portal-logout", { method: "POST" });
+        setSession({ configured: true, authenticated: false });
+        setData(null);
+        setFullDataLoaded(false);
+        showNotice("", 0);
         return;
       }
       if (!silentRefresh) setLoadingMessage(scope === "summary" ? "Cargando resumen financiero..." : "Cargando informacion financiera...");
@@ -4795,10 +4860,10 @@ export default function ClientPortal() {
       if (requestId !== loadRequestRef.current) return;
       setData(nextData);
       setFullDataLoaded(!nextData?.isCompact);
-      if (silentRefresh) setNotice("Informacion actualizada.");
+      if (silentRefresh && !quietRefresh) showNotice("Informacion actualizada.", 3000);
     } catch (err) {
       setError(err.message);
-      if (silentRefresh) setNotice("");
+      if (silentRefresh) showNotice("", 0);
     } finally {
       if (requestId === loadRequestRef.current) {
         if (!silentRefresh) setLoading(false);
@@ -4810,21 +4875,14 @@ export default function ClientPortal() {
   useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
-    if (!notice || notice === "Actualizando informacion...") return undefined;
-    const timer = window.setTimeout(() => {
-      setNotice((current) => (current === notice ? "" : current));
-    }, 3500);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
     if (!data?.isCompact) {
       fullDataModuleRequestRef.current = "";
       return;
     }
-    if (activeModule !== "dashboard" && !backgroundLoading && fullDataModuleRequestRef.current !== activeModule) {
-      fullDataModuleRequestRef.current = activeModule;
-      loadData({ forceFull: true });
+    const fullDataKey = activeModule || "dashboard";
+    if (!backgroundLoading && fullDataModuleRequestRef.current !== fullDataKey) {
+      fullDataModuleRequestRef.current = fullDataKey;
+      loadData({ forceFull: true, quiet: activeModule === "dashboard" });
     }
   }, [activeModule, data?.isCompact, backgroundLoading]);
 
@@ -4837,7 +4895,7 @@ export default function ClientPortal() {
   }
 
   async function save(type, payload) {
-    setNotice("");
+    showNotice("", 0);
     setError("");
     const { _silentSuccess: silentSuccess, ...payloadToSave } = payload || {};
     try {
@@ -4874,7 +4932,7 @@ export default function ClientPortal() {
         revertImport: "Cargue reversado"
       };
       loadRequestRef.current += 1;
-      setNotice("Informacion guardada correctamente.");
+      showNotice("Informacion guardada correctamente.", 3500);
       setBackgroundLoading(false);
       if (!silentSuccess) {
         setOperationSuccess({
@@ -4894,6 +4952,8 @@ export default function ClientPortal() {
 
   async function logout() {
     await fetch("/api/client-portal-logout", { method: "POST" });
+    clearActivePortalSession();
+    showNotice("", 0);
     setSession({ configured: true, authenticated: false });
     setData(null);
   }
@@ -4930,7 +4990,7 @@ export default function ClientPortal() {
   }
 
   if (!session.authenticated) {
-    return <Login configured={session.configured} onLogin={() => loadData()} />;
+    return <Login configured={session.configured} onLogin={() => { markActivePortalSession(); loadData({ scope: "summary" }); }} />;
   }
 
   if (session.mustChangePassword && session.role !== "support") {
@@ -4945,7 +5005,6 @@ export default function ClientPortal() {
   }
 
   const moduleNeedsFullData = Boolean(data?.isCompact && activeModule !== "dashboard");
-  const compactDashboardMode = Boolean(data?.isCompact && activeModule === "dashboard" && !backgroundLoading);
   const syncingDetails = Boolean(backgroundLoading);
 
   return (
@@ -5487,19 +5546,10 @@ export default function ClientPortal() {
           </div>
         ) : null}
         {error ? <div style={{ padding: 13, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 900 }}>{error}</div> : null}
-        {syncingDetails || compactDashboardMode ? (
+        {syncingDetails ? (
           <div style={{ padding: "11px 13px", borderRadius: 16, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, fontWeight: 900, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            {syncingDetails ? (
-              <>
-                <span>Cargando detalle completo del portal en segundo plano.</span>
-                <span style={{ color: "#64748B" }}>Puedes seguir trabajando mientras termina.</span>
-              </>
-            ) : (
-              <>
-                <span>Vista rapida activa. El dashboard muestra el resumen acumulado.</span>
-                <span style={{ color: "#64748B" }}>El detalle completo carga al entrar a un modulo operativo.</span>
-              </>
-            )}
+            <span>Cargando detalle completo del portal en segundo plano.</span>
+            <span style={{ color: "#64748B" }}>Puedes seguir trabajando mientras termina.</span>
           </div>
         ) : null}
 
