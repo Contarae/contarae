@@ -37,6 +37,16 @@ const SORT_OPTIONS = [
   ["clientAsc", "Cliente A-Z"],
   ["clientDesc", "Cliente Z-A"]
 ];
+const RECORD_SORT_OPTIONS = [
+  ["idDesc", "Ultimos registros primero"],
+  ["idAsc", "Primeros registros primero"],
+  ["recent", "Fecha mas reciente"],
+  ["oldest", "Fecha mas antigua"],
+  ["amountDesc", "Mayor valor primero"],
+  ["amountAsc", "Menor valor primero"],
+  ["clientAsc", "Cliente A-Z"],
+  ["clientDesc", "Cliente Z-A"]
+];
 const DISCOUNT_CONCEPTS = ["Comercial", "Pronto pago", "Acuerdo comercial", "Ajuste por diferencia", "Otro"];
 const AGING_BUCKETS = [
   ["current", "No vencida"],
@@ -973,9 +983,23 @@ function recordAmount(record = {}) {
   return Number(record.total || record.netReceived || record.grossAmount || record.totalApplied || record.balance || 0) || 0;
 }
 
+function recordSequenceValue(record = {}) {
+  const id = clean(record.id);
+  const match = id.match(/(\d+)(?!.*\d)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function compareRecordId(left = {}, right = {}) {
+  const numberCompare = recordSequenceValue(right) - recordSequenceValue(left);
+  if (numberCompare) return numberCompare;
+  return clean(right.id).localeCompare(clean(left.id), "es", { numeric: true });
+}
+
 function sortRecords(records = [], data = {}, sort = "recent") {
   const list = [...records];
   return list.sort((left, right) => {
+    if (sort === "idDesc") return compareRecordId(left, right);
+    if (sort === "idAsc") return compareRecordId(right, left);
     if (sort === "oldest") return clean(left.date || left.createdAt).localeCompare(clean(right.date || right.createdAt));
     if (sort === "amountDesc") return recordAmount(right) - recordAmount(left);
     if (sort === "amountAsc") return recordAmount(left) - recordAmount(right);
@@ -1221,6 +1245,47 @@ const dangerGhostButton = {
   color: "#B91C1C",
   border: "1px solid rgba(220,38,38,.16)"
 };
+
+function StatusPill({ children, tone = "#1D4ED8" }) {
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      width: "fit-content",
+      padding: "5px 9px",
+      borderRadius: 999,
+      color: tone,
+      background: `${tone}14`,
+      border: `1px solid ${tone}22`,
+      fontSize: 11,
+      fontWeight: 900,
+      lineHeight: 1.1,
+      whiteSpace: "nowrap"
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function RecordActions({ primary = [], more = [] }) {
+  return (
+    <div className="client-action-group client-action-group-compact">
+      {primary.map((action) => (
+        <button key={action.label} type="button" onClick={action.onClick} style={action.danger ? dangerGhostButton : ghostButton}>{action.label}</button>
+      ))}
+      {more.length ? (
+        <details className="client-row-more">
+          <summary>Mas</summary>
+          <div>
+            {more.map((action) => (
+              <button key={action.label} type="button" onClick={action.onClick} className={action.danger ? "danger" : ""}>{action.label}</button>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
 
 function customerById(data, id) {
   return (data.customerSummary || data.customers || []).find((customer) => customer.id === id);
@@ -2866,14 +2931,14 @@ function Invoices({ data, onSave, onExport }) {
   const [confirmAction, setConfirmAction] = useState(null);
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" });
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "idDesc" });
   const [searched, setSearched] = useState(false);
   const totals = uiLineTotals(lines);
   const summaryTotals = totalizedInvoiceTotals(draft.summaryBreakdown);
   const documentTotal = mode === "detallada" ? totals.total : summaryTotals.total;
   const splitTotal = paymentSplitsTotal(draft.paymentSplits);
   const invoices = data.invoices || [];
-  const visibleInvoices = searched ? sortRecords(filterRecordsByQuery(invoices, data, filters), data, filters.sort || "recent") : [];
+  const visibleInvoices = searched ? sortRecords(filterRecordsByQuery(invoices, data, filters), data, filters.sort || "idDesc") : [];
 
   const reset = () => {
     setDraft({
@@ -3077,8 +3142,9 @@ function Invoices({ data, onSave, onExport }) {
         setFilters={setFilters}
         statusOptions={["emitida", "pagada", "anulada"]}
         onSearch={() => setSearched(true)}
-        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" }); setSearched(false); }}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "idDesc" }); setSearched(false); }}
         placeholder="Cliente, ID o documento"
+        sortOptions={RECORD_SORT_OPTIONS}
       />
       <PortalModal open={modalOpen} title={draft.id ? "Editar factura" : "Nueva factura"} eyebrow={draft.id || "FACTURA"} onClose={() => { if (!busy) setModalOpen(false); }}>
         <CustomerSearch
@@ -3239,13 +3305,29 @@ function Invoices({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <PaginatedRecordList rows={visibleInvoices.map((invoice) => [invoice.id, invoice.customerNameSnapshot, invoice.date, money(invoice.subtotal), money(invoice.taxTotal), invoice.totalLabel || money(invoice.total), invoice.status, <div className="client-action-group">
-        <button type="button" onClick={() => { setSelectedInvoiceId(invoice.id); setViewRecord(invoice); }} style={ghostButton}>Ver</button>
-        <button type="button" onClick={() => edit(invoice)} style={ghostButton}>Editar</button>
-        <button type="button" onClick={() => duplicate(invoice)} style={ghostButton}>Duplicar</button>
-        <button type="button" onClick={() => printableDocument("invoice", invoice, data)} style={ghostButton}>PDF</button>
-        {invoice.status !== "anulada" ? <button type="button" onClick={() => voidInvoice(invoice)} style={dangerGhostButton}>Anular</button> : null}
-      </div>])}
+      <PaginatedRecordList rows={visibleInvoices.map((invoice) => [
+        <strong style={{ whiteSpace: "nowrap" }}>{invoice.id}</strong>,
+        <div style={{ display: "grid", gap: 3 }}>
+          <strong style={{ color: "#0F172A" }}>{invoice.customerNameSnapshot}</strong>
+          <span style={{ color: "#64748B", fontSize: 11 }}>
+            {invoice.orderNumber ? `OC ${invoice.orderNumber}` : "Sin OC"} · {invoice.internalConsecutive ? `Interno ${invoice.internalConsecutive}` : "Sin consecutivo interno"}
+          </span>
+        </div>,
+        invoice.date,
+        <strong>{invoice.totalLabel || money(invoice.total)}</strong>,
+        <StatusPill tone={invoice.status === "anulada" ? "#B91C1C" : invoice.status === "pagada" ? "#15803D" : "#1D4ED8"}>{invoice.status || "emitida"}</StatusPill>,
+        <RecordActions
+          primary={[
+            { label: "Ver", onClick: () => { setSelectedInvoiceId(invoice.id); setViewRecord(invoice); } },
+            { label: "Editar", onClick: () => edit(invoice) }
+          ]}
+          more={[
+            { label: "Duplicar", onClick: () => duplicate(invoice) },
+            { label: "PDF", onClick: () => printableDocument("invoice", invoice, data) },
+            ...(invoice.status !== "anulada" ? [{ label: "Anular", danger: true, onClick: () => voidInvoice(invoice) }] : [])
+          ]}
+        />
+      ])}
       rowKeys={visibleInvoices.map((invoice) => invoice.id)}
       selectedKey={selectedInvoiceId}
       onRowClick={(key) => {
@@ -3255,7 +3337,7 @@ function Invoices({ data, onSave, onExport }) {
           setViewRecord(invoice);
         }
       }}
-      headers={["ID", "Cliente", "Fecha", "Subtotal", "IVA", "Total", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron facturas con esos filtros." : "Usa los filtros para consultar facturas sin cargar todo el historial."} />
+      headers={["ID", "Cliente", "Fecha", "Total bruto", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron facturas con esos filtros." : "Usa los filtros para consultar facturas sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -3270,13 +3352,13 @@ function Payments({ data, onSave, onExport }) {
   const [confirmAction, setConfirmAction] = useState(null);
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" });
+  const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "idDesc" });
   const [searched, setSearched] = useState(false);
   const customerInvoices = (data.invoices || []).filter((invoice) => !draft.customerId || invoice.customerId === draft.customerId);
   const retentionTotal = moneyValue(draft.retefuente) + moneyValue(draft.reteica) + moneyValue(draft.reteiva) + moneyValue(draft.otherRetentions);
   const discountTotal = moneyValue(draft.discountAmount) + moneyValue(draft.returnCreditAmount);
   const calculatedNet = Math.max(moneyValue(draft.grossAmount) - retentionTotal - discountTotal, 0);
-  const visiblePayments = searched ? sortRecords(filterRecordsByQuery(data.payments || [], data, filters), data, filters.sort || "recent") : [];
+  const visiblePayments = searched ? sortRecords(filterRecordsByQuery(data.payments || [], data, filters), data, filters.sort || "idDesc") : [];
 
   const openNew = () => {
     setDraft(blank());
@@ -3405,8 +3487,9 @@ function Payments({ data, onSave, onExport }) {
         setFilters={setFilters}
         statusOptions={["aplicado", "anulado"]}
         onSearch={() => setSearched(true)}
-        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "recent" }); setSearched(false); }}
+        onClear={() => { setFilters({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "idDesc" }); setSearched(false); }}
         placeholder="Cliente, ID o documento"
+        sortOptions={RECORD_SORT_OPTIONS}
       />
       <PortalModal open={modalOpen} title={draft.id ? "Editar abono" : "Nuevo abono"} eyebrow={draft.id || "ABONO"} onClose={() => { if (!busy) setModalOpen(false); }}>
         <CustomerSearch
@@ -3478,12 +3561,26 @@ function Payments({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <PaginatedRecordList rows={visiblePayments.map((payment) => [payment.id, payment.customerNameSnapshot, payment.invoiceId || "Sin factura", payment.date, money(payment.grossAmount), money(payment.retentionTotal), money((payment.discounts?.amount || 0) + (payment.returnCredit?.amount || 0)), money(payment.netReceived), payment.method, <div className="client-action-group">
-        <button type="button" onClick={() => { setSelectedPaymentId(payment.id); setViewRecord(payment); }} style={ghostButton}>Ver</button>
-        <button type="button" onClick={() => edit(payment)} style={ghostButton}>Editar</button>
-        <button type="button" onClick={() => duplicate(payment)} style={ghostButton}>Duplicar</button>
-        {payment.status !== "anulado" ? <button type="button" onClick={() => voidPayment(payment)} style={dangerGhostButton}>Anular</button> : null}
-      </div>])}
+      <PaginatedRecordList rows={visiblePayments.map((payment) => [
+        <strong style={{ whiteSpace: "nowrap" }}>{payment.id}</strong>,
+        <div style={{ display: "grid", gap: 3 }}>
+          <strong style={{ color: "#0F172A" }}>{payment.customerNameSnapshot}</strong>
+          <span style={{ color: "#64748B", fontSize: 11 }}>{payment.invoiceId || "Sin factura"} · {payment.reference ? `Ref. ${payment.reference}` : "Sin referencia"}</span>
+        </div>,
+        payment.date,
+        <strong>{money(payment.grossAmount)}</strong>,
+        <span>{payment.method || "Sin medio"}</span>,
+        <RecordActions
+          primary={[
+            { label: "Ver", onClick: () => { setSelectedPaymentId(payment.id); setViewRecord(payment); } },
+            { label: "Editar", onClick: () => edit(payment) }
+          ]}
+          more={[
+            { label: "Duplicar", onClick: () => duplicate(payment) },
+            ...(payment.status !== "anulado" ? [{ label: "Anular", danger: true, onClick: () => voidPayment(payment) }] : [])
+          ]}
+        />
+      ])}
       rowKeys={visiblePayments.map((payment) => payment.id)}
       selectedKey={selectedPaymentId}
       onRowClick={(key) => {
@@ -3493,7 +3590,7 @@ function Payments({ data, onSave, onExport }) {
           setViewRecord(payment);
         }
       }}
-      headers={["ID", "Cliente", "Factura", "Fecha", "Bruto", "Retenciones", "Desc./favor", "Neto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
+      headers={["ID", "Cliente", "Fecha", "Valor bruto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -4387,7 +4484,7 @@ function RecordList({ headers, rows, rowKeys = [], selectedKey = "", onRowClick 
                 <tr
                   key={key}
                   onClick={onRowClick ? (event) => {
-                    if (event.target.closest("button,a,input,select,textarea")) return;
+                    if (event.target.closest("button,a,input,select,textarea,details,summary")) return;
                     onRowClick(key, index);
                   } : undefined}
                   className={selected ? "client-record-row selected" : "client-record-row"}
@@ -4406,7 +4503,7 @@ function RecordList({ headers, rows, rowKeys = [], selectedKey = "", onRowClick 
           const selected = selectedKey && key === selectedKey;
           return (
           <div key={key} onClick={onRowClick ? (event) => {
-            if (event.target.closest("button,a,input,select,textarea")) return;
+            if (event.target.closest("button,a,input,select,textarea,details,summary")) return;
             onRowClick(key, rowIndex);
           } : undefined} style={{ padding: 13, borderRadius: 16, background: selected ? "#EEF4FF" : "#F8FBFF", border: selected ? "1px solid rgba(37,99,235,.34)" : "1px solid rgba(37,99,235,.10)", display: "grid", gap: 7, fontFamily: F, cursor: onRowClick ? "pointer" : "default" }}>
             {row.map((cell, cellIndex) => (
@@ -4554,6 +4651,9 @@ function Imports({ data, onData, onGoHistory }) {
       <div style={{ padding: 14, borderRadius: 18, background: "rgba(37,99,235,.06)", color: "#1D4ED8", fontFamily: F, lineHeight: 1.7, marginBottom: 14 }}>
         La plantilla se descarga en Excel para diligenciarla con facilidad. Para cargarla al portal, guardala como <strong>CSV UTF-8</strong> desde Excel o Google Sheets y sube ese archivo CSV.
       </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+        <button type="button" onClick={() => onGoHistory?.()} style={{ ...ghostButton, background: "#F8FBFF" }}>Historial y anulacion de cargues</button>
+      </div>
       <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(220px,320px) auto auto minmax(0,1fr)", gap: 10, alignItems: "end" }}>
         <Field label="Plantilla"><select style={input} value={module} onChange={(event) => { setModule(event.target.value); setRows([]); setResult(null); setMergeChoices({}); }}>{Object.entries(templates).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></Field>
         <button type="button" onClick={downloadTemplate} style={{ ...button, background: "#fff", color: "#1D4ED8", border: "1px solid rgba(37,99,235,.14)" }}>Descargar plantilla Excel</button>
@@ -4619,7 +4719,7 @@ function Imports({ data, onData, onGoHistory }) {
           {success?.warnings ? <div style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", color: "#92400E", fontWeight: 800 }}>{success.warnings} advertencia(s) quedaron documentadas.</div> : null}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button type="button" onClick={() => { setRows([]); setResult(null); setMergeChoices({}); setSuccess(null); }} style={ghostButton}>Cargar otro</button>
-            <button type="button" onClick={() => { setSuccess(null); onGoHistory?.(); }} style={button}>Ver historial</button>
+            <button type="button" onClick={() => { setSuccess(null); onGoHistory?.(); }} style={button}>Ver historial / anular</button>
             <button type="button" onClick={() => setSuccess(null)} style={ghostButton}>Cerrar</button>
           </div>
         </div>
@@ -4632,16 +4732,22 @@ function ImportHistory({ data, onSave, onExport }) {
   const [selected, setSelected] = useState(null);
   const [confirmRevert, setConfirmRevert] = useState(null);
   const [busy, setBusy] = useState(false);
-  const imports = data.imports || [];
+  const imports = useMemo(() => [...(data.imports || [])].sort((a, b) => {
+    const dateCompare = clean(b.importedAt).localeCompare(clean(a.importedAt));
+    if (dateCompare) return dateCompare;
+    return compareRecordId(a, b);
+  }), [data.imports]);
   const moduleLabels = Object.fromEntries(Object.entries(data.templates || {}).map(([key, value]) => [key, value.label]));
+  const activeImports = imports.filter((item) => item.status !== "revertido").length;
+  const revertedImports = imports.length - activeImports;
 
   async function revert() {
     if (!confirmRevert) return;
     setBusy(true);
     try {
       await onSave("revertImport", { importId: confirmRevert.id });
+      setSelected({ ...confirmRevert, status: "revertido", revertedAt: new Date().toISOString() });
       setConfirmRevert(null);
-      setSelected(null);
     } catch (err) {
       // El mensaje visible lo establece save() en el componente principal.
     } finally {
@@ -4656,8 +4762,13 @@ function ImportHistory({ data, onSave, onExport }) {
   return (
     <ModuleWithForm title="Historial de cargues" count={imports.length} onExport={() => onExport("cargues_historial")}>
       <p style={{ margin: 0, color: "#64748B", fontFamily: F, lineHeight: 1.75 }}>
-        Consulta los archivos planos importados y reversa cargues recientes si fueron duplicados o quedaron mal. La reversion no borra registros: anula documentos y conserva trazabilidad.
+        Consulta los archivos planos importados y anula cargues recientes si fueron duplicados o quedaron mal. La anulacion no borra registros: deja trazabilidad, anula documentos y registra reversos de inventario cuando aplica.
       </p>
+      <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+        <Stat label="CARGUES ACTIVOS" value={activeImports} note="Pueden anularse si fueron cargados por error." />
+        <Stat label="CARGUES ANULADOS" value={revertedImports} note="Conservan trazabilidad del proceso." tone="#B91C1C" />
+        <Stat label="REGISTROS AFECTADOS" value={imports.reduce((sum, item) => sum + affectedCount(item), 0)} note="Documentos o movimientos creados por cargues." tone="#15803D" />
+      </div>
       <PaginatedRecordList
         headers={["ID", "Modulo", "Filas", "Estado", "Afectados", "Fecha", "Acciones"]}
         rowKeys={imports.map((item) => item.id)}
@@ -4670,13 +4781,15 @@ function ImportHistory({ data, onSave, onExport }) {
           item.id,
           moduleLabels[item.module] || item.module,
           item.rows || 0,
-          item.status === "revertido" ? "Revertido" : "Activo",
+          <StatusPill tone={item.status === "revertido" ? "#B91C1C" : "#15803D"}>{item.status === "revertido" ? "Anulado" : "Activo"}</StatusPill>,
           affectedCount(item),
           item.importedAt ? new Date(item.importedAt).toLocaleString("es-CO") : "",
-          <div className="client-action-group">
-            <button type="button" onClick={() => setSelected(item)} style={ghostButton}>Ver</button>
-            {item.status !== "revertido" && affectedCount(item) ? <button type="button" onClick={() => setConfirmRevert(item)} style={dangerGhostButton}>Reversar</button> : null}
-          </div>
+          <RecordActions
+            primary={[
+              { label: "Ver detalle", onClick: () => setSelected(item) },
+              ...(item.status !== "revertido" && affectedCount(item) ? [{ label: "Anular cargue", danger: true, onClick: () => setConfirmRevert(item) }] : [])
+            ]}
+          />
         ])}
         emptyMessage="Aun no hay cargues importados."
       />
@@ -4687,13 +4800,13 @@ function ImportHistory({ data, onSave, onExport }) {
               headers={["Campo", "Valor"]}
               rows={[
                 ["Modulo", moduleLabels[selected.module] || selected.module],
-                ["Estado", selected.status === "revertido" ? "Revertido" : "Activo"],
+                ["Estado", selected.status === "revertido" ? "Anulado / revertido" : "Activo"],
                 ["Filas", selected.rows || 0],
                 ["Advertencias", selected.warningsCount || 0],
                 ["Importado por", selected.importedBy || ""],
                 ["Fecha", selected.importedAt ? new Date(selected.importedAt).toLocaleString("es-CO") : ""],
-                ["Revertido por", selected.revertedBy || "-"],
-                ["Fecha reversion", selected.revertedAt ? new Date(selected.revertedAt).toLocaleString("es-CO") : "-"]
+                ["Anulado por", selected.revertedBy || "-"],
+                ["Fecha anulacion", selected.revertedAt ? new Date(selected.revertedAt).toLocaleString("es-CO") : "-"]
               ]}
             />
             <RecordList
@@ -4701,25 +4814,26 @@ function ImportHistory({ data, onSave, onExport }) {
               rows={Object.entries(selected.affected || {}).map(([key, values]) => [key, Array.isArray(values) && values.length ? values.join(", ") : "-"])}
             />
             {selected.status !== "revertido" && affectedCount(selected) ? (
-              <button type="button" onClick={() => setConfirmRevert(selected)} style={dangerGhostButton}>Reversar cargue</button>
+              <button type="button" onClick={() => setConfirmRevert(selected)} style={dangerGhostButton}>Anular cargue masivo</button>
             ) : null}
           </div>
         ) : null}
       </PortalModal>
       <ConfirmModal
         open={Boolean(confirmRevert)}
-        title="Reversar cargue"
-        body="Esta accion anulara documentos creados por el cargue y registrara reversos de inventario cuando aplique. No elimina historia ni clientes."
+        title="Anular cargue masivo"
+        body="Esta accion anulara los documentos creados por este cargue y registrara reversos de inventario cuando aplique. No elimina historia ni clientes, pero si cambia saldos e informes."
         details={[
           { label: "Cargue", value: confirmRevert?.id || "" },
           { label: "Modulo", value: moduleLabels[confirmRevert?.module] || confirmRevert?.module || "" },
+          { label: "Filas importadas", value: confirmRevert?.rows || 0 },
           { label: "Registros afectados", value: affectedCount(confirmRevert || {}) }
         ]}
         busy={busy}
         danger
         onCancel={() => setConfirmRevert(null)}
         onConfirm={revert}
-        confirmLabel="Reversar"
+        confirmLabel="Anular cargue"
       />
     </ModuleWithForm>
   );
@@ -5153,6 +5267,58 @@ export default function ClientPortal() {
           border-radius:11px!important;
           font-size:12px!important;
         }
+        .client-action-group-compact{
+          align-items:center;
+          flex-wrap:nowrap;
+        }
+        .client-row-more{
+          position:relative;
+          display:inline-block;
+          font-family:${F};
+        }
+        .client-row-more summary{
+          list-style:none;
+          min-height:34px;
+          padding:7px 10px;
+          border-radius:11px;
+          border:1px solid rgba(37,99,235,.14);
+          background:#fff;
+          color:#1D4ED8;
+          font-size:12px;
+          font-weight:900;
+          cursor:pointer;
+          display:grid;
+          place-items:center;
+        }
+        .client-row-more summary::-webkit-details-marker{display:none}
+        .client-row-more[open] summary{
+          background:#EEF4FF;
+          border-color:rgba(37,99,235,.28);
+        }
+        .client-row-more div{
+          position:absolute;
+          right:0;
+          top:calc(100% + 6px);
+          z-index:30;
+          min-width:136px;
+          display:grid;
+          gap:6px;
+          padding:8px;
+          border-radius:14px;
+          background:#fff;
+          border:1px solid rgba(37,99,235,.14);
+          box-shadow:0 16px 34px rgba(15,23,42,.16);
+        }
+        .client-row-more button{
+          width:100%;
+          justify-content:flex-start;
+          text-align:left;
+          background:#fff!important;
+          color:#1D4ED8!important;
+          border:0!important;
+        }
+        .client-row-more button:hover{background:#F1F6FF!important}
+        .client-row-more button.danger{color:#B91C1C!important}
         .client-record-row td:first-child{
           border-left:1px solid rgba(37,99,235,.10);
           border-radius:13px 0 0 13px;
