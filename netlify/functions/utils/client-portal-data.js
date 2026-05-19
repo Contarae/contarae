@@ -1442,6 +1442,19 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       ]
     };
     if (invoice.total <= 0) throw new Error("Ingresa un valor total valido para la factura.");
+    const incomingPaymentSplits = Array.isArray(payload.paymentSplits) ? payload.paymentSplits : [];
+    if (existingIndex < 0 && nextStatus !== "anulada" && paymentCondition !== "credito") {
+      const splitTotal = incomingPaymentSplits.reduce((sum, split) => sum + parseCurrency(split.amount), 0);
+      if (splitTotal <= 0) throw new Error("Registra al menos un valor bruto aplicado para la factura.");
+      if (splitTotal > invoice.total) throw new Error("El valor bruto aplicado no puede superar el total de la factura.");
+      if (paymentCondition === "contado" && splitTotal !== invoice.total) throw new Error("Para pago de contado, el valor bruto aplicado debe ser igual al total de la factura.");
+      if (paymentCondition === "parcial" && splitTotal >= invoice.total) throw new Error("Para pago parcial, el valor bruto aplicado debe ser menor al total de la factura.");
+      incomingPaymentSplits.forEach((split) => {
+        const amount = parseCurrency(split.amount);
+        const totalDeductions = parseCurrency(split.retefuente) + parseCurrency(split.reteica) + parseCurrency(split.reteiva) + parseCurrency(split.otherRetentions) + parseCurrency(split.discountAmount) + parseCurrency(split.returnCreditAmount);
+        if (amount > 0 && totalDeductions > amount) throw new Error("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado.");
+      });
+    }
     data.invoices = existingIndex >= 0
       ? data.invoices.map((item, index) => index === existingIndex ? invoice : item)
       : [...data.invoices, invoice];
@@ -1479,10 +1492,20 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
         };
       });
     }
-    if (existingIndex < 0 && nextStatus !== "anulada" && Array.isArray(payload.paymentSplits) && payload.paymentSplits.length) {
-      payload.paymentSplits.forEach((split) => {
+    if (existingIndex < 0 && nextStatus !== "anulada" && incomingPaymentSplits.length) {
+      incomingPaymentSplits.forEach((split) => {
         const amount = parseCurrency(split.amount);
         if (amount <= 0) return;
+        const retentions = {
+          retefuente: parseCurrency(split.retefuente),
+          reteica: parseCurrency(split.reteica),
+          reteiva: parseCurrency(split.reteiva),
+          other: parseCurrency(split.otherRetentions)
+        };
+        const retentionTotal = retentions.retefuente + retentions.reteica + retentions.reteiva + retentions.other;
+        const discountAmount = parseCurrency(split.discountAmount);
+        const returnCreditAmount = parseCurrency(split.returnCreditAmount);
+        const netReceived = Math.max(amount - retentionTotal - discountAmount - returnCreditAmount, 0);
         const paymentId = nextPaymentId(data);
         tracker.add("payments", paymentId);
         data.payments = [
@@ -1494,15 +1517,21 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
             invoiceId: id,
             date: normalizeDate(split.date) || invoice.date,
             grossAmount: amount,
-            retentions: { retefuente: 0, reteica: 0, reteiva: 0, other: 0 },
-            retentionTotal: 0,
-            discounts: { amount: 0, concept: "" },
-            returnCredit: { amount: 0, note: "" },
-            netReceived: amount,
+            retentions,
+            retentionTotal,
+            discounts: {
+              amount: discountAmount,
+              concept: cleanText(split.discountConcept)
+            },
+            returnCredit: {
+              amount: returnCreditAmount,
+              note: cleanText(split.returnCreditNote)
+            },
+            netReceived,
             totalApplied: amount,
             method: cleanText(split.method) || "No especificado",
             reference: cleanText(split.reference),
-            notes: `Pago automatico registrado con la factura ${id}.`,
+            notes: [cleanText(split.notes), `Pago automatico registrado con la factura ${id}.`].filter(Boolean).join(" | "),
             status: "aplicado",
             source: paymentCondition === "contado" ? "factura_contado" : "factura_abono_parcial",
             createdAt: now,

@@ -1142,12 +1142,47 @@ function blankPaymentSplit(date = today(), amount = "") {
     amount,
     method: "Transferencia bancaria",
     date,
-    reference: ""
+    reference: "",
+    retefuente: "",
+    reteica: "",
+    reteiva: "",
+    otherRetentions: "",
+    discountAmount: "",
+    discountConcept: "Comercial",
+    returnCreditAmount: "",
+    returnCreditNote: "",
+    notes: ""
   };
 }
 
 function paymentSplitsTotal(splits = []) {
   return splits.reduce((sum, split) => sum + moneyValue(split.amount), 0);
+}
+
+function paymentSplitSummary(split = {}) {
+  const grossAmount = moneyValue(split.amount);
+  const retentionTotal = moneyValue(split.retefuente) + moneyValue(split.reteica) + moneyValue(split.reteiva) + moneyValue(split.otherRetentions);
+  const discountTotal = moneyValue(split.discountAmount) + moneyValue(split.returnCreditAmount);
+  return {
+    grossAmount,
+    retentionTotal,
+    discountTotal,
+    netReceived: Math.max(grossAmount - retentionTotal - discountTotal, 0),
+    deductionsExceedGross: retentionTotal + discountTotal > grossAmount
+  };
+}
+
+function paymentSplitsSummary(splits = []) {
+  return splits.reduce((summary, split) => {
+    const item = paymentSplitSummary(split);
+    return {
+      grossAmount: summary.grossAmount + item.grossAmount,
+      retentionTotal: summary.retentionTotal + item.retentionTotal,
+      discountTotal: summary.discountTotal + item.discountTotal,
+      netReceived: summary.netReceived + item.netReceived,
+      deductionsExceedGross: summary.deductionsExceedGross || item.deductionsExceedGross
+    };
+  }, { grossAmount: 0, retentionTotal: 0, discountTotal: 0, netReceived: 0, deductionsExceedGross: false });
 }
 
 function normalizePaymentSplits(splits = []) {
@@ -1156,7 +1191,16 @@ function normalizePaymentSplits(splits = []) {
       amount: moneyValue(split.amount),
       method: clean(split.method) || "Transferencia bancaria",
       date: split.date || today(),
-      reference: clean(split.reference)
+      reference: clean(split.reference),
+      retefuente: moneyValue(split.retefuente),
+      reteica: moneyValue(split.reteica),
+      reteiva: moneyValue(split.reteiva),
+      otherRetentions: moneyValue(split.otherRetentions),
+      discountAmount: moneyValue(split.discountAmount),
+      discountConcept: clean(split.discountConcept) || "Comercial",
+      returnCreditAmount: moneyValue(split.returnCreditAmount),
+      returnCreditNote: clean(split.returnCreditNote),
+      notes: clean(split.notes)
     }))
     .filter((split) => split.amount > 0);
 }
@@ -3067,6 +3111,7 @@ function Invoices({ data, onSave, onExport }) {
   const summaryTotals = totalizedInvoiceTotals(draft.summaryBreakdown);
   const documentTotal = mode === "detallada" ? totals.total : summaryTotals.total;
   const splitTotal = paymentSplitsTotal(draft.paymentSplits);
+  const paymentSummary = paymentSplitsSummary(draft.paymentSplits);
   const invoices = data.invoices || [];
   const visibleInvoices = searched ? sortRecords(filterRecordsByQuery(invoices, data, filters), data, filters.sort || "idDesc") : [];
 
@@ -3150,6 +3195,10 @@ function Invoices({ data, onSave, onExport }) {
         window.alert("Registra al menos un medio de pago para la factura de contado o con abono parcial.");
         return;
       }
+      if (paymentSummary.deductionsExceedGross) {
+        window.alert("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado en ningun medio de pago.");
+        return;
+      }
       if (splitTotal > documentTotal) {
         window.alert("Los pagos registrados no pueden superar el total de la factura.");
         return;
@@ -3191,7 +3240,13 @@ function Invoices({ data, onSave, onExport }) {
         { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Total", value: money(documentTotal) },
         { label: "Estado", value: draft.status },
-        { label: "Condicion", value: draft.paymentCondition === "contado" ? "Pago de contado" : draft.paymentCondition === "parcial" ? `Abono parcial ${money(splitTotal)}` : "Credito" }
+        { label: "Condicion", value: draft.paymentCondition === "contado" ? "Pago de contado" : draft.paymentCondition === "parcial" ? `Abono parcial ${money(splitTotal)}` : "Credito" },
+        ...(draft.paymentCondition !== "credito" ? [
+          { label: "Bruto aplicado", value: money(paymentSummary.grossAmount) },
+          { label: "Retenciones", value: money(paymentSummary.retentionTotal) },
+          { label: "Descuentos / devoluciones", value: money(paymentSummary.discountTotal) },
+          { label: "Neto recibido", value: money(paymentSummary.netReceived) }
+        ] : [])
       ]
     };
     if (customerNeedsUpdate(customer)) {
@@ -3360,7 +3415,7 @@ function Invoices({ data, onSave, onExport }) {
                 setDraft((current) => ({
                   ...current,
                   paymentCondition: nextCondition,
-                  status: nextCondition === "contado" ? "pagada" : current.status,
+                  status: nextCondition === "contado" ? "pagada" : current.status === "pagada" ? "emitida" : current.status,
                   paymentSplits: nextCondition === "credito" ? current.paymentSplits : (current.paymentSplits || [blankPaymentSplit(current.date)])
                 }));
               }}>
@@ -3416,22 +3471,54 @@ function Invoices({ data, onSave, onExport }) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 12, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PAGO DE LA FACTURA</div>
-                  <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>Puedes registrar un pago total o parcial, incluso fraccionado por varios medios.</p>
+                  <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>El valor bruto aplicado cruza la cartera; el neto recibido se calcula despues de retenciones, descuentos o saldos a favor.</p>
                 </div>
                 <button type="button" onClick={addPaymentSplit} style={ghostButton}>Agregar medio</button>
               </div>
-              {(draft.paymentSplits || []).map((split) => (
-                <div key={split.id} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) minmax(140px,1fr) minmax(130px,1fr) minmax(160px,1fr) auto", gap: 8, alignItems: "end" }}>
-                  <Field label="Valor pagado"><input style={input} value={split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
-                  <Field label="Metodo"><select style={input} value={split.method} onChange={(event) => updatePaymentSplit(split.id, { method: event.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
-                  <Field label="Fecha pago"><input type="date" style={input} value={split.date || draft.date} onChange={(event) => updatePaymentSplit(split.id, { date: event.target.value })} /></Field>
-                  <Field label="Referencia"><input style={input} value={split.reference || ""} onChange={(event) => updatePaymentSplit(split.id, { reference: event.target.value })} placeholder="Opcional" /></Field>
-                  <button type="button" onClick={() => removePaymentSplit(split.id)} style={dangerGhostButton}>Quitar</button>
-                </div>
-              ))}
+              {(draft.paymentSplits || []).map((split, index) => {
+                const splitSummary = paymentSplitSummary(split);
+                return (
+                  <div key={split.id} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 16, background: "#FFFFFF", border: "1px solid rgba(37,99,235,.12)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <strong style={{ fontFamily: F, color: "#0B1D3A" }}>Medio de pago #{index + 1}</strong>
+                      <button type="button" onClick={() => removePaymentSplit(split.id)} style={dangerGhostButton}>Quitar</button>
+                    </div>
+                    <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, alignItems: "end" }}>
+                      <Field label="Valor bruto aplicado"><input required style={input} value={split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Metodo"><select style={input} value={split.method} onChange={(event) => updatePaymentSplit(split.id, { method: event.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
+                      <Field label="Fecha pago"><input type="date" style={input} value={split.date || draft.date} onChange={(event) => updatePaymentSplit(split.id, { date: event.target.value })} /></Field>
+                      <Field label="Referencia"><input style={input} value={split.reference || ""} onChange={(event) => updatePaymentSplit(split.id, { reference: event.target.value })} placeholder="Opcional" /></Field>
+                    </div>
+                    <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, alignItems: "end" }}>
+                      <Field label="ReteFuente"><input style={input} value={split.retefuente || ""} onChange={(event) => updatePaymentSplit(split.id, { retefuente: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="ReteICA"><input style={input} value={split.reteica || ""} onChange={(event) => updatePaymentSplit(split.id, { reteica: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="ReteIVA"><input style={input} value={split.reteiva || ""} onChange={(event) => updatePaymentSplit(split.id, { reteiva: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Otras retenciones"><input style={input} value={split.otherRetentions || ""} onChange={(event) => updatePaymentSplit(split.id, { otherRetentions: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Descuento"><input style={input} value={split.discountAmount || ""} onChange={(event) => updatePaymentSplit(split.id, { discountAmount: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Concepto descuento">
+                        <select style={input} value={split.discountConcept || "Comercial"} onChange={(event) => updatePaymentSplit(split.id, { discountConcept: event.target.value })}>
+                          {DISCOUNT_CONCEPTS.map((concept) => <option key={concept}>{concept}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Saldo a favor por devolucion"><input style={input} value={split.returnCreditAmount || ""} onChange={(event) => updatePaymentSplit(split.id, { returnCreditAmount: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Neto recibido"><input readOnly style={{ ...input, background: "#F8FBFF", fontWeight: 900, color: "#15803D" }} value={money(splitSummary.netReceived)} /></Field>
+                    </div>
+                    <textarea style={{ ...input, minHeight: 58 }} placeholder="Observacion del saldo a favor por devolucion, si aplica" value={split.returnCreditNote || ""} onChange={(event) => updatePaymentSplit(split.id, { returnCreditNote: event.target.value })} />
+                    <textarea style={{ ...input, minHeight: 58 }} placeholder="Notas internas de este pago" value={split.notes || ""} onChange={(event) => updatePaymentSplit(split.id, { notes: event.target.value })} />
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontFamily: F, color: "#334155", fontSize: 13 }}>
+                      <span>Bruto aplicado: <strong>{money(splitSummary.grossAmount)}</strong></span>
+                      <span>Retenciones: <strong>{money(splitSummary.retentionTotal)}</strong></span>
+                      <span>Descuentos/devoluciones: <strong>{money(splitSummary.discountTotal)}</strong></span>
+                      <span>Neto recibido: <strong style={{ color: "#15803D" }}>{money(splitSummary.netReceived)}</strong></span>
+                    </div>
+                  </div>
+                );
+              })}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontFamily: F, color: "#0B1D3A" }}>
                 <strong>Total factura: {money(documentTotal)}</strong>
-                <strong>Pagado ahora: {money(splitTotal)}</strong>
+                <strong>Bruto aplicado: {money(paymentSummary.grossAmount)}</strong>
+                <strong>Retenciones: {money(paymentSummary.retentionTotal)}</strong>
+                <strong>Neto recibido: {money(paymentSummary.netReceived)}</strong>
                 <strong>Saldo: {money(Math.max(documentTotal - splitTotal, 0))}</strong>
               </div>
             </section>
