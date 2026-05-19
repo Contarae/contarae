@@ -42,6 +42,7 @@ const IMPORT_TEMPLATES = {
 
 const INVENTORY_MOVEMENT_TYPES = new Set(["entrada", "salida", "ajuste_positivo", "ajuste_negativo"]);
 const INVALID_DOCUMENT_TOKENS = new Set(["", "por asignar", "sin documento", "pendiente", "pendiente por asignar", "n/a", "na", "0"]);
+const AUTOMATIC_INVOICE_PAYMENT_SOURCES = new Set(["factura_contado", "factura_abono_parcial"]);
 
 const CITY_DEPARTMENT_MAP = {
   armenia: ["Armenia", "Quindio"],
@@ -263,6 +264,18 @@ function createAudit(action, actor = "portal", details = {}) {
     by: cleanText(actor) || "portal",
     ...details
   };
+}
+
+function isAutomaticInvoicePayment(payment = {}, invoiceId = "") {
+  return cleanText(payment.invoiceId) === cleanText(invoiceId)
+    && AUTOMATIC_INVOICE_PAYMENT_SOURCES.has(cleanText(payment.source).toLowerCase())
+    && payment.status !== "anulado";
+}
+
+function isManualInvoicePayment(payment = {}, invoiceId = "") {
+  return cleanText(payment.invoiceId) === cleanText(invoiceId)
+    && !AUTOMATIC_INVOICE_PAYMENT_SOURCES.has(cleanText(payment.source).toLowerCase())
+    && payment.status !== "anulado";
 }
 
 function normalizeLine(line = {}, inventory = []) {
@@ -1385,6 +1398,12 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     const totals = lines.length ? calculateInvoiceTotals(lines, totalOverride) : summaryTotals;
     const nextStatus = cleanText(payload.status) || "emitida";
     const paymentCondition = cleanText(payload.paymentCondition) || "credito";
+    const automaticPaymentsToVoid = nextStatus === "anulada"
+      ? (data.payments || []).filter((payment) => isAutomaticInvoicePayment(payment, id))
+      : [];
+    const manualPaymentsToVoid = nextStatus === "anulada" && payload.voidLinkedManualPayments === true
+      ? (data.payments || []).filter((payment) => isManualInvoicePayment(payment, id))
+      : [];
     if (existingIndex >= 0 && (existing.lines || []).length && existing.status !== "anulada") {
       reverseInventorySale(data, existing.lines, actor, id, `Reversion automatica por actualizacion o anulacion de factura ${id}.`);
     }
@@ -1414,7 +1433,13 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       createdBy: existing.createdBy || actor,
       updatedAt: now,
       updatedBy: actor,
-      auditTrail: [...(existing.auditTrail || []), createAudit(existingIndex >= 0 ? "invoice_updated" : "invoice_created", actor)]
+      auditTrail: [
+        ...(existing.auditTrail || []),
+        createAudit(existingIndex >= 0 ? "invoice_updated" : "invoice_created", actor, {
+          ...(automaticPaymentsToVoid.length ? { automaticPaymentsVoided: automaticPaymentsToVoid.length } : {}),
+          ...(manualPaymentsToVoid.length ? { manualPaymentsVoided: manualPaymentsToVoid.length } : {})
+        })
+      ]
     };
     if (invoice.total <= 0) throw new Error("Ingresa un valor total valido para la factura.");
     data.invoices = existingIndex >= 0
@@ -1424,7 +1449,37 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     tracker.customer(existing.customerId);
     tracker.customer(customer.id);
     [...(existing.lines || []), ...lines].forEach((line) => tracker.add("inventory", line.sku));
-    if (existingIndex < 0 && Array.isArray(payload.paymentSplits) && payload.paymentSplits.length) {
+    if (nextStatus === "anulada" && automaticPaymentsToVoid.length) {
+      data.payments = (data.payments || []).map((payment) => {
+        if (!isAutomaticInvoicePayment(payment, id)) return payment;
+        tracker.add("payments", payment.id);
+        tracker.customer(payment.customerId);
+        return {
+          ...payment,
+          status: "anulado",
+          notes: [payment.notes, `Anulado automaticamente por anulacion de la factura ${id}.`].filter(Boolean).join(" | "),
+          updatedAt: now,
+          updatedBy: actor,
+          auditTrail: [...(payment.auditTrail || []), createAudit("payment_voided_with_invoice", actor, { invoiceId: id })]
+        };
+      });
+    }
+    if (nextStatus === "anulada" && manualPaymentsToVoid.length) {
+      data.payments = (data.payments || []).map((payment) => {
+        if (!isManualInvoicePayment(payment, id)) return payment;
+        tracker.add("payments", payment.id);
+        tracker.customer(payment.customerId);
+        return {
+          ...payment,
+          status: "anulado",
+          notes: [payment.notes, `Anulado manualmente junto con la factura ${id}.`].filter(Boolean).join(" | "),
+          updatedAt: now,
+          updatedBy: actor,
+          auditTrail: [...(payment.auditTrail || []), createAudit("manual_payment_voided_with_invoice", actor, { invoiceId: id })]
+        };
+      });
+    }
+    if (existingIndex < 0 && nextStatus !== "anulada" && Array.isArray(payload.paymentSplits) && payload.paymentSplits.length) {
       payload.paymentSplits.forEach((split) => {
         const amount = parseCurrency(split.amount);
         if (amount <= 0) return;

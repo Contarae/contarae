@@ -182,6 +182,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const normalizeText = (value) => clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const slugClass = (value) => normalizeText(value).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "campo";
 const invalidDocumentTokens = new Set(["", "por asignar", "sin documento", "pendiente", "pendiente por asignar", "n/a", "na", "0"]);
+const automaticInvoicePaymentSources = new Set(["factura_contado", "factura_abono_parcial"]);
 
 function normalizeLookup(value = "") {
   return clean(value)
@@ -1908,7 +1909,7 @@ function PortalModal({ open, title, eyebrow, onClose, children, wide = true }) {
   );
 }
 
-function ConfirmModal({ open, title, body, details = [], onCancel, onConfirm, confirmLabel = "Confirmar", busy = false, danger = false }) {
+function ConfirmModal({ open, title, body, details = [], onCancel, onConfirm, confirmLabel = "Confirmar", busy = false, danger = false, children = null }) {
   if (!open) return null;
   return (
     <PortalModal open={open} title={title} eyebrow="CONFIRMACION" onClose={busy ? undefined : onCancel} wide={false}>
@@ -1924,6 +1925,7 @@ function ConfirmModal({ open, title, body, details = [], onCancel, onConfirm, co
             ))}
           </div>
         ) : null}
+        {children}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
           <button type="button" disabled={busy} onClick={onCancel} style={{ ...ghostButton, opacity: busy ? .6 : 1 }}>Cancelar</button>
           <button type="button" disabled={busy} onClick={onConfirm} style={{ ...button, background: danger ? "linear-gradient(135deg,#991B1B,#DC2626)" : button.background, opacity: busy ? .65 : 1 }}>{busy ? "Guardando..." : confirmLabel}</button>
@@ -3200,10 +3202,19 @@ function Invoices({ data, onSave, onExport }) {
   }
 
   function voidInvoice(invoice) {
+    const relatedPayments = (data.payments || []).filter((payment) => clean(payment.invoiceId) === clean(invoice.id) && payment.status !== "anulado");
+    const automaticPayments = relatedPayments.filter((payment) => automaticInvoicePaymentSources.has(clean(payment.source).toLowerCase()));
+    const manualPayments = relatedPayments.filter((payment) => !automaticInvoicePaymentSources.has(clean(payment.source).toLowerCase()));
+    const automaticTotal = automaticPayments.reduce((sum, payment) => sum + Number(payment.grossAmount || 0), 0);
+    const manualTotal = manualPayments.reduce((sum, payment) => sum + Number(payment.grossAmount || 0), 0);
+    const paymentNotice = [
+      automaticPayments.length ? `Se anularan tambien ${automaticPayments.length} abono(s) automatico(s) creado(s) con esta factura.` : "",
+      manualPayments.length ? `${manualPayments.length} abono(s) manual(es) vinculado(s) se conservaran como pagos reales/saldo a favor; si corresponde, anulalos desde el modulo de abonos.` : ""
+    ].filter(Boolean).join(" ");
     setConfirmAction({
       type: "void",
       title: "Anular factura",
-      body: `La factura ${invoice.id} quedara marcada como anulada. Si tenia productos de inventario, el sistema registrara la reversion automatica del stock sin borrar historial.`,
+      body: `La factura ${invoice.id} quedara marcada como anulada. Si tenia productos de inventario, el sistema registrara la reversion automatica del stock sin borrar historial. ${paymentNotice}`,
       danger: true,
       payload: {
         id: invoice.id,
@@ -3217,13 +3228,17 @@ function Invoices({ data, onSave, onExport }) {
         summaryBreakdown: invoice.summaryBreakdown || null,
         status: "anulada",
         notes: invoice.notes || "Factura anulada desde el portal.",
+        voidLinkedManualPayments: false,
         lines: invoice.lines || []
       },
       details: [
         { label: "Factura", value: invoice.id },
         { label: "Cliente", value: invoice.customerNameSnapshot },
-        { label: "Total", value: invoice.totalLabel || money(invoice.total) }
-      ]
+        { label: "Total", value: invoice.totalLabel || money(invoice.total) },
+        ...(automaticPayments.length ? [{ label: "Abonos automaticos a anular", value: `${automaticPayments.length} · ${money(automaticTotal)}` }] : []),
+        ...(manualPayments.length ? [{ label: "Abonos manuales vinculados", value: `${manualPayments.length} · ${money(manualTotal)}` }] : [])
+      ],
+      manualPayments
     });
   }
 
@@ -3477,7 +3492,21 @@ function Invoices({ data, onSave, onExport }) {
         onCancel={() => setConfirmAction(null)}
         onConfirm={runConfirmAction}
         confirmLabel={confirmAction?.type === "void" ? "Anular factura" : "Guardar"}
-      />
+      >
+        {confirmAction?.type === "void" && confirmAction?.manualPayments?.length ? (
+          <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 14, borderRadius: 16, border: "1px solid rgba(220,38,38,.18)", background: "rgba(254,242,242,.75)", fontFamily: F, color: "#7F1D1D", lineHeight: 1.5 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(confirmAction?.payload?.voidLinkedManualPayments)}
+              onChange={(event) => setConfirmAction((current) => current ? { ...current, payload: { ...current.payload, voidLinkedManualPayments: event.target.checked } } : current)}
+              style={{ marginTop: 4 }}
+            />
+            <span>
+              Anular tambien los abonos manuales vinculados a esta factura. Si dejas esta opcion sin marcar, esos pagos se conservaran y podran quedar como saldo a favor o aplicarse a otras facturas.
+            </span>
+          </label>
+        ) : null}
+      </ConfirmModal>
       <CustomerUpdateRequiredModal
         open={Boolean(customerUpdateRequest)}
         customer={customerUpdateRequest?.customer}
