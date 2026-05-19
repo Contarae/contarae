@@ -14,6 +14,7 @@ const SOCIAL_LINKS=[
 const CERTIFICATION_VIDEO_EMBED="https://www.youtube.com/embed/yHF1p9T9kgU";
 const fm=n=>new Intl.NumberFormat("es-CO").format(n);
 const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
+const trackMarketingEvent=(event,params={})=>{if(typeof window==="undefined"||!event)return;window.dataLayer=window.dataLayer||[];window.dataLayer.push({event,page_path:window.location.pathname,page_location:window.location.href,...params});};
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 const onlyDigits=value=>String(value||"").replace(/\D/g,"");
 const normalizeEmail=value=>String(value||"").trim().toLowerCase();
@@ -1595,6 +1596,7 @@ function LeadCaptureForm(){
       const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...normalized,sourcePath:window.location.pathname})});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
+      trackMarketingEvent("lead_submit",{service_interest:normalized.serviceInterest||"Certificación de ingresos",source_label:"Formulario web"});
       setMessage("Datos registrados correctamente. Te contactaremos por el canal que indicaste.");
       setForm(initial);
     }catch(err){
@@ -2507,6 +2509,7 @@ function CrtS(){
     markPaymentFailed(reference,"CLOSED","El proceso de pago se cerró antes de confirmarse. Si necesita ayuda, nuestro equipo puede acompañarle por WhatsApp o correo electrónico.");
   };
   const openWompi=async()=>{let paymentReference="";try{
+    trackMarketingEvent("cert_payment_click",{currency:"COP",value:tarifa,service_name:"certificacion_ingresos"});
     if(typeof window==="undefined"||!window.WidgetCheckout){alert("La pasarela de pago aún se está cargando. Intente nuevamente en unos segundos.");return;}
     if(promoCodeValue(promoCode)&&!promoApplied){alert("Valide el código promocional o borre el campo antes de pagar.");return;}
     const normalizedPersonal=normalizePersonalData();
@@ -2523,6 +2526,7 @@ function CrtS(){
     const sp=await fetch("/api/save-pending-form",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,supportFiles:uploadedSupportFiles,...pendingPayload})});
     const spd=await sp.json();
     if(!sp.ok||!spd.ok){closePaymentFeedback();alert("No fue posible preparar la solicitud. Intente nuevamente.");return;}
+    trackMarketingEvent("cert_pending_saved",{currency:"COP",value:tarifa,service_name:"certificacion_ingresos",certification_reference:paymentReference,has_support_files:supportFiles.length>0});
     persistTrackedReference(paymentReference);
     const sg=await fetch("/.netlify/functions/wompi-signature",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,amountInCents:tarifa*100,currency:"COP",monthlyIncome:recurrentMonthlyTotal,promoCode:promoApplied?promoStatus.code:""})});
     const sd=await sg.json();
@@ -2574,6 +2578,7 @@ function CrtS(){
     window.addEventListener(OPEN_CERT_FORM_EVENT,handleOpenRequested);
     return()=>window.removeEventListener(OPEN_CERT_FORM_EVENT,handleOpenRequested);
   },[]);
+  useEffect(()=>{if(openForm)trackMarketingEvent("cert_form_open",{service_name:"certificacion_ingresos"});},[openForm]);
 
   return(<Sec id="certificacion" title="Certificación de ingresos por Contador Público" sub="CERTIFICADO DE INGRESOS ONLINE COLOMBIA" bg={B[5]} narrow>
     <p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:10,fontFamily:F}}>Solicítela 100% online y recíbala firmada por Contador Público con tarjeta profesional vigente.</p>
@@ -2807,6 +2812,7 @@ function ToolRenta({uv}){
       })});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
+      trackMarketingEvent("lead_submit",{service_interest:"Declaración de renta",source_label:"Herramienta debo declarar renta"});
       setLeadMsg("Datos registrados correctamente. Te contactaremos para revisar tu declaración de renta.");
       setLead(initialLead);
     }catch(err){
@@ -2954,6 +2960,7 @@ export default function App(){
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
+  useEffect(()=>{const trackWhatsapp=e=>{const target=e.target instanceof Element?e.target:null;const a=target?.closest('a[href*="wa.me/"],a[href*="whatsapp.com/"]');if(!a)return;trackMarketingEvent("whatsapp_click",{link_url:a.href,link_text:(a.textContent||"").trim().slice(0,80)});};document.addEventListener("click",trackWhatsapp);return()=>document.removeEventListener("click",trackWhatsapp);},[]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const id=window.location.hash?.slice(1);if(!id)return undefined;const timer=window.setTimeout(()=>{scrollToId(id,"auto");},120);return()=>window.clearTimeout(timer);},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
   useEffect(()=>{
     const meta=getClientSeoMeta({path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute,toolRoute,toolConfig,certRoute,certSupportConfig,serviceSeoConfig});
