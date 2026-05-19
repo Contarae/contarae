@@ -1195,6 +1195,58 @@ function totalizedInvoiceTotals(breakdown = {}) {
   };
 }
 
+function blankSubtotalAssistant() {
+  return {
+    baseAmount: "",
+    tax5Percent: "",
+    tax19Percent: "",
+    advanceCredit: "",
+    advanceCreditNote: ""
+  };
+}
+
+function percentValue(value) {
+  const normalized = String(value || "").replace(",", ".").replace(/[^0-9.]/g, "");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatPercentInput(value) {
+  const normalized = String(value || "").replace(",", ".").replace(/[^0-9.]/g, "");
+  if (!normalized) return "";
+  const parts = normalized.split(".");
+  return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join("").slice(0, 2)}` : parts[0];
+}
+
+function subtotalAssistantCalculation(values = {}) {
+  const baseAmount = moneyValue(values.baseAmount);
+  const tax5Percent = percentValue(values.tax5Percent);
+  const tax19Percent = percentValue(values.tax19Percent);
+  const advanceCredit = moneyValue(values.advanceCredit);
+  const subtotalTax5 = Math.round(baseAmount * tax5Percent / 100);
+  const subtotalTax19 = Math.round(baseAmount * tax19Percent / 100);
+  const iva5 = Math.round(subtotalTax5 * 0.05);
+  const iva19 = Math.round(subtotalTax19 * 0.19);
+  const subtotalNoTax = Math.round(baseAmount - subtotalTax5 - subtotalTax19 - iva5 - iva19);
+  const subtotal = Math.max(subtotalNoTax, 0) + subtotalTax5 + subtotalTax19;
+  const tax = iva5 + iva19;
+  return {
+    baseAmount,
+    tax5Percent,
+    tax19Percent,
+    advanceCredit,
+    subtotalNoTax,
+    subtotalTax5,
+    subtotalTax19,
+    iva5,
+    iva19,
+    tax,
+    subtotal,
+    total: Math.max(subtotal + tax - advanceCredit, 0),
+    invalid: baseAmount <= 0 || subtotalNoTax < 0 || tax5Percent + tax19Percent > 100
+  };
+}
+
 function PeriodControls({ filters, setFilters, compact = false }) {
   return (
     <div className="client-period-controls" style={{ display: "grid", gridTemplateColumns: compact ? "minmax(160px,220px) repeat(2,minmax(130px,1fr))" : "minmax(160px,220px) repeat(2,minmax(130px,1fr))", gap: 10 }}>
@@ -3004,6 +3056,8 @@ function Invoices({ data, onSave, onExport }) {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const [customerUpdateRequest, setCustomerUpdateRequest] = useState(null);
+  const [subtotalAssistantOpen, setSubtotalAssistantOpen] = useState(false);
+  const [subtotalAssistant, setSubtotalAssistant] = useState(blankSubtotalAssistant());
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState({ customerSearchType: "name", customerQuery: "", period: "all", from: "", to: "", status: "", sort: "idDesc" });
   const [searched, setSearched] = useState(false);
@@ -3205,6 +3259,40 @@ function Invoices({ data, onSave, onExport }) {
     setDraft((current) => ({ ...current, paymentSplits: (current.paymentSplits || []).length > 1 ? current.paymentSplits.filter((split) => split.id !== id) : [blankPaymentSplit(current.date)] }));
   }
 
+  function openSubtotalAssistant() {
+    const currentBaseAmount = summaryTotals.subtotal + summaryTotals.tax;
+    setSubtotalAssistant({
+      ...blankSubtotalAssistant(),
+      baseAmount: currentBaseAmount ? formatCurrencyInput(currentBaseAmount) : "",
+      advanceCredit: draft.summaryBreakdown.advanceCredit || "",
+      advanceCreditNote: draft.summaryBreakdown.advanceCreditNote || ""
+    });
+    setSubtotalAssistantOpen(true);
+  }
+
+  function applySubtotalAssistant() {
+    const calculated = subtotalAssistantCalculation(subtotalAssistant);
+    if (calculated.invalid) {
+      if (calculated.baseAmount <= 0) window.alert("Ingresa un valor base valido para calcular la factura.");
+      else if (calculated.tax5Percent + calculated.tax19Percent > 100) window.alert("La suma de porcentajes gravados no puede superar el 100%.");
+      else window.alert("Los porcentajes gravados y el IVA generado superan el valor base. Ajusta los porcentajes.");
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      summaryBreakdown: {
+        ...current.summaryBreakdown,
+        subtotalNoTax: formatCurrencyInput(calculated.subtotalNoTax),
+        subtotalExempt: "",
+        subtotalTax5: formatCurrencyInput(calculated.subtotalTax5),
+        subtotalTax19: formatCurrencyInput(calculated.subtotalTax19),
+        advanceCredit: formatCurrencyInput(calculated.advanceCredit),
+        advanceCreditNote: subtotalAssistant.advanceCreditNote || current.summaryBreakdown.advanceCreditNote || ""
+      }
+    }));
+    setSubtotalAssistantOpen(false);
+  }
+
   return (
     <ModuleWithForm title="Facturas" count={(data.invoices || []).length} onExport={() => onExport("facturas", searched ? { filters } : {})}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -3279,6 +3367,13 @@ function Invoices({ data, onSave, onExport }) {
             </>
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", padding: 13, borderRadius: 16, background: "rgba(37,99,235,.06)", border: "1px solid rgba(37,99,235,.10)" }}>
+                <div style={{ fontFamily: F, color: "#334155", lineHeight: 1.55 }}>
+                  <strong style={{ display: "block", color: "#0B1D3A" }}>Tienes el valor de la factura y necesitas calcular los subtotales?</strong>
+                  <span style={{ fontSize: 13 }}>Indica solo los porcentajes gravados. El restante se enviara a subtotal sin IVA y los anticipos se restan al final.</span>
+                </div>
+                <button type="button" onClick={openSubtotalAssistant} style={ghostButton}>Calcular subtotales</button>
+              </div>
               <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
                 {[
                   ["subtotalNoTax", "Subtotal sin IVA"],
@@ -3330,8 +3425,47 @@ function Invoices({ data, onSave, onExport }) {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button type="button" onClick={() => setModalOpen(false)} style={ghostButton}>Cancelar</button>
             <button type="submit" style={button}>Guardar factura</button>
-          </div>
-        </form>
+	          </div>
+	        </form>
+	      </PortalModal>
+      <PortalModal open={subtotalAssistantOpen} title="Calcular subtotales" eyebrow="ASISTENTE" onClose={() => setSubtotalAssistantOpen(false)} wide={false}>
+        {(() => {
+          const calculated = subtotalAssistantCalculation(subtotalAssistant);
+          const canApply = !calculated.invalid;
+          return (
+            <div style={{ display: "grid", gap: 14 }}>
+              <p style={{ margin: 0, color: "#64748B", fontFamily: F, lineHeight: 1.6 }}>
+                Ingresa el valor base de la factura antes de restar anticipos o saldos a favor. Sobre los anticipos no se calcula IVA; se descuentan al final como menor valor.
+              </p>
+              <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                <Field label="Valor factura antes de anticipos"><input style={input} value={subtotalAssistant.baseAmount} onChange={(event) => setSubtotalAssistant((current) => ({ ...current, baseAmount: formatCurrencyInput(event.target.value) }))} placeholder="$ 1.000.000" /></Field>
+                <Field label="Anticipos / saldo a favor"><input style={input} value={subtotalAssistant.advanceCredit} onChange={(event) => setSubtotalAssistant((current) => ({ ...current, advanceCredit: formatCurrencyInput(event.target.value) }))} placeholder="Opcional" /></Field>
+                <Field label="% base gravada IVA 5%"><input style={input} value={subtotalAssistant.tax5Percent} onChange={(event) => setSubtotalAssistant((current) => ({ ...current, tax5Percent: formatPercentInput(event.target.value) }))} placeholder="Ej: 20" /></Field>
+                <Field label="% base gravada IVA 19%"><input style={input} value={subtotalAssistant.tax19Percent} onChange={(event) => setSubtotalAssistant((current) => ({ ...current, tax19Percent: formatPercentInput(event.target.value) }))} placeholder="Ej: 40" /></Field>
+              </div>
+              <textarea style={{ ...input, minHeight: 70 }} placeholder="Observacion del anticipo o saldo a favor por devolucion" value={subtotalAssistant.advanceCreditNote || ""} onChange={(event) => setSubtotalAssistant((current) => ({ ...current, advanceCreditNote: event.target.value }))} />
+              <div style={{ display: "grid", gap: 8, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.12)", fontFamily: F }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><span>Subtotal sin IVA restante</span><strong>{calculated.subtotalNoTax < 0 ? "No valido" : money(calculated.subtotalNoTax)}</strong></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><span>Subtotal gravado IVA 5%</span><strong>{money(calculated.subtotalTax5)}</strong></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><span>IVA 5%</span><strong>{money(calculated.iva5)}</strong></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><span>Subtotal gravado IVA 19%</span><strong>{money(calculated.subtotalTax19)}</strong></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><span>IVA 19%</span><strong>{money(calculated.iva19)}</strong></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><span>Anticipos / saldo a favor</span><strong>- {money(calculated.advanceCredit)}</strong></div>
+                <div style={{ height: 1, background: "rgba(37,99,235,.14)", margin: "4px 0" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#1D4ED8", fontSize: 18 }}><span>Total final</span><strong>{money(calculated.total)}</strong></div>
+              </div>
+              {!canApply && calculated.baseAmount > 0 ? (
+                <div style={{ padding: 12, borderRadius: 14, background: "rgba(239,68,68,.08)", color: "#B91C1C", fontFamily: F, lineHeight: 1.5 }}>
+                  Revisa el valor base y los porcentajes. El subtotal sin IVA no puede quedar negativo.
+                </div>
+              ) : null}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => setSubtotalAssistantOpen(false)} style={ghostButton}>Cancelar</button>
+                <button type="button" onClick={applySubtotalAssistant} style={{ ...button, opacity: canApply ? 1 : .55 }} disabled={!canApply}>Aplicar al formulario</button>
+              </div>
+            </div>
+          );
+        })()}
       </PortalModal>
       <ConfirmModal
         open={Boolean(confirmAction)}
