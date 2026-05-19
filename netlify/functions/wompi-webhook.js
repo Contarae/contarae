@@ -63,6 +63,146 @@ function parseCurrency(value) {
   return Number(normalized) || 0;
 }
 
+function safeJsonParse(value, fallback = {}) {
+  try {
+    return JSON.parse(String(value || "")) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function hashReference(value = "") {
+  return crypto
+    .createHash("sha256")
+    .update(String(value || "contarae"))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function getMarketingAttributionFromFormData(formData = {}) {
+  const parsed = safeJsonParse(formData.marketing_attribution_json, {});
+  const fields = [
+    "landing_page",
+    "initial_referrer",
+    "latest_page",
+    "latest_referrer",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+    "gclid",
+    "gbraid",
+    "wbraid",
+    "ga_client_id",
+    "attribution_captured_at",
+    "attribution_updated_at",
+    "campaign_landing_page",
+    "campaign_captured_at"
+  ];
+
+  return fields.reduce((acc, field) => {
+    const value = String(formData[field] || parsed[field] || "").trim();
+    if (value) acc[field] = value.slice(0, 500);
+    return acc;
+  }, {});
+}
+
+function buildGa4PaymentApprovedPayload(paidRecord = {}, reference = "") {
+  const formData = paidRecord.formData || {};
+  const attribution = getMarketingAttributionFromFormData(formData);
+  const clientId = attribution.ga_client_id || `server.${hashReference(reference)}`;
+  const amount =
+    Number(paidRecord.pricing?.finalAmount || 0) ||
+    parseCurrency(formData.tarifa_pagada || 0) ||
+    Number(paidRecord.wompiTransaction?.amount_in_cents || 0) / 100 ||
+    0;
+
+  const attributionParams = Object.entries(attribution).reduce((acc, [key, value]) => {
+    if (key === "ga_client_id") return acc;
+    acc[key] = value;
+    return acc;
+  }, {});
+
+  return {
+    client_id: clientId,
+    events: [
+      {
+        name: "cert_payment_approved",
+        params: {
+          currency: "COP",
+          value: amount,
+          transaction_id: paidRecord.wompiTransaction?.id || reference,
+          certification_reference: reference,
+          service_name: "certificacion_ingresos",
+          payment_method_type: paidRecord.wompiTransaction?.payment_method_type || "",
+          event_source: "wompi_webhook",
+          engagement_time_msec: 1,
+          ...attributionParams
+        }
+      }
+    ]
+  };
+}
+
+async function sendGa4PaymentApprovedEvent(paidRecord = {}, reference = "") {
+  const apiSecret = process.env.GA4_API_SECRET;
+  const measurementId = process.env.GA4_MEASUREMENT_ID || "G-HW3DMDT11N";
+
+  if (!apiSecret) {
+    return {
+      skipped: true,
+      reason: "GA4_API_SECRET no configurado"
+    };
+  }
+
+  const response = await fetch(
+    `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(measurementId)}&api_secret=${encodeURIComponent(apiSecret)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(buildGa4PaymentApprovedPayload(paidRecord, reference))
+    }
+  );
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `GA4 Measurement Protocol respondió ${response.status}`);
+  }
+
+  return {
+    sentAt: new Date().toISOString(),
+    measurementId
+  };
+}
+
+async function syncGa4PaymentApprovedEvent(paidRecord = {}, reference = "") {
+  if (paidRecord.ga4PaymentApprovedSentAt) return paidRecord;
+
+  try {
+    const result = await sendGa4PaymentApprovedEvent(paidRecord, reference);
+    if (result.skipped) return paidRecord;
+
+    return {
+      ...paidRecord,
+      ga4PaymentApprovedSentAt: result.sentAt,
+      ga4PaymentApprovedEventName: "cert_payment_approved",
+      ga4MeasurementId: result.measurementId,
+      lastGa4PaymentApprovedError: "",
+      lastGa4PaymentApprovedErrorAt: ""
+    };
+  } catch (error) {
+    return {
+      ...paidRecord,
+      lastGa4PaymentApprovedError: error.message,
+      lastGa4PaymentApprovedErrorAt: new Date().toISOString()
+    };
+  }
+}
+
 function hasMeaningfulCurrencyValue(value) {
   const raw = String(value || "").trim();
   if (!raw) return false;
@@ -750,28 +890,32 @@ export default async (req, context) => {
       Boolean(paidRecord.businessNotificationSentAt) &&
       (customerEmail ? Boolean(paidRecord.customerNotificationSentAt) : true) &&
       (promoReferralForCompletion ? Boolean(paidRecord.allyNotificationSentAt) : true);
+    let updatedPaidRecord = await syncGa4PaymentApprovedEvent(paidRecord, reference);
 
-    if (paidRecord.netlifySubmittedAt && allNotificationsCompleted) {
+    if (updatedPaidRecord.netlifySubmittedAt && allNotificationsCompleted) {
+      if (updatedPaidRecord !== paidRecord) {
+        await store.setJSON(`paid:${reference}`, updatedPaidRecord);
+      }
       return new Response(
         JSON.stringify({
           ok: true,
           message: "Solicitud ya aprobada y enviada a Netlify Forms",
           reference,
-          consecutivo: paidRecord.consecutive,
-          submittedAt: paidRecord.netlifySubmittedAt,
-          businessNotificationSentAt: paidRecord.businessNotificationSentAt || null,
-          customerNotificationSentAt: paidRecord.customerNotificationSentAt || null,
-          allyNotificationSentAt: paidRecord.allyNotificationSentAt || null
+          consecutivo: updatedPaidRecord.consecutive,
+          submittedAt: updatedPaidRecord.netlifySubmittedAt,
+          businessNotificationSentAt: updatedPaidRecord.businessNotificationSentAt || null,
+          customerNotificationSentAt: updatedPaidRecord.customerNotificationSentAt || null,
+          allyNotificationSentAt: updatedPaidRecord.allyNotificationSentAt || null,
+          ga4PaymentApprovedSentAt: updatedPaidRecord.ga4PaymentApprovedSentAt || null,
+          ga4PaymentApprovedWarning: updatedPaidRecord.lastGa4PaymentApprovedError || null
         }),
         { status: 200, headers }
       );
     }
 
-    let updatedPaidRecord = paidRecord;
-
-    if (!paidRecord.netlifySubmittedAt) {
+    if (!updatedPaidRecord.netlifySubmittedAt) {
       const origin = new URL(req.url).origin;
-      const params = buildNetlifyFormPayload(formName, paidRecord, reference);
+      const params = buildNetlifyFormPayload(formName, updatedPaidRecord, reference);
 
       const submitResponse = await fetch(`${origin}/`, {
         method: "POST",
@@ -793,7 +937,7 @@ export default async (req, context) => {
       }
 
       updatedPaidRecord = {
-        ...paidRecord,
+        ...updatedPaidRecord,
         netlifySubmittedAt: new Date().toISOString(),
         netlifyFormName: formName
       };
@@ -914,6 +1058,8 @@ export default async (req, context) => {
         businessNotificationSentAt: updatedPaidRecord.businessNotificationSentAt || null,
         customerNotificationSentAt: updatedPaidRecord.customerNotificationSentAt || null,
         allyNotificationSentAt: updatedPaidRecord.allyNotificationSentAt || null,
+        ga4PaymentApprovedSentAt: updatedPaidRecord.ga4PaymentApprovedSentAt || null,
+        ga4PaymentApprovedWarning: updatedPaidRecord.lastGa4PaymentApprovedError || null,
         notificationWarnings: Object.keys(notificationErrors).length
           ? notificationErrors
           : null

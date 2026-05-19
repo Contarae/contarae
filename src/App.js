@@ -14,7 +14,68 @@ const SOCIAL_LINKS=[
 const CERTIFICATION_VIDEO_EMBED="https://www.youtube.com/embed/yHF1p9T9kgU";
 const fm=n=>new Intl.NumberFormat("es-CO").format(n);
 const wm=m=>`${WL}?text=${encodeURIComponent(m)}`;
-const trackMarketingEvent=(event,params={})=>{if(typeof window==="undefined"||!event)return;window.dataLayer=window.dataLayer||[];window.dataLayer.push({event,page_path:window.location.pathname,page_location:window.location.href,...params});};
+const MARKETING_STORAGE_KEY="contarae-marketing-attribution";
+const MARKETING_QUERY_KEYS=["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","gclid","gbraid","wbraid"];
+const MARKETING_FORM_FIELDS=["marketing_attribution_json","landing_page","initial_referrer","latest_page","latest_referrer","utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","gclid","gbraid","wbraid","ga_client_id","attribution_captured_at","attribution_updated_at","campaign_landing_page","campaign_captured_at"];
+const cleanMarketingValue=value=>String(value||"").trim().slice(0,500);
+const safeJsonParse=(value,fallback={})=>{try{return JSON.parse(String(value||""))||fallback;}catch(e){return fallback;}};
+const readStoredMarketingAttribution=()=>{if(typeof window==="undefined")return{};try{return safeJsonParse(window.localStorage.getItem(MARKETING_STORAGE_KEY),{});}catch(e){return{};}};
+const writeStoredMarketingAttribution=attribution=>{if(typeof window==="undefined")return attribution;try{window.localStorage.setItem(MARKETING_STORAGE_KEY,JSON.stringify(attribution));}catch(e){}return attribution;};
+const getGaClientId=()=>{if(typeof document==="undefined")return"";const match=document.cookie.match(/(?:^|;\s*)_ga=GA\d+\.\d+\.(\d+\.\d+)/);return match?match[1]:"";};
+const captureMarketingAttribution=()=>{
+  if(typeof window==="undefined")return{};
+  const now=new Date().toISOString();
+  const url=new URL(window.location.href);
+  const existing=readStoredMarketingAttribution();
+  const queryValues=MARKETING_QUERY_KEYS.reduce((acc,key)=>{const value=cleanMarketingValue(url.searchParams.get(key));if(value)acc[key]=value;return acc;},{});
+  const hasCampaignTouch=Object.keys(queryValues).length>0;
+  const attribution={
+    ...existing,
+    landing_page:existing.landing_page||url.href,
+    initial_referrer:existing.initial_referrer||document.referrer||"",
+    captured_at:existing.captured_at||now,
+    latest_page:url.href,
+    latest_referrer:document.referrer||existing.latest_referrer||"",
+    updated_at:now,
+    ...(hasCampaignTouch?queryValues:{}),
+    campaign_landing_page:hasCampaignTouch?url.href:existing.campaign_landing_page||"",
+    campaign_captured_at:hasCampaignTouch?now:existing.campaign_captured_at||"",
+    ga_client_id:getGaClientId()||existing.ga_client_id||""
+  };
+  return writeStoredMarketingAttribution(attribution);
+};
+const getMarketingAttribution=()=>{
+  const attribution=readStoredMarketingAttribution();
+  const gaClientId=getGaClientId();
+  if(gaClientId&&attribution.ga_client_id!==gaClientId)return writeStoredMarketingAttribution({...attribution,ga_client_id:gaClientId,updated_at:new Date().toISOString()});
+  return attribution;
+};
+const getMarketingFormFields=()=>{
+  const attribution=getMarketingAttribution();
+  return {
+    marketing_attribution_json:JSON.stringify(attribution),
+    landing_page:attribution.landing_page||"",
+    initial_referrer:attribution.initial_referrer||"",
+    latest_page:attribution.latest_page||"",
+    latest_referrer:attribution.latest_referrer||"",
+    utm_source:attribution.utm_source||"",
+    utm_medium:attribution.utm_medium||"",
+    utm_campaign:attribution.utm_campaign||"",
+    utm_term:attribution.utm_term||"",
+    utm_content:attribution.utm_content||"",
+    utm_id:attribution.utm_id||"",
+    gclid:attribution.gclid||"",
+    gbraid:attribution.gbraid||"",
+    wbraid:attribution.wbraid||"",
+    ga_client_id:attribution.ga_client_id||"",
+    attribution_captured_at:attribution.captured_at||"",
+    attribution_updated_at:attribution.updated_at||"",
+    campaign_landing_page:attribution.campaign_landing_page||"",
+    campaign_captured_at:attribution.campaign_captured_at||""
+  };
+};
+const getMarketingEventParams=()=>{const fields=getMarketingFormFields();const{marketing_attribution_json,...params}=fields;return params;};
+const trackMarketingEvent=(event,params={})=>{if(typeof window==="undefined"||!event)return;window.dataLayer=window.dataLayer||[];window.dataLayer.push({event,page_path:window.location.pathname,page_location:window.location.href,...getMarketingEventParams(),...params});};
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
 const onlyDigits=value=>String(value||"").replace(/\D/g,"");
 const normalizeEmail=value=>String(value||"").trim().toLowerCase();
@@ -1593,7 +1654,7 @@ function LeadCaptureForm(){
     }
     setBusy(true);
     try{
-      const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...normalized,sourcePath:window.location.pathname})});
+      const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...normalized,sourcePath:window.location.pathname,marketingAttribution:getMarketingAttribution(),...getMarketingFormFields()})});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
       trackMarketingEvent("lead_submit",{service_interest:normalized.serviceInterest||"Certificación de ingresos",source_label:"Formulario web"});
@@ -2340,6 +2401,8 @@ function CrtS(){
   const[promoBusy,sPromoBusy]=useState(false);
   const pollTimeoutRef=useRef(null);
   const pollStartedAtRef=useRef(0);
+  const trackedCertStepsRef=useRef(new Set());
+  const approvedPaymentEventsRef=useRef(new Set());
   const u=(k,v)=>sF(p=>({...p,[k]:v}));
   const uF=(k,v)=>sF(p=>({...p,[k]:fmtI(v)}));
   const uE=(index,key,value)=>sF(p=>({...p,ev:(p.ev||[]).map((row,rowIndex)=>rowIndex===index?{...row,[key]:key==="amount"?fmtI(value):value}:row)}));
@@ -2358,6 +2421,7 @@ function CrtS(){
     if(!normalized.n||!normalized.cc||!normalized.tel||!normalized.em){alert("Complete todos los campos");return;}
     if(!isValidColombianMobileNumber(normalized.tel)){alert("Ingrese un número de celular colombiano válido de 10 dígitos.");return;}
     if(!isValidEmail(normalized.em)){alert("Ingrese un correo electrónico válido.");return;}
+    trackCertStepOnce("cert_step_personal_complete",{service_name:"certificacion_ingresos"});
     moveStep(1);
   };
   const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."]];
@@ -2374,6 +2438,26 @@ function CrtS(){
   const tarifa=promoApplied?Number(promoStatus.finalAmount||baseTarifa):baseTarifa;
   const createPaymentReference=()=>`CONTARAE-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
   const periodLabel=buildCertifiedPeriodLabel(f.per,certifiedMonths);
+  const trackCertStepOnce=(event,params={})=>{
+    if(trackedCertStepsRef.current.has(event))return;
+    trackedCertStepsRef.current.add(event);
+    trackMarketingEvent(event,params);
+  };
+  const continueFromIncomeStep=()=>{
+    if(hasIncompleteEventualIncomeRows(f.ev)){alert("Complete concepto y valor en cada ingreso eventual diligenciado.");return;}
+    if(recurrentMonthlyTotal<=0){alert("Ingrese al menos un ingreso mensual recurrente");return;}
+    trackCertStepOnce("cert_step_income_complete",{
+      service_name:"certificacion_ingresos",
+      certified_months:certifiedMonths,
+      recurring_monthly_income:recurrentMonthlyTotal,
+      recurring_period_income:recurrentPeriodTotal,
+      eventual_period_income:eventualTotal,
+      total_period_income:globalPeriodTotal,
+      has_eventual_income:eventualTotal>0,
+      support_files_count:supportFiles.length
+    });
+    moveStep(3);
+  };
   const updatePromoCode=value=>{sPromoCode(value);sPromoStatus({state:"idle",message:""});};
   const clearPromoCode=()=>{sPromoCode("");sPromoStatus({state:"idle",message:""});};
   const validatePromoCode=async()=>{
@@ -2429,7 +2513,8 @@ function CrtS(){
     estado_pago:"PENDIENTE",
     comentarios:f.cm,
     declaracion_juramentada:"ACEPTADA",
-    consecutivo:""
+    consecutivo:"",
+    ...getMarketingFormFields()
   });
   const addSupportFiles=fileList=>{
     const incoming=Array.from(fileList||[]);
@@ -2463,14 +2548,14 @@ function CrtS(){
   const clearTrackedReference=()=>{try{window.sessionStorage.removeItem(PAYMENT_STORAGE_KEY);}catch(e){} if(typeof window!=="undefined"){const url=new URL(window.location.href);url.searchParams.delete(PAYMENT_QUERY_PARAM);if(window.history?.replaceState)window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash}`);}};
   const persistTrackedReference=reference=>{try{window.sessionStorage.setItem(PAYMENT_STORAGE_KEY,reference);}catch(e){} if(typeof window!=="undefined"){const url=new URL(window.location.href);url.searchParams.set(PAYMENT_QUERY_PARAM,reference);if(window.history?.replaceState)window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash||"#certificacion"}`);}};
   const buildRedirectUrl=reference=>{const url=new URL(window.location.href);url.searchParams.set(PAYMENT_QUERY_PARAM,reference);url.hash="certificacion";return url.toString();};
-  const resetForm=()=>{sStep(0);sAcc(false);sCitySug([]);sOpenForm(false);sF(INITIAL_FORM);sSupportFiles([]);clearPromoCode();};
+  const resetForm=()=>{sStep(0);sAcc(false);sCitySug([]);sOpenForm(false);sF(INITIAL_FORM);sSupportFiles([]);trackedCertStepsRef.current.clear();approvedPaymentEventsRef.current.clear();clearPromoCode();};
   const closePaymentFeedback=()=>{clearPollTimeout();sPaymentFlow({phase:PAYMENT_PHASES.idle,reference:"",status:"",message:"",consecutive:""});};
   const releaseCheckoutOverlay=reference=>{sPaymentFlow({phase:PAYMENT_PHASES.idle,reference:reference||"",status:"",message:"",consecutive:""});};
   const cleanupWompiArtifacts=()=>{if(typeof document==="undefined")return;Array.from(document.querySelectorAll('iframe[src*="checkout.wompi.co"]')).forEach(frame=>{const container=frame.parentElement;if(container&&container!==document.body&&container.childElementCount===1){container.remove();return;}frame.remove();});};
   const reopenFormForPaymentRetry=()=>{clearTrackedReference();clearPollTimeout();cleanupWompiArtifacts();closePaymentFeedback();sOpenForm(false);sFormSession(session=>session+1);window.setTimeout(()=>{sStep(3);sOpenForm(true);},80);};
   const getPaymentFailureMessage=status=>{if(status==="DECLINED")return"El pago fue rechazado o declinado por la entidad financiera. Puede intentarlo con otro medio de pago o escribirnos para revisarlo.";if(status==="ERROR")return"No se confirmó el pago por un error en la transacción. Si ve un cobro reflejado, contáctenos y validamos el caso.";if(status==="VOIDED")return"La transacción fue anulada antes de completarse. Puede volver al formulario para intentarlo de nuevo.";return"No se confirmó el pago. Si necesita ayuda, nuestro equipo puede acompañarle por WhatsApp o correo electrónico.";};
   const getPaymentSupportLink=reference=>wm(`Hola CONTARAE, necesito ayuda con mi pago de certificación de ingresos. Referencia: ${reference||lastRef||"SIN_REFERENCIA"}.`);
-  const markPaymentApproved=(reference,record={})=>{clearPollTimeout();clearTrackedReference();sPaymentFlow({phase:PAYMENT_PHASES.approved,reference,status:"APPROVED",message:"Pago confirmado y solicitud enviada correctamente para revisión profesional.",consecutive:String(record.consecutive||"")});};
+  const markPaymentApproved=(reference,record={})=>{clearPollTimeout();clearTrackedReference();if(reference&&!record.ga4PaymentApprovedSentAt&&!approvedPaymentEventsRef.current.has(reference)){approvedPaymentEventsRef.current.add(reference);trackMarketingEvent("cert_payment_approved",{currency:"COP",value:Number(record.pricing?.finalAmount||tarifa||0),service_name:"certificacion_ingresos",certification_reference:reference,transaction_id:record.wompiTransaction?.id||reference,event_source:"browser"});}else if(reference&&record.ga4PaymentApprovedSentAt&&!approvedPaymentEventsRef.current.has(`${reference}:view`)){approvedPaymentEventsRef.current.add(`${reference}:view`);trackMarketingEvent("cert_payment_success_view",{currency:"COP",value:Number(record.pricing?.finalAmount||tarifa||0),service_name:"certificacion_ingresos",certification_reference:reference,transaction_id:record.wompiTransaction?.id||reference,event_source:"browser"});}sPaymentFlow({phase:PAYMENT_PHASES.approved,reference,status:"APPROVED",message:"Pago confirmado y solicitud enviada correctamente para revisión profesional.",consecutive:String(record.consecutive||"")});};
   const markPaymentFailed=(reference,status,message)=>{clearPollTimeout();sPaymentFlow({phase:PAYMENT_PHASES.failed,reference,status:status||"UNCONFIRMED",message:message||getPaymentFailureMessage(status)});};
   const pollPaymentStatus=reference=>{
     if(!reference)return;
@@ -2624,7 +2709,7 @@ function CrtS(){
       <div style={{marginTop:16,padding:18,borderRadius:12,background:"rgba(37,99,235,.04)",border:"1px dashed rgba(37,99,235,.16)"}}><h4 style={{fontSize:14,fontWeight:700,color:"#1B3A5C",marginBottom:8,fontFamily:F}}>📎 Soportes documentales opcionales</h4><p style={{fontSize:14,color:"#1B3A5C",lineHeight:1.8,fontFamily:F,marginBottom:10}}>Si ya cuenta con algunos soportes, puede adjuntarlos ahora mismo para que queden vinculados a la solicitud. Esto agiliza la revisión en el panel interno de CONTARAE.</p><div style={{padding:16,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.12)",marginBottom:12}}><input type="file" multiple accept={SUPPORT_ACCEPT} onChange={e=>{addSupportFiles(e.target.files);e.target.value="";}} style={{...IS,padding:"10px 12px",cursor:"pointer"}}/><div style={{marginTop:8,fontSize:12,color:"#64748B",lineHeight:1.7,fontFamily:F}}>Formatos permitidos: PDF, JPG, PNG, WEBP, HEIC, DOC y DOCX. Máximo {SUPPORT_MAX_FILES} archivos de hasta {fmtB(SUPPORT_MAX_BYTES)} cada uno.</div></div>{supportFiles.length>0&&<div style={{display:"grid",gap:8,marginBottom:12}}>{supportFiles.map((file,index)=><div key={`${file.name}-${file.lastModified}-${index}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div><div style={{fontSize:14,fontWeight:700,color:"#0B1D3A",fontFamily:F,lineHeight:1.5}}>{file.name}</div><div style={{fontSize:12,color:"#64748B",fontFamily:F}}>{fmtB(file.size)} · {file.type||"Archivo"}</div></div><button type="button" onClick={()=>removeSupportFile(index)} style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(220,38,38,.14)",background:"rgba(220,38,38,.06)",color:"#DC2626",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Quitar</button></div>)}</div>}<p style={{fontSize:14,color:"#3a5068",lineHeight:1.8,fontFamily:F,marginBottom:10}}>Si aún no tiene todos los soportes, puede completar el pago y enviarlos después por <strong>WhatsApp</strong> o <strong>correo electrónico</strong>. Ejemplos: contratos, extractos bancarios, desprendibles de nómina, facturas, certificaciones, comprobantes de pago y demás documentos que acrediten la información reportada.</p><p style={{fontSize:14,color:"#3a5068",lineHeight:1.8,fontFamily:F,marginBottom:0}}>Después de recibir la solicitud, un profesional de CONTARAE se pondrá en contacto para realizar la revisión completa de la documentación y validar la información antes de emitir la certificación.</p></div>
 
       <div style={{marginTop:12}}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Comentarios</label><textarea style={{...IS,minHeight:60,resize:"vertical",marginTop:4}} value={f.cm} onChange={e=>u("cm",e.target.value)} placeholder="Información adicional..."/></div>
-      <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}><button type="button" onClick={()=>moveStep(1)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button><button type="button" onClick={()=>hasIncompleteEventualIncomeRows(f.ev)?alert("Complete concepto y valor en cada ingreso eventual diligenciado."):recurrentMonthlyTotal>0?moveStep(3):alert("Ingrese al menos un ingreso mensual recurrente")} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}><button type="button" onClick={()=>moveStep(1)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button><button type="button" onClick={continueFromIncomeStep} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div>
     </div>}
 
     {step===3&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:14,fontFamily:F}}>📋 Paso 4: Confirmación y Pago</h4>
@@ -2808,7 +2893,9 @@ function ToolRenta({uv}){
         serviceInterest:"Declaración de renta",
         comment:`Resultado herramienta renta: ${rR.level}. ${due} ${reasons || "No se superan topes, pero solicita revisión profesional."}`,
         sourcePath:window.location.pathname,
-        sourceLabel:"Herramienta debo declarar renta"
+        sourceLabel:"Herramienta debo declarar renta",
+        marketingAttribution:getMarketingAttribution(),
+        ...getMarketingFormFields()
       })});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
@@ -2957,6 +3044,7 @@ export default function App(){
   const serviceSeoConfig=getServiceSeoRouteConfig(path);
   const serviceSeoRoute=!!serviceSeoConfig;
 
+  useEffect(()=>{captureMarketingAttribution();const timer=window.setTimeout(captureMarketingAttribution,1800);return()=>window.clearTimeout(timer);},[path]);
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const obs=new IntersectionObserver(en=>{en.forEach(e=>{if(e.isIntersecting){e.target.style.opacity="1";e.target.style.transform="translateY(0)";}});},{threshold:.06});setTimeout(()=>{document.querySelectorAll(".ai").forEach(el=>{el.style.opacity="0";el.style.transform="translateY(18px)";el.style.transition="opacity .72s ease,transform .72s cubic-bezier(.22,1,.36,1)";obs.observe(el);});},100);return()=>obs.disconnect();},[path,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
   useEffect(()=>{if(adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute)return undefined;const go=e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const href=a.getAttribute("href");if(!href||href==="#")return;const id=href.slice(1);if(!scrollToId(id))return;e.preventDefault();if(window.history?.replaceState)window.history.replaceState(null,"",`${window.location.pathname}${window.location.search}#${id}`);};document.addEventListener("click",go);return()=>document.removeEventListener("click",go);},[adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
@@ -2975,7 +3063,7 @@ export default function App(){
     </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
-    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
+    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/><input name="wompi_transaction_id"/>{MARKETING_FORM_FIELDS.map(name=><input key={name} name={name}/>)}</form>
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><FaqS/></div>

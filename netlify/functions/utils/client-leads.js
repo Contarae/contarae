@@ -31,6 +31,57 @@ function normalizePhone(value = "") {
   return String(value || "").replace(/[^\d+]/g, "").trim();
 }
 
+function parseMarketingAttribution(input = {}) {
+  const rawAttribution =
+    input.marketingAttribution ||
+    input.marketing_attribution ||
+    input.marketing_attribution_json ||
+    {};
+  let attribution = {};
+
+  if (typeof rawAttribution === "string") {
+    try {
+      attribution = JSON.parse(rawAttribution) || {};
+    } catch {
+      attribution = {};
+    }
+  } else if (rawAttribution && typeof rawAttribution === "object") {
+    attribution = rawAttribution;
+  }
+
+  const flatFields = [
+    "landing_page",
+    "initial_referrer",
+    "latest_page",
+    "latest_referrer",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+    "gclid",
+    "gbraid",
+    "wbraid",
+    "ga_client_id",
+    "attribution_captured_at",
+    "attribution_updated_at",
+    "campaign_landing_page",
+    "campaign_captured_at"
+  ];
+
+  flatFields.forEach((field) => {
+    const value = cleanText(input[field]).slice(0, 500);
+    if (value) attribution[field] = value;
+  });
+
+  return Object.entries(attribution).reduce((acc, [key, value]) => {
+    if (value === undefined || value === null) return acc;
+    acc[key] = cleanText(value).slice(0, 500);
+    return acc;
+  }, {});
+}
+
 function randomId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -53,6 +104,7 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
   const email = normalizeEmail(input.email);
   const treatmentConsent = input.treatmentConsent === true || input.treatmentConsent === "true";
   const marketingConsent = input.marketingConsent === true || input.marketingConsent === "true";
+  const marketingAttribution = parseMarketingAttribution(input);
 
   if (!name) throw new Error("Ingresa tu nombre.");
   if (!documentNumber) throw new Error("Ingresa tu número de documento.");
@@ -74,6 +126,19 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
     marketingConsent,
     sourcePath: cleanText(input.sourcePath || metadata.sourcePath),
     sourceLabel: cleanText(input.sourceLabel || metadata.sourceLabel) || "Formulario web",
+    marketingAttribution,
+    landingPage: marketingAttribution.landing_page || "",
+    initialReferrer: marketingAttribution.initial_referrer || "",
+    utmSource: marketingAttribution.utm_source || "",
+    utmMedium: marketingAttribution.utm_medium || "",
+    utmCampaign: marketingAttribution.utm_campaign || "",
+    utmTerm: marketingAttribution.utm_term || "",
+    utmContent: marketingAttribution.utm_content || "",
+    utmId: marketingAttribution.utm_id || "",
+    gclid: marketingAttribution.gclid || "",
+    gbraid: marketingAttribution.gbraid || "",
+    wbraid: marketingAttribution.wbraid || "",
+    gaClientId: marketingAttribution.ga_client_id || "",
     userAgent: cleanText(metadata.userAgent),
     ipHash: metadata.ip ? crypto.createHash("sha256").update(String(metadata.ip)).digest("hex") : "",
     createdAt: now,
