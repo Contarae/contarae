@@ -1159,6 +1159,17 @@ function paymentSplitsTotal(splits = []) {
   return splits.reduce((sum, split) => sum + moneyValue(split.amount), 0);
 }
 
+function isAutomaticCashSplit(paymentCondition, splits = []) {
+  return paymentCondition === "contado" && splits.length <= 1;
+}
+
+function effectiveInvoicePaymentSplits(splits = [], paymentCondition = "credito", documentTotal = 0) {
+  if (isAutomaticCashSplit(paymentCondition, splits)) {
+    return (splits.length ? splits : [blankPaymentSplit(today())]).map((split, index) => index === 0 ? { ...split, amount: documentTotal } : split);
+  }
+  return splits;
+}
+
 function paymentSplitSummary(split = {}) {
   const grossAmount = moneyValue(split.amount);
   const retentionTotal = moneyValue(split.retefuente) + moneyValue(split.reteica) + moneyValue(split.reteiva) + moneyValue(split.otherRetentions);
@@ -3110,8 +3121,11 @@ function Invoices({ data, onSave, onExport }) {
   const totals = uiLineTotals(lines);
   const summaryTotals = totalizedInvoiceTotals(draft.summaryBreakdown);
   const documentTotal = mode === "detallada" ? totals.total : summaryTotals.total;
-  const splitTotal = paymentSplitsTotal(draft.paymentSplits);
-  const paymentSummary = paymentSplitsSummary(draft.paymentSplits);
+  const currentPaymentSplits = draft.paymentSplits || [];
+  const automaticCashSplit = isAutomaticCashSplit(draft.paymentCondition, currentPaymentSplits);
+  const effectivePaymentSplits = effectiveInvoicePaymentSplits(currentPaymentSplits, draft.paymentCondition, documentTotal);
+  const splitTotal = paymentSplitsTotal(effectivePaymentSplits);
+  const paymentSummary = paymentSplitsSummary(effectivePaymentSplits);
   const invoices = data.invoices || [];
   const visibleInvoices = searched ? sortRecords(filterRecordsByQuery(invoices, data, filters), data, filters.sort || "idDesc") : [];
 
@@ -3189,7 +3203,7 @@ function Invoices({ data, onSave, onExport }) {
       window.alert("Ingresa al menos una base valida para calcular la factura resumida.");
       return;
     }
-    const normalizedSplits = normalizePaymentSplits(draft.paymentSplits);
+    const normalizedSplits = normalizePaymentSplits(effectivePaymentSplits);
     if (draft.paymentCondition !== "credito") {
       if (!normalizedSplits.length) {
         window.alert("Registra al menos un medio de pago para la factura de contado o con abono parcial.");
@@ -3322,7 +3336,14 @@ function Invoices({ data, onSave, onExport }) {
   }
 
   function addPaymentSplit() {
-    setDraft((current) => ({ ...current, paymentSplits: [...(current.paymentSplits || []), blankPaymentSplit(current.date)] }));
+    setDraft((current) => {
+      const currentSplits = current.paymentSplits || [];
+      const shouldSeedAutomaticCash = isAutomaticCashSplit(current.paymentCondition, currentSplits);
+      const seededSplits = shouldSeedAutomaticCash
+        ? effectiveInvoicePaymentSplits(currentSplits, current.paymentCondition, documentTotal).map((split) => ({ ...split, amount: formatCurrencyInput(moneyValue(split.amount)) }))
+        : currentSplits;
+      return { ...current, paymentSplits: [...seededSplits, blankPaymentSplit(current.date)] };
+    });
   }
 
   function removePaymentSplit(id) {
@@ -3471,20 +3492,24 @@ function Invoices({ data, onSave, onExport }) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 12, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PAGO DE LA FACTURA</div>
-                  <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>El valor bruto aplicado cruza la cartera; el neto recibido se calcula despues de retenciones, descuentos o saldos a favor.</p>
+                  <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>
+                    {automaticCashSplit ? "Pago de contado: el bruto aplicado se toma automaticamente por el total de la factura." : "El valor bruto aplicado cruza la cartera; el neto recibido se calcula despues de retenciones, descuentos o saldos a favor."}
+                  </p>
                 </div>
                 <button type="button" onClick={addPaymentSplit} style={ghostButton}>Agregar medio</button>
               </div>
-              {(draft.paymentSplits || []).map((split, index) => {
-                const splitSummary = paymentSplitSummary(split);
+              {currentPaymentSplits.map((split, index) => {
+                const splitForDisplay = automaticCashSplit && index === 0 ? { ...split, amount: documentTotal } : split;
+                const splitSummary = paymentSplitSummary(splitForDisplay);
+                const amountIsAutomatic = automaticCashSplit && index === 0;
                 return (
                   <div key={split.id} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 16, background: "#FFFFFF", border: "1px solid rgba(37,99,235,.12)" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <strong style={{ fontFamily: F, color: "#0B1D3A" }}>Medio de pago #{index + 1}</strong>
+                      <strong style={{ fontFamily: F, color: "#0B1D3A" }}>Medio de pago #{index + 1}{amountIsAutomatic ? " · bruto automatico" : ""}</strong>
                       <button type="button" onClick={() => removePaymentSplit(split.id)} style={dangerGhostButton}>Quitar</button>
                     </div>
                     <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, alignItems: "end" }}>
-                      <Field label="Valor bruto aplicado"><input required style={input} value={split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Valor bruto aplicado"><input required readOnly={amountIsAutomatic} style={{ ...input, background: amountIsAutomatic ? "#F8FBFF" : input.background }} value={amountIsAutomatic ? formatCurrencyInput(documentTotal) : split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
                       <Field label="Metodo"><select style={input} value={split.method} onChange={(event) => updatePaymentSplit(split.id, { method: event.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
                       <Field label="Fecha pago"><input type="date" style={input} value={split.date || draft.date} onChange={(event) => updatePaymentSplit(split.id, { date: event.target.value })} /></Field>
                       <Field label="Referencia"><input style={input} value={split.reference || ""} onChange={(event) => updatePaymentSplit(split.id, { reference: event.target.value })} placeholder="Opcional" /></Field>
