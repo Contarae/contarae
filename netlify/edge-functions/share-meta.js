@@ -410,6 +410,12 @@ const injectSchema = (html, meta, canonicalUrl) => {
       areaServed: "CO",
       serviceType: "Certificación de ingresos",
       url: canonicalUrl,
+      offers: {
+        "@type": "AggregateOffer",
+        priceCurrency: "COP",
+        lowPrice: 80000,
+        highPrice: 155000,
+      },
     });
     extraGraph.push({
       "@type": "VideoObject",

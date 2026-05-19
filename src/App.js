@@ -25,17 +25,18 @@ const numericInputProps={inputMode:"numeric",onKeyDown:preventNonNumericInput};
 const currencyInputProps={...numericInputProps,autoComplete:"off"};
 const fmtI=v=>{const n=onlyDigits(v);return n?"$ "+fm(parseInt(n,10)):""};
 const pN=v=>parseInt(onlyDigits(v),10)||0;
+const CERTIFICATION_PROMO_DISCOUNT_RATE=0.15;
 const CERTIFICATION_PRICE_TIERS=[
-  {max:2000000,range:"Desde $0 hasta $2.000.000",formRange:"Ingresos desde $0 hasta $2.000.000",value:100000},
-  {max:4000000,range:"Desde $2.000.001 hasta $4.000.000",formRange:"Ingresos desde $2.000.001 hasta $4.000.000",value:110000},
-  {max:6000000,range:"Desde $4.000.001 hasta $6.000.000",formRange:"Ingresos desde $4.000.001 hasta $6.000.000",value:120000},
-  {max:8000000,range:"Desde $6.000.001 hasta $8.000.000",formRange:"Ingresos desde $6.000.001 hasta $8.000.000",value:130000},
-  {max:10000000,range:"Desde $8.000.001 hasta $10.000.000",formRange:"Ingresos desde $8.000.001 hasta $10.000.000",value:140000},
-  {max:Infinity,range:"Más de $10.000.000",formRange:"Ingresos desde $10.000.001 en adelante",value:150000}
+  {max:2000000,range:"$0 a $2.000.000",formRange:"Ingresos desde $0 hasta $2.000.000",value:80000},
+  {max:5000000,range:"$2.000.001 a $5.000.000",formRange:"Ingresos desde $2.000.001 hasta $5.000.000",value:95000},
+  {max:8000000,range:"$5.000.001 a $8.000.000",formRange:"Ingresos desde $5.000.001 hasta $8.000.000",value:110000},
+  {max:12000000,range:"$8.000.001 a $12.000.000",formRange:"Ingresos desde $8.000.001 hasta $12.000.000",value:125000},
+  {max:18000000,range:"$12.000.001 a $18.000.000",formRange:"Ingresos desde $12.000.001 hasta $18.000.000",value:140000},
+  {max:Infinity,range:"$18.000.001 en adelante",formRange:"Ingresos desde $18.000.001 en adelante",value:155000}
 ];
-const gT=t=>CERTIFICATION_PRICE_TIERS.find(item=>Number(t||0)<=item.max)?.value||150000;
+const gT=t=>CERTIFICATION_PRICE_TIERS.find(item=>Number(t||0)<=item.max)?.value||155000;
 const disc=v=>Math.round(v/.75);
-const certDisc=v=>Math.round(v/.9);
+const certPromoValue=v=>Math.round(Number(v||0)*(1-CERTIFICATION_PROMO_DISCOUNT_RATE));
 const promoCodeValue=value=>String(value||"").trim().toUpperCase();
 const SUPPORT_MAX_FILES=5;
 const SUPPORT_MAX_BYTES=6*1024*1024;
@@ -673,7 +674,7 @@ const buildStructuredData=(path,meta,toolConfig,certSupportConfig,serviceSeoConf
     {"@context":"https://schema.org","@type":"WebSite","@id":`${SITE_URL}/#website`,"name":"CONTARAE","url":SITE_URL,"inLanguage":"es-CO"}
   ];
   if(isCertificationPath(normalized)){
-    base.push({"@context":"https://schema.org","@type":"Service","name":"Certificación de ingresos por Contador Público","description":meta.description,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":"Certificación de ingresos","url":meta.canonical});
+    base.push({"@context":"https://schema.org","@type":"Service","name":"Certificación de ingresos por Contador Público","description":meta.description,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":"Certificación de ingresos","url":meta.canonical,"offers":{"@type":"AggregateOffer","priceCurrency":"COP","lowPrice":80000,"highPrice":155000}});
     base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","publisher":{"@id":`${SITE_URL}/#negocio`}});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE}]));
     const faqSchema=buildFaqSchema((typeof FQ!=="undefined"?FQ:[]).slice(0,6));
@@ -1550,12 +1551,12 @@ function MiniTrustIcon({kind}){
 
 function CertificationVideoSection(){
   return(
-    <section style={{padding:"38px 24px 18px",background:B[6]}}>
+    <section style={{padding:"26px 24px 18px",background:B[6]}}>
       <div style={{maxWidth:980,margin:"0 auto",display:"grid",gap:18}}>
         <div style={{textAlign:"center",maxWidth:760,margin:"0 auto"}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:999,background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:800,color:"#2563EB",letterSpacing:"1.5px",marginBottom:12,fontFamily:F}}>VIDEO EXPLICATIVO</div>
-          <h2 style={{fontFamily:FH,fontSize:"clamp(26px,3.5vw,38px)",lineHeight:1.1,color:"#0B1D3A",margin:"0 0 10px"}}>Conoce el paso a paso de la certificación de ingresos</h2>
-          <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.8,margin:0}}>En este video explicamos cómo funciona la solicitud, qué información se revisa y cómo se entrega el documento firmado por Contador Público.</p>
+          <div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:999,background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:800,color:"#2563EB",letterSpacing:"1.5px",marginBottom:12,fontFamily:F}}>VIDEO INSTRUCTIVO</div>
+          <h2 style={{fontFamily:FH,fontSize:"clamp(26px,3.5vw,38px)",lineHeight:1.1,color:"#0B1D3A",margin:"0 0 10px"}}>Antes de comprar, mira cómo funciona el proceso</h2>
+          <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.8,margin:0}}>Te mostramos qué datos se diligencian, cómo se calculan las tarifas y qué soportes revisa CONTARAE antes de emitir la certificación firmada por Contador Público.</p>
         </div>
         <div style={{aspectRatio:"16 / 9",borderRadius:22,overflow:"hidden",boxShadow:"0 22px 54px rgba(15,23,42,.12)",border:"1px solid rgba(37,99,235,.12)",background:"#0B1D3A"}}>
           <iframe title="Paso a paso certificación de ingresos CONTARAE" src={CERTIFICATION_VIDEO_EMBED} style={{width:"100%",height:"100%",border:0,display:"block"}} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen/>
@@ -1641,16 +1642,16 @@ function CertificationPricingMiniCard(){
       <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",marginBottom:14,flexWrap:"wrap"}}>
         <div>
           <div style={{fontSize:11,letterSpacing:"1.5px",fontWeight:900,color:"#93C5FD",fontFamily:F,marginBottom:6}}>TARIFAS CERTIFICACIÓN</div>
-          <div style={{fontFamily:FH,fontSize:28,lineHeight:1.08,color:"#fff"}}>Desde $100.000</div>
+          <div style={{fontFamily:FH,fontSize:28,lineHeight:1.08,color:"#fff"}}>Desde $80.000</div>
         </div>
-        <span style={{display:"inline-flex",alignItems:"center",padding:"7px 11px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:10,fontWeight:900,color:"#FDBA74",fontFamily:F,whiteSpace:"nowrap"}}>10% OFF</span>
+        <span style={{display:"inline-flex",alignItems:"center",padding:"7px 11px",borderRadius:999,background:"rgba(34,197,94,.16)",border:"1px solid rgba(34,197,94,.24)",fontSize:10,fontWeight:900,color:"#BBF7D0",fontFamily:F,whiteSpace:"nowrap"}}>15% con código</span>
       </div>
-      <p style={{fontSize:13,color:"rgba(226,232,240,.78)",lineHeight:1.7,fontFamily:F,margin:"0 0 12px"}}>El valor se calcula según los ingresos mensuales recurrentes reportados. Si tiene código de aliado, el descuento adicional se verá antes de pagar.</p>
+      <p style={{fontSize:13,color:"rgba(226,232,240,.78)",lineHeight:1.7,fontFamily:F,margin:"0 0 12px"}}>El valor base se calcula según los ingresos mensuales recurrentes. Si tiene código de aliado estratégico, el sistema aplica 15% de descuento antes del pago.</p>
       <div style={{display:"grid",gap:7}}>
         {CERTIFICATION_PRICE_TIERS.map((item,index)=>(
-          <div key={item.range} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0",borderBottom:index===CERTIFICATION_PRICE_TIERS.length-1?"none":"1px solid rgba(125,211,252,.10)"}}>
+          <div key={item.range} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12,alignItems:"center",padding:"9px 0",borderBottom:index===CERTIFICATION_PRICE_TIERS.length-1?"none":"1px solid rgba(125,211,252,.10)"}}>
             <span style={{fontSize:12,color:"rgba(226,232,240,.78)",fontFamily:F,lineHeight:1.55}}>{item.range}</span>
-            <span style={{fontSize:13,fontWeight:900,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>${fm(item.value)}</span>
+            <span style={{textAlign:"right",fontFamily:F,whiteSpace:"nowrap"}}><small style={{display:"block",fontSize:10,color:"rgba(226,232,240,.55)",fontWeight:700}}>Base ${fm(item.value)}</small><strong style={{display:"block",fontSize:13,color:"#BBF7D0"}}>Código ${fm(certPromoValue(item.value))}</strong></span>
           </div>
         ))}
       </div>
@@ -1745,16 +1746,16 @@ function CertificationHero(){
             <div style={{padding:"18px 18px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-end",marginBottom:10,flexWrap:"wrap"}}>
                 <div>
-                  <div style={{fontSize:11,letterSpacing:"1.6px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:6}}>TARIFAS CON DESCUENTO</div>
-                  <div style={{fontSize:30,fontWeight:800,lineHeight:1,color:"#fff",fontFamily:F}}>Desde $100.000</div>
+                  <div style={{fontSize:11,letterSpacing:"1.6px",fontWeight:800,color:"#93C5FD",fontFamily:F,marginBottom:6}}>TARIFAS BASE</div>
+                  <div style={{fontSize:30,fontWeight:800,lineHeight:1,color:"#fff",fontFamily:F}}>Desde $80.000</div>
                 </div>
-                <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:999,background:"rgba(249,115,22,.16)",border:"1px solid rgba(249,115,22,.24)",fontSize:11,fontWeight:800,color:"#FDBA74",fontFamily:F}}>10% OFF vigente</div>
+                <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:999,background:"rgba(34,197,94,.16)",border:"1px solid rgba(34,197,94,.24)",fontSize:11,fontWeight:800,color:"#BBF7D0",fontFamily:F}}>15% con código aliado</div>
               </div>
               <div style={{fontSize:12,color:"rgba(226,232,240,.78)",fontFamily:F,lineHeight:1.65,marginBottom:10}}>
-                Los siguientes valores aplican según el rango de ingresos mensuales reportados, desde y hasta cada tramo.
+                El precio base depende del rango de ingresos mensuales. Si aplica un código de aliado, el descuento se refleja antes de pagar.
               </div>
               <div style={{display:"grid",gap:8}}>
-                {CERTIFICATION_PRICE_TIERS.map((item,i)=><div key={item.range} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:i===CERTIFICATION_PRICE_TIERS.length-1?"none":"1px solid rgba(125,211,252,.10)"}}><div style={{fontSize:12,color:"rgba(226,232,240,.76)",fontFamily:F,lineHeight:1.6}}>{item.range}</div><div style={{fontSize:13,fontWeight:800,color:"#fff",fontFamily:F,whiteSpace:"nowrap"}}>${fm(item.value)}</div></div>)}
+                {CERTIFICATION_PRICE_TIERS.map((item,i)=><div key={item.range} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12,padding:"8px 0",borderBottom:i===CERTIFICATION_PRICE_TIERS.length-1?"none":"1px solid rgba(125,211,252,.10)"}}><div style={{fontSize:12,color:"rgba(226,232,240,.76)",fontFamily:F,lineHeight:1.6}}>{item.range}</div><div style={{fontFamily:F,whiteSpace:"nowrap",textAlign:"right"}}><span style={{display:"block",fontSize:12,fontWeight:800,color:"#fff"}}>${fm(item.value)}</span><span style={{display:"block",fontSize:10,fontWeight:800,color:"#BBF7D0"}}>con código ${fm(certPromoValue(item.value))}</span></div></div>)}
               </div>
             </div>
             <div style={{padding:"16px 16px 14px",borderRadius:20,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
@@ -1801,6 +1802,12 @@ function CertificationSupportPage({config}){
               </div>
             </div>
             <CertificationPricingMiniCard/>
+            <div style={{padding:16,borderRadius:22,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 18px 42px rgba(15,23,42,.06)"}}>
+              <div style={{fontSize:11,letterSpacing:"1.4px",fontWeight:900,color:"#1D4ED8",fontFamily:F,marginBottom:10}}>VIDEO INSTRUCTIVO</div>
+              <div style={{aspectRatio:"16 / 9",borderRadius:16,overflow:"hidden",background:"#0B1D3A",border:"1px solid rgba(37,99,235,.10)"}}>
+                <iframe title="Paso a paso certificación de ingresos CONTARAE" src={CERTIFICATION_VIDEO_EMBED} style={{width:"100%",height:"100%",border:0,display:"block"}} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen/>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -2311,7 +2318,7 @@ function PaymentsPortalPage(){
 
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
-  const CT=CERTIFICATION_PRICE_TIERS.map(item=>({r:item.formRange,v:item.value}));
+  const CT=CERTIFICATION_PRICE_TIERS.map(item=>({r:item.formRange,v:item.value,promo:certPromoValue(item.value)}));
   const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",perMes:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",ev:[createEmptyEventualIncome()],cm:""};
   const PAYMENT_STORAGE_KEY="contarae-certification-reference";
   const PAYMENT_QUERY_PARAM="cert_ref";
@@ -2572,9 +2579,9 @@ function CrtS(){
     <p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:10,fontFamily:F}}>Solicítela 100% online y recíbala firmada por Contador Público con tarjeta profesional vigente.</p>
     <p style={{textAlign:"center",fontSize:14,color:"#5A6F8A",marginBottom:36,fontFamily:F}}>Para arriendo, crédito bancario, visa, licitaciones y más. Si sus soportes están claros, en muchos casos puede quedar lista el mismo día o en menos de 1 día hábil.</p>
 
-    <div id="certificacion-info" style={{display:"grid",gap:14,marginBottom:28,scrollMarginTop:"150px"}}>{[["¿Qué es un certificado de ingresos?","Documento suscrito por Contador Público con tarjeta profesional vigente que certifica sus ingresos con base en soportes verificables como extractos bancarios, contratos, facturas y comprobantes de pago."],["¿Por qué firma de Contador Público?","Según la Ley 43 de 1990 (art. 10), la firma otorga fe pública. El CTCP (Concepto 1106/2019) ratifica que deben soportarse en documentación verificable."],["¿Para qué se necesita?","Créditos bancarios, arrendamientos, compra de vehículo, trámites de visa, licitaciones, libreta militar y trámites académicos."],["¿Cuánto cuesta?","Desde $100.000 COP según el rango de ingresos. Incluye revisión profesional, elaboración y firma. Entrega digital en PDF."]].map(([t,d],i)=><div key={i} style={{padding:22,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.12)"}}><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.8,fontFamily:F}}>{d}</p></div>)}</div>
+    <div id="certificacion-info" style={{display:"grid",gap:14,marginBottom:28,scrollMarginTop:"150px"}}>{[["¿Qué es un certificado de ingresos?","Documento suscrito por Contador Público con tarjeta profesional vigente que certifica sus ingresos con base en soportes verificables como extractos bancarios, contratos, facturas y comprobantes de pago."],["¿Por qué firma de Contador Público?","Según la Ley 43 de 1990 (art. 10), la firma otorga fe pública. El CTCP (Concepto 1106/2019) ratifica que deben soportarse en documentación verificable."],["¿Para qué se necesita?","Créditos bancarios, arrendamientos, compra de vehículo, trámites de visa, licitaciones, libreta militar y trámites académicos."],["¿Cuánto cuesta?","Desde $80.000 COP según el rango de ingresos mensuales recurrentes. Si cuenta con código de aliado estratégico, se aplica 15% de descuento adicional antes del pago."]].map(([t,d],i)=><div key={i} style={{padding:22,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.12)"}}><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.8,fontFamily:F}}>{d}</p></div>)}</div>
 
-    <div style={{padding:24,borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",marginBottom:28,color:"#fff"}}><h3 style={{fontSize:17,fontWeight:700,marginBottom:14,textAlign:"center",fontFamily:F}}>Tarifas certificado de ingresos</h3><div className="cert-price-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>{CT.map((t,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:7,background:"rgba(255,255,255,.07)",fontFamily:F}}><span style={{fontSize:14,opacity:.85}}>{t.r}</span><div style={{textAlign:"right"}}><span style={{fontSize:11,textDecoration:"line-through",opacity:.5}}>${fm(certDisc(t.v))}</span><span style={{display:"inline-block",marginLeft:6,fontSize:9,fontWeight:700,color:"#fff",background:"#DC2626",padding:"1px 6px",borderRadius:100}}>10% OFF</span><div style={{fontSize:15,fontWeight:700,color:"#60A5FA"}}>${fm(t.v)}</div></div></div>)}</div><div style={{marginTop:14,padding:12,borderRadius:8,background:"rgba(96,165,250,.13)",fontSize:13,fontFamily:F}}>🔒 Pago seguro procesado por <strong>Wompi</strong>. Tarjeta, PSE, Nequi o Daviplata.</div></div>
+    <div style={{padding:24,borderRadius:18,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",marginBottom:28,color:"#fff",boxShadow:"0 18px 44px rgba(15,23,42,.12)"}}><div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",flexWrap:"wrap",marginBottom:14}}><div><div style={{fontSize:11,letterSpacing:"1.4px",fontWeight:900,color:"#93C5FD",fontFamily:F,marginBottom:6}}>PRECIOS CLAROS ANTES DE PAGAR</div><h3 style={{fontSize:20,fontWeight:800,margin:0,fontFamily:F}}>Tarifas certificado de ingresos</h3></div><span style={{display:"inline-flex",padding:"8px 12px",borderRadius:999,background:"rgba(34,197,94,.14)",border:"1px solid rgba(34,197,94,.22)",fontSize:11,fontWeight:900,color:"#BBF7D0",fontFamily:F}}>15% con código de aliado</span></div><div className="cert-price-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(235px,1fr))",gap:10}}>{CT.map((t,i)=><div key={i} style={{display:"grid",gap:10,padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,.075)",border:"1px solid rgba(191,219,254,.08)",fontFamily:F}}><span style={{fontSize:14,color:"rgba(226,232,240,.88)",lineHeight:1.45}}>{t.r}</span><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div style={{padding:10,borderRadius:10,background:"rgba(255,255,255,.06)"}}><div style={{fontSize:10,letterSpacing:"1px",fontWeight:900,color:"rgba(226,232,240,.58)"}}>PRECIO BASE</div><div style={{fontSize:18,fontWeight:900,color:"#fff"}}>${fm(t.v)}</div></div><div style={{padding:10,borderRadius:10,background:"rgba(34,197,94,.12)",border:"1px solid rgba(34,197,94,.14)"}}><div style={{fontSize:10,letterSpacing:"1px",fontWeight:900,color:"#BBF7D0"}}>CON CÓDIGO</div><div style={{fontSize:18,fontWeight:900,color:"#BBF7D0"}}>${fm(t.promo)}</div></div></div></div>)}</div><div style={{marginTop:14,padding:12,borderRadius:10,background:"rgba(96,165,250,.13)",fontSize:13,fontFamily:F}}>🔒 Pago seguro procesado por <strong>Wompi</strong>. Tarjeta, PSE, Nequi o Daviplata.</div></div>
 
     <div style={{padding:24,borderRadius:16,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 5px 24px rgba(37,99,235,.05)",marginBottom:10}}><h3 style={{fontSize:18,fontWeight:700,color:"#0B1D3A",marginBottom:14,fontFamily:F,textAlign:"center"}}>Así funciona su solicitud</h3><div className="cert-process-grid" style={{display:"grid",gap:10,gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))"}}>{["Completa el formulario en minutos","Relaciona solo los ingresos que aplican","Paga seguro con Wompi","Revisión profesional y validación","En muchos casos, la recibes el mismo día"].map((txt,i)=><div key={i} style={{padding:14,borderRadius:12,background:"rgba(37,99,235,.05)",border:"1px solid rgba(37,99,235,.10)"}}><div style={{width:26,height:26,borderRadius:"50%",background:"#2563EB",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,fontFamily:F,marginBottom:8}}>{i+1}</div><div style={{fontSize:14,fontWeight:600,color:"#0B1D3A",lineHeight:1.55,fontFamily:F}}>{txt}</div></div>)}</div><div style={{textAlign:"center",marginTop:18}}><button type="button" onClick={()=>sOpenForm(true)} style={{padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontSize:16,fontWeight:700,border:"none",cursor:"pointer",fontFamily:F,boxShadow:"0 14px 30px rgba(37,99,235,.18)"}}>Iniciar formulario de solicitud</button></div></div>
 
@@ -2964,7 +2971,6 @@ export default function App(){
     <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/></form>
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
-      <div className="ai"><CertificationVideoSection/></div>
       <div className="ai"><FaqS/></div>
       <div className="ai"><Ftr/></div>
     </>:serviceSeoRoute?<>

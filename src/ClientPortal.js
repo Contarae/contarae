@@ -180,6 +180,7 @@ const money = (value) => `$ ${new Intl.NumberFormat("es-CO").format(Math.round(N
 const clean = (value) => String(value || "").trim();
 const today = () => new Date().toISOString().slice(0, 10);
 const normalizeText = (value) => clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const slugClass = (value) => normalizeText(value).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "campo";
 const invalidDocumentTokens = new Set(["", "por asignar", "sin documento", "pendiente", "pendiente por asignar", "n/a", "na", "0"]);
 
 function normalizeLookup(value = "") {
@@ -1740,10 +1741,10 @@ function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkl
   return (
     <div className="client-stat-card" style={{ ...card, padding: 16, borderRadius: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-        <div style={{ fontSize: 10, letterSpacing: "1.2px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
+        <div className="client-stat-label" style={{ fontSize: 10, letterSpacing: "1.2px", color: "#64748B", fontWeight: 900, fontFamily: F }}>{label}</div>
         <span className="client-stat-icon" style={{ color: tone }}><Icon name={icon} size={18} /></span>
       </div>
-      <div style={{ fontFamily: F, fontSize: "clamp(18px,2vw,25px)", fontWeight: 950, lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
+      <div className="client-stat-value" style={{ fontFamily: F, fontSize: "clamp(18px,2vw,25px)", fontWeight: 950, lineHeight: 1.15, color: tone, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
       {trend ? (
         <div className="client-stat-trend">
           <span style={{ color: trend.tone || tone }}>{trend.label}</span>
@@ -1751,7 +1752,7 @@ function Stat({ label, value, note, tone = "#1D4ED8", icon = "portfolio", sparkl
         </div>
       ) : null}
       {hasSparkline ? <MiniBarChart values={sparkline} tone={tone} /> : null}
-      <div style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.55, marginTop: 7 }}>{note}</div>
+      <div className="client-stat-note" style={{ fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.55, marginTop: 7 }}>{note}</div>
     </div>
   );
 }
@@ -2001,8 +2002,8 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
   }
 
   return (
-    <section style={{ padding: compact ? 14 : 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
-      <form onSubmit={search} className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(160px,220px) minmax(0,1fr) auto", gap: 10, alignItems: "end" }}>
+    <section className="client-customer-search-card" style={{ padding: compact ? 14 : 16, borderRadius: 20, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12 }}>
+      <form onSubmit={search} className="client-portal-form-grid client-customer-search-form" style={{ display: "grid", gridTemplateColumns: "minmax(160px,220px) minmax(0,1fr) auto", gap: 10, alignItems: "end" }}>
         <Field label={title}>
           <select style={input} value={type} onChange={(event) => { setType(event.target.value); setSearched(false); }}>
             {CUSTOMER_SEARCH_TYPES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
@@ -2019,18 +2020,18 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
         <button type="submit" style={button}>Buscar</button>
       </form>
       {selected ? (
-        <div style={{ padding: 12, borderRadius: 16, background: "rgba(34,197,94,.10)", color: "#14532D", fontFamily: F, lineHeight: 1.6 }}>
+        <div className="client-selected-customer-note" style={{ padding: 12, borderRadius: 16, background: "rgba(34,197,94,.10)", color: "#14532D", fontFamily: F, lineHeight: 1.6 }}>
           Cliente seleccionado: <strong>{selected.id} - {selected.name}</strong>
           <button type="button" onClick={() => onSelect(null)} style={{ marginLeft: 10, padding: "6px 9px", borderRadius: 10, border: "1px solid rgba(21,128,61,.18)", background: "#fff", color: "#15803D", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>Quitar</button>
         </div>
       ) : null}
       {searched && !results.length ? (
-        <div style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", color: "#92400E", fontFamily: F, lineHeight: 1.6 }}>
+        <div className="client-search-results-note" style={{ padding: 12, borderRadius: 14, background: "rgba(245,158,11,.10)", color: "#92400E", fontFamily: F, lineHeight: 1.6 }}>
           No se encontraron coincidencias. Revisa el criterio o crea el cliente antes de continuar.
         </div>
       ) : null}
       {searched && results.length > 1 ? (
-        <div style={{ padding: 12, borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, lineHeight: 1.55, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className="client-search-results-note" style={{ padding: 12, borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1E3A8A", fontFamily: F, lineHeight: 1.55, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span>Se encontraron {results.length} coincidencias. Selecciona el cliente correcto en la ventana de resultados.</span>
           <button type="button" onClick={() => setResultsOpen(true)} style={ghostButton}>Ver coincidencias</button>
         </div>
@@ -2045,6 +2046,7 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
                   key={customer.id}
                   type="button"
                   onClick={() => setPreviewId(customer.id)}
+                  className="client-customer-result-button"
                   style={{ textAlign: "left", padding: 12, borderRadius: 14, border: customer.id === preview?.id ? "1px solid rgba(37,99,235,.46)" : "1px solid rgba(37,99,235,.12)", background: customer.id === preview?.id ? "#F8FBFF" : "#fff", cursor: "pointer", fontFamily: F }}
                 >
                   <strong>{customer.id} - {customer.name || "Cliente sin nombre"}</strong>
@@ -2058,12 +2060,12 @@ function CustomerSearch({ customers = [], selectedId = "", onSelect, title = "Bu
           </div>
           {preview ? (
             <div className="client-customer-picker-preview" style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
-              <div>
+              <div className="client-customer-preview-head">
                 <div style={{ fontSize: 11, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>VISTA RAPIDA</div>
                 <h3 style={{ margin: "4px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: 22, lineHeight: 1.15 }}>{preview.name || "Cliente sin nombre"}</h3>
                 <p style={{ margin: "6px 0 0", color: "#64748B", fontFamily: F, lineHeight: 1.5 }}>ID {preview.id} · Documento {preview.documentNumber || "por asignar"}</p>
               </div>
-              <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div className="client-portal-stats client-customer-preview-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
                 <Stat label="FACTURADO" value={preview.billedLabel || money(preview.billed)} note={`${preview.invoicesCount || 0} factura(s).`} />
                 <Stat label="ABONADO" value={preview.paidLabel || money(preview.paid)} note={`${preview.paymentsCount || 0} pago(s).`} tone="#15803D" />
                 <Stat label={customerBalanceView(preview).label.toUpperCase()} value={customerBalanceView(preview).value} note={customerBalanceView(preview).label === "Saldo a favor" ? "Revisar o compensar." : "Estado de cartera."} tone={customerBalanceView(preview).tone} />
@@ -3876,7 +3878,7 @@ function Portfolio({ data, onExport, onSave }) {
             {filteredRows.map((customer) => {
               const view = customerBalanceView(customer);
               return (
-                <button key={customer.id} type="button" onClick={() => showCustomerProfile(customer)} style={{ textAlign: "left", padding: 12, borderRadius: 14, border: "1px solid rgba(37,99,235,.12)", background: "#fff", cursor: "pointer", fontFamily: F }}>
+                <button key={customer.id} type="button" onClick={() => showCustomerProfile(customer)} className="client-customer-result-button" style={{ textAlign: "left", padding: 12, borderRadius: 14, border: "1px solid rgba(37,99,235,.12)", background: "#fff", cursor: "pointer", fontFamily: F }}>
                   <strong>{customer.name || "Cliente sin nombre"}</strong>
                   <div style={{ marginTop: 4, color: "#64748B", fontSize: 12, lineHeight: 1.45 }}>{customer.id} · Documento: {customer.documentNumber || "por asignar"} · {customer.invoicesCount} factura(s)</div>
                   <span style={{ display: "inline-flex", marginTop: 8, padding: "6px 9px", borderRadius: 999, fontSize: 11, fontWeight: 900, ...view.statusStyle }}>{view.label}: {view.value}</span>
@@ -3887,12 +3889,12 @@ function Portfolio({ data, onExport, onSave }) {
           </div>
           {modalPreview ? (
             <div className="client-customer-picker-preview" style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 12, alignSelf: "start" }}>
-              <div>
+              <div className="client-customer-preview-head">
                 <div style={{ fontSize: 11, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>VISTA RAPIDA</div>
                 <h3 style={{ margin: "4px 0 0", fontFamily: F, color: "#0B1D3A", fontSize: 22, lineHeight: 1.15 }}>{modalPreview.name || "Cliente sin nombre"}</h3>
                 <p style={{ margin: "6px 0 0", color: "#64748B", fontFamily: F, lineHeight: 1.5 }}>ID {modalPreview.id} · Documento {modalPreview.documentNumber || "por asignar"}</p>
               </div>
-              <div className="client-portal-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div className="client-portal-stats client-customer-preview-stats" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
                 <Stat label="FACTURADO" value={modalPreview.billedLabel || money(modalPreview.billed)} note={`${modalPreview.invoicesCount || 0} factura(s).`} />
                 <Stat label="ABONADO" value={modalPreview.paidLabel || money(modalPreview.paid)} note={`${modalPreview.paymentsCount || 0} pago(s).`} tone="#15803D" />
                 <Stat label={customerBalanceView(modalPreview).label.toUpperCase()} value={customerBalanceView(modalPreview).value} note={customerBalanceView(modalPreview).label === "Saldo a favor" ? "Revisar o compensar." : "Estado de cartera."} tone={customerBalanceView(modalPreview).tone} />
@@ -4573,17 +4575,37 @@ function RecordList({ headers, rows, rowKeys = [], selectedKey = "", onRowClick 
         {rows.length ? rows.map((row, rowIndex) => {
           const key = rowKeys[rowIndex] || rowIndex;
           const selected = selectedKey && key === selectedKey;
+          const headerSlugs = headers.map((header) => slugClass(header));
+          const actionIndex = headerSlugs.findIndex((slug) => slug === "accion" || slug === "acciones");
+          const idIndex = Math.max(headerSlugs.findIndex((slug) => slug === "id"), 0);
+          const namedIndex = headerSlugs.findIndex((slug) => slug.includes("cliente") || slug.includes("nombre"));
+          const safeTitleIndex = (namedIndex >= 0 && namedIndex !== actionIndex) ? namedIndex : (idIndex === 0 && row.length > 1 ? 1 : idIndex);
+          const topIndexes = new Set([actionIndex, idIndex, safeTitleIndex].filter((index) => index >= 0));
+          const detailIndexes = row.map((_, index) => index).filter((index) => !topIndexes.has(index));
           return (
           <div className={`client-record-card${selected ? " selected" : ""}`} key={key} onClick={onRowClick ? (event) => {
             if (event.target.closest("button,a,input,select,textarea,details,summary")) return;
             onRowClick(key, rowIndex);
           } : undefined} style={{ padding: 13, borderRadius: 16, background: selected ? "#EEF4FF" : "#F8FBFF", border: selected ? "1px solid rgba(37,99,235,.34)" : "1px solid rgba(37,99,235,.10)", display: "grid", gap: 7, fontFamily: F, cursor: onRowClick ? "pointer" : "default" }}>
-            {row.map((cell, cellIndex) => (
-              <div className="client-record-card-field" key={cellIndex} style={{ display: "grid", gap: 2 }}>
-                <span className="client-record-card-label" style={{ fontSize: 10, letterSpacing: "1px", color: "#64748B", fontWeight: 900 }}>{headers[cellIndex]}</span>
-                <div className="client-record-card-value" style={{ color: "#0F172A", overflowWrap: "anywhere" }}>{cell}</div>
+            <div className="client-record-card-top">
+              <div className="client-record-card-main">
+                {idIndex >= 0 && idIndex !== safeTitleIndex ? (
+                  <span className="client-record-card-kicker">{headers[idIndex]} · {row[idIndex]}</span>
+                ) : null}
+                <strong className="client-record-card-title">{row[safeTitleIndex]}</strong>
               </div>
-            ))}
+              {actionIndex >= 0 ? <div className="client-record-card-actions">{row[actionIndex]}</div> : null}
+            </div>
+            {detailIndexes.length ? (
+              <div className="client-record-card-grid">
+                {detailIndexes.map((cellIndex, visibleIndex) => (
+                  <div className={`client-record-card-field cell-${headerSlugs[cellIndex]}${visibleIndex > 3 ? " is-extra" : ""}`} key={cellIndex} style={{ display: "grid", gap: 2 }}>
+                    <span className="client-record-card-label" style={{ fontSize: 10, letterSpacing: "1px", color: "#64748B", fontWeight: 900 }}>{headers[cellIndex]}</span>
+                    <div className="client-record-card-value" style={{ color: "#0F172A", overflowWrap: "anywhere" }}>{row[cellIndex]}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         );}) : <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", color: "#64748B", fontFamily: F }}>No hay registros.</div>}
       </div>
@@ -5332,6 +5354,43 @@ export default function ClientPortal() {
         }
         .client-portal-modal-body{padding:24px 28px 28px}
         .client-record-cards{display:none}
+        .client-record-card-top{
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          gap:10px;
+          align-items:start;
+        }
+        .client-record-card-main{
+          min-width:0;
+          display:grid;
+          gap:4px;
+        }
+        .client-record-card-kicker{
+          color:#64748B;
+          font-family:${F};
+          font-size:10px;
+          font-weight:900;
+          letter-spacing:.75px;
+          text-transform:uppercase;
+          overflow-wrap:anywhere;
+        }
+        .client-record-card-title{
+          color:#0B1D3A;
+          font-family:${F};
+          font-size:14px;
+          font-weight:950;
+          line-height:1.25;
+          overflow-wrap:anywhere;
+        }
+        .client-record-card-actions{
+          justify-self:end;
+          min-width:0;
+        }
+        .client-record-card-grid{
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:7px;
+        }
         .client-action-group{display:flex;gap:8px;flex-wrap:wrap}
         .client-action-group button{
           min-height:34px;
@@ -5767,10 +5826,15 @@ export default function ClientPortal() {
           .client-portal-modal{
             width:100%!important;
             border-radius:22px 22px 14px 14px;
-            max-height:92vh;
+            max-height:calc(100dvh - 16px);
             box-sizing:border-box;
+            overscroll-behavior:contain;
           }
           .client-portal-modal-head{
+            position:sticky;
+            top:0;
+            z-index:6;
+            background:#fff;
             padding:16px 16px 13px;
             align-items:center;
           }
@@ -5787,13 +5851,20 @@ export default function ClientPortal() {
           .client-record-card{
             padding:11px!important;
             border-radius:14px!important;
-            gap:6px!important;
+            gap:9px!important;
+          }
+          .client-record-card-top{
+            grid-template-columns:minmax(0,1fr) minmax(116px,auto);
+          }
+          .client-record-card-actions .client-action-group{
+            justify-content:end;
           }
           .client-record-card-field{
-            grid-template-columns:minmax(76px,.36fr) minmax(0,1fr);
-            gap:8px!important;
-            align-items:start;
-            padding:2px 0;
+            min-width:0;
+            padding:7px 8px;
+            border-radius:12px;
+            background:#fff;
+            border:1px solid rgba(37,99,235,.08);
           }
           .client-record-card-label{
             font-size:9px!important;
@@ -5839,6 +5910,42 @@ export default function ClientPortal() {
             position:sticky;
             top:0;
             z-index:4;
+            padding:12px!important;
+            border-radius:16px!important;
+            gap:10px!important;
+            box-shadow:0 12px 28px rgba(15,23,42,.08);
+          }
+          .client-customer-preview-head h3{
+            font-size:18px!important;
+          }
+          .client-customer-preview-head p{
+            font-size:12px!important;
+            line-height:1.35!important;
+          }
+          .client-customer-preview-stats{
+            grid-template-columns:1fr!important;
+            gap:7px!important;
+          }
+          .client-customer-preview-stats .client-stat-card{
+            display:grid;
+            grid-template-columns:minmax(0,1fr) auto;
+            align-items:center;
+            gap:5px 9px;
+            padding:9px 10px!important;
+            border-radius:13px!important;
+          }
+          .client-customer-preview-stats .client-stat-card > div:first-child{
+            min-width:0;
+          }
+          .client-customer-preview-stats .client-stat-value{
+            margin-top:0!important;
+            text-align:right;
+            font-size:16px!important;
+          }
+          .client-customer-preview-stats .client-stat-note,
+          .client-customer-preview-stats .client-stat-icon,
+          .client-customer-preview-stats .client-stat-card::after{
+            display:none!important;
           }
           .client-sticky-actions{position:static}
           .client-company-brand{
@@ -5863,6 +5970,18 @@ export default function ClientPortal() {
           .client-contarae-signature img{
             width:70px;
             max-height:23px;
+          }
+          .client-stat-label{
+            font-size:9px!important;
+            letter-spacing:.95px!important;
+          }
+          .client-stat-value{
+            font-size:clamp(17px,4.7vw,22px)!important;
+            line-height:1.08!important;
+          }
+          .client-stat-note{
+            font-size:11px!important;
+            line-height:1.38!important;
           }
         }
         @media(max-width:640px){
@@ -5891,6 +6010,12 @@ export default function ClientPortal() {
             padding:12px!important;
             border-radius:16px!important;
           }
+          .client-stat-card::after{
+            width:74px;
+            height:74px;
+            right:-28px;
+            top:-30px;
+          }
           .client-stat-icon{
             width:30px;
             height:30px;
@@ -5903,14 +6028,21 @@ export default function ClientPortal() {
           .client-portal-modal-head h2{
             font-size:21px!important;
           }
+          .client-record-card-top{
+            grid-template-columns:1fr;
+            gap:8px;
+          }
+          .client-record-card-actions{
+            justify-self:stretch;
+            width:100%;
+          }
+          .client-record-card-grid{
+            grid-template-columns:1fr;
+          }
           .client-record-card-field{
             grid-template-columns:1fr;
             gap:2px!important;
-            padding:4px 0;
-            border-bottom:1px solid rgba(37,99,235,.07);
-          }
-          .client-record-card-field:last-child{
-            border-bottom:0;
+            padding:7px 8px;
           }
           .client-action-group{
             grid-template-columns:1fr;
