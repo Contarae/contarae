@@ -14,7 +14,7 @@ const CERTIFICATION_FAQS = [
   },
   {
     q: "¿Cuánto tarda la entrega del certificado?",
-    a: "Con documentación completa y pago confirmado, normalmente se entrega en pocas horas. Si la información requiere validaciones adicionales o documentos complementarios, el tiempo puede extenderse, pero siempre le informamos el estado del proceso.",
+    a: "Con documentación completa, pago confirmado y dentro de horario hábil, el certificado se entrega en promedio en unas 2 horas hábiles. Si la información requiere validaciones adicionales o documentos complementarios, el tiempo puede extenderse, pero siempre le informamos el estado del proceso.",
   },
   {
     q: "¿Qué soportes necesito para la certificación?",
@@ -50,6 +50,14 @@ const SUPPORT_FAQS = new Map([
         q: "¿Sirve si soy independiente?",
         a: "Sí. En ese caso se revisan soportes como contratos, facturas, extractos bancarios, comprobantes de pago y evidencia de la actividad económica.",
       },
+      {
+        q: "¿Cuánto tarda un certificado de ingresos firmado por contador?",
+        a: "Si cuenta con todos los soportes y el pago está confirmado dentro de horario hábil, la entrega promedio es de unas 2 horas hábiles.",
+      },
+      {
+        q: "¿Cuánto cuesta un certificado de ingresos firmado por contador en Colombia?",
+        a: "El valor depende del rango de ingresos y de los soportes disponibles. Antes de pagar se informa el precio y el alcance del documento.",
+      },
     ],
   ],
   [
@@ -66,6 +74,14 @@ const SUPPORT_FAQS = new Map([
       {
         q: "¿Se puede certificar un promedio mensual?",
         a: "Sí, siempre que el período y los soportes permitan explicar técnicamente ese promedio.",
+      },
+      {
+        q: "¿Cómo comprobar ingresos si soy independiente?",
+        a: "Puede usar contratos, facturas, extractos bancarios, comprobantes de pago, certificados de plataformas o soportes que evidencien su actividad económica.",
+      },
+      {
+        q: "¿Cuánto tarda la certificación para independientes?",
+        a: "Con soportes completos y pago confirmado dentro de horario hábil, la entrega promedio es de unas 2 horas hábiles.",
       },
     ],
   ],
@@ -84,6 +100,14 @@ const SUPPORT_FAQS = new Map([
         q: "¿Puede incluir varios tipos de ingresos?",
         a: "Sí. Pueden presentarse varias fuentes recurrentes y, si aplica, ingresos eventuales separados.",
       },
+      {
+        q: "¿Sirve como justificante de ingresos para banco?",
+        a: "Sí, puede servir como justificante o soporte de ingresos, aunque cada banco conserva sus propios criterios de aceptación.",
+      },
+      {
+        q: "¿Cuánto tarda si lo necesito para un crédito urgente?",
+        a: "Si los soportes están completos y el pago queda confirmado en horario hábil, la entrega promedio es de unas 2 horas hábiles.",
+      },
     ],
   ],
   [
@@ -101,6 +125,14 @@ const SUPPORT_FAQS = new Map([
         q: "¿Qué pasa si tengo varios ingresos pequeños?",
         a: "Se pueden presentar por separado o en lista, según la cantidad y naturaleza de las fuentes.",
       },
+      {
+        q: "¿Sirve para arrendar vivienda?",
+        a: "Sí. Puede adjuntarse en estudios de arrendamiento para inmobiliarias, aseguradoras, propietarios o codeudores.",
+      },
+      {
+        q: "¿Cuánto tarda si la inmobiliaria me lo pidió hoy?",
+        a: "Con soportes completos y pago confirmado dentro de horario hábil, la entrega promedio es de unas 2 horas hábiles.",
+      },
     ],
   ],
   [
@@ -117,6 +149,10 @@ const SUPPORT_FAQS = new Map([
       {
         q: "¿Puedo iniciar si todavía no tengo todos los soportes?",
         a: "Sí, pero la emisión depende de que finalmente existan soportes suficientes para certificar responsablemente.",
+      },
+      {
+        q: "¿Cuánto tarda después de pagar?",
+        a: "Con todos los soportes completos, pago confirmado y dentro de horario hábil, el certificado se entrega en promedio en unas 2 horas hábiles.",
       },
     ],
   ],
@@ -158,14 +194,14 @@ const ROUTE_META = new Map([
   ),
   route(
     "/certificacion",
-    "Certificación de ingresos por Contador Público | CONTARAE",
-    "Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.",
+    "Certificación de ingresos por Contador Público en Colombia | CONTARAE",
+    "Solicite en línea su certificación de ingresos firmada por Contador Público. Entrega promedio en 2 horas hábiles con soportes completos.",
     "/certificacion"
   ),
   route(
     "/certificacion-de-ingresos",
-    "Certificación de ingresos por Contador Público | CONTARAE",
-    "Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.",
+    "Certificación de ingresos por Contador Público en Colombia | CONTARAE",
+    "Solicite en línea su certificación de ingresos firmada por Contador Público. Entrega promedio en 2 horas hábiles con soportes completos.",
     "/certificacion"
   ),
   route(
@@ -220,28 +256,28 @@ const ROUTE_META = new Map([
   ),
   route(
     "/certificado-de-ingresos-contador-publico",
-    "Certificado de ingresos por Contador Público | CONTARAE",
-    "Conozca cuándo se requiere un certificado de ingresos firmado por Contador Público, qué soportes se revisan y cómo solicitarlo en línea con CONTARAE."
+    "Certificado de ingresos firmado por Contador Público | CONTARAE",
+    "Certificado de ingresos por contador público en Colombia. Entrega promedio en 2 horas hábiles con soportes completos y pago confirmado."
   ),
   route(
     "/certificado-de-ingresos-para-independientes",
-    "Certificado de ingresos para independientes | CONTARAE",
-    "Solicite una certificación de ingresos para independientes, contratistas o freelancers con revisión de soportes, período certificado y firma de Contador Público."
+    "Certificado de ingresos para independientes en Colombia | CONTARAE",
+    "Certificado de ingresos para independientes, contratistas y freelancers. Entrega promedio en 2 horas hábiles con soportes completos."
   ),
   route(
     "/certificado-de-ingresos-para-banco",
-    "Certificado de ingresos para banco o crédito | CONTARAE",
-    "Prepare una certificación de ingresos para banco, crédito, estudio financiero o entidad financiera con valores claros, soportes y firma profesional."
+    "Certificado de ingresos para banco, crédito o préstamo | CONTARAE",
+    "Certificado de ingresos para banco, crédito o préstamo. Entrega promedio en 2 horas hábiles con soportes completos y pago confirmado."
   ),
   route(
     "/certificado-de-ingresos-para-arrendamiento",
-    "Certificado de ingresos para arrendamiento | CONTARAE",
-    "Obtenga una certificación de ingresos para arrendar vivienda, inmobiliaria, aseguradora o arrendador, con revisión de soportes y firma de Contador Público."
+    "Certificado de ingresos para arriendo o inmobiliaria | CONTARAE",
+    "Certificado de ingresos para arriendo, inmobiliaria o aseguradora. Entrega promedio en 2 horas hábiles con soportes completos."
   ),
   route(
     "/comprar-certificado-de-ingresos",
-    "Comprar certificado de ingresos en línea | CONTARAE",
-    "Compre y solicite en línea su certificación de ingresos con pago seguro, revisión profesional, soportes verificables y entrega en PDF firmado."
+    "Solicitar certificado de ingresos en línea | CONTARAE",
+    "Solicite su certificado de ingresos en línea. Pago seguro y entrega promedio en 2 horas hábiles con soportes completos."
   ),
   route(
     "/debo-declarar-renta",

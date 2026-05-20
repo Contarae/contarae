@@ -129,25 +129,29 @@ const CLIENT_PORTAL_ROUTE="/portal-clientes";
 const CLIENT_PORTAL_ROUTE_ALIASES=new Set([CLIENT_PORTAL_ROUTE,"/sistema-clientes","/clientes-portal"]);
 const OPEN_CERT_FORM_EVENT="contarae:open-certification-form";
 const SITE_URL="https://contarae.com";
+const CERT_DELIVERY_PROMISE="Entrega promedio en unas 2 horas hábiles si cuenta con todos los soportes completos.";
 const CERTIFICATION_SUPPORT_ROUTES=[
   {
     path:"/certificado-de-ingresos-contador-publico",
     sectionId:"certificado-contador-publico",
-    metaTitle:"Certificado de ingresos por Contador Público | CONTARAE",
-    metaDescription:"Conozca cuándo se requiere un certificado de ingresos firmado por Contador Público, qué soportes se revisan y cómo solicitarlo en línea con CONTARAE.",
+    metaTitle:"Certificado de ingresos firmado por Contador Público | CONTARAE",
+    metaDescription:"Certificado de ingresos por contador público en Colombia. Entrega promedio en 2 horas hábiles con soportes completos y pago confirmado.",
     badge:"CERTIFICADO FIRMADO POR CONTADOR",
     title:"Certificado de ingresos firmado por Contador Público",
-    intro:"Este documento permite acreditar ingresos ante terceros cuando se requiere una certificación profesional sustentada en soportes verificables. En CONTARAE se emite con revisión previa, firma de Contador Público y entrega digital.",
+    intro:"Este documento permite acreditar ingresos ante terceros cuando se requiere una certificación profesional sustentada en soportes verificables. En CONTARAE se emite con revisión previa, firma de Contador Público y entrega digital. Si cuenta con todos los soportes completos, el certificado suele entregarse en promedio en unas 2 horas hábiles.",
     intent:"Ideal para personas naturales que necesitan demostrar ingresos ante bancos, inmobiliarias, embajadas, concesionarios, procesos de contratación o entidades privadas.",
     cards:[
       ["Qué certifica","El nivel de ingresos de una persona durante un período determinado, indicando el origen de los ingresos y los valores certificados con base en documentación soporte."],
       ["Quién lo firma","Un Contador Público con tarjeta profesional, en ejercicio de las facultades reconocidas por la Ley 43 de 1990 para dar fe pública en actos propios de la profesión."],
       ["Qué debe aportar el cliente","Soportes coherentes con los ingresos reportados: desprendibles, contratos, facturas, extractos, certificaciones, comprobantes de pago u otros documentos verificables."],
-      ["Cómo se entrega","En PDF, listo para presentar ante la entidad solicitante, con datos del cliente, período certificado, valores en números y letras, firma profesional y datos de validación."]
+      ["Cómo se entrega","En PDF, listo para presentar ante la entidad solicitante, con datos del cliente, período certificado, valores en números y letras, firma profesional y datos de validación."],
+      ["Tiempo estimado","Cuando el pago está confirmado y los soportes están completos, la entrega promedio es de unas 2 horas dentro de horario hábil o laboral."]
     ],
     checklist:["Defina ante quién presentará el certificado.","Indique el período que le exige la entidad.","Relacione sus ingresos recurrentes y, si aplica, eventuales.","Adjunte soportes claros y legibles para agilizar la revisión."],
     faqs:[
       ["¿Certificado de ingresos y certificación de ingresos son lo mismo?","En la práctica suelen usarse como equivalentes. Lo importante es que el documento esté firmado por Contador Público y que los ingresos certificados tengan soporte verificable."],
+      ["¿Cuánto tarda un certificado de ingresos firmado por contador?","Si la solicitud está pagada y cuenta con todos los soportes completos, la entrega promedio es de unas 2 horas dentro de horario hábil o laboral. Si faltan documentos o se requieren aclaraciones, el tiempo puede extenderse."],
+      ["¿Cuánto cuesta un certificado de ingresos firmado por contador en Colombia?","El valor depende del rango de ingresos y del alcance de la revisión. En CONTARAE el valor se informa antes del pago para que pueda decidir con claridad."],
       ["¿Sirve si soy empleado?","Sí. Puede soportarse con desprendibles de nómina, certificaciones laborales, certificados de ingresos y retenciones u otros documentos emitidos por el empleador."],
       ["¿Sirve si soy independiente?","Sí. En ese caso se revisan soportes como contratos, facturas, extractos bancarios, comprobantes de pago y evidencia de la actividad económica."]
     ]
@@ -155,20 +159,23 @@ const CERTIFICATION_SUPPORT_ROUTES=[
   {
     path:"/certificado-de-ingresos-para-independientes",
     sectionId:"certificado-independientes",
-    metaTitle:"Certificado de ingresos para independientes | CONTARAE",
-    metaDescription:"Solicite una certificación de ingresos para independientes, contratistas o freelancers con revisión de soportes, período certificado y firma de Contador Público.",
+    metaTitle:"Certificado de ingresos para independientes en Colombia | CONTARAE",
+    metaDescription:"Certificado de ingresos para independientes, contratistas y freelancers. Entrega promedio en 2 horas hábiles con soportes completos.",
     badge:"INDEPENDIENTES Y CONTRATISTAS",
     title:"Certificación de ingresos para independientes",
-    intro:"Cuando una persona trabaja por cuenta propia, no siempre cuenta con desprendibles de nómina. Por eso la certificación debe construirse a partir de soportes que demuestren la realidad económica de sus ingresos.",
+    intro:"Cuando una persona trabaja por cuenta propia, no siempre cuenta con desprendibles de nómina. Por eso la certificación debe construirse a partir de soportes que demuestren la realidad económica de sus ingresos. Si los documentos están completos, el certificado puede recibirse en promedio en unas 2 horas hábiles.",
     intent:"Pensada para contratistas, freelancers, comerciantes, profesionales independientes, rentistas y personas con ingresos variables que necesitan acreditar capacidad económica.",
     cards:[
       ["Soportes frecuentes","Contratos de prestación de servicios, facturas, cuentas de cobro, extractos bancarios, certificados de retención, comprobantes de pago o evidencia de la actividad económica."],
       ["Ingreso mensual recurrente","Se identifica el ingreso que se repite de manera habitual y se expresa como valor mensual certificado para el período solicitado."],
       ["Ingresos eventuales","Si existieron ingresos no fijos o extraordinarios, pueden incluirse de forma separada, dejando claro que no hacen parte del ingreso mensual recurrente."],
-      ["Revisión profesional","Antes de emitir, se valida que la información reportada sea coherente con los soportes y con el destino del trámite."]
+      ["Revisión profesional","Antes de emitir, se valida que la información reportada sea coherente con los soportes y con el destino del trámite."],
+      ["Entrega rápida","Con soportes completos y pago confirmado, la entrega promedio es de unas 2 horas hábiles, ideal si el trámite es urgente."]
     ],
     checklist:["Tenga claro el período que quiere certificar.","Organice extractos o comprobantes por mes.","Separe ingresos habituales de ingresos eventuales.","Indique si la entidad exige algún texto o formato especial."],
     faqs:[
+      ["¿Cómo comprobar ingresos si soy independiente?","Puede hacerlo con una certificación de ingresos firmada por Contador Público, soportada con extractos, contratos, facturas, cuentas de cobro, comprobantes de pago u otros documentos que demuestren su actividad."],
+      ["¿Cuánto tarda la certificación para independientes?","Con soportes completos y pago confirmado, la entrega promedio es de unas 2 horas dentro de horario hábil o laboral. Si falta información, primero se solicitan aclaraciones."],
       ["¿Puedo certificar ingresos si me pagan por transferencia?","Sí, siempre que los movimientos puedan relacionarse razonablemente con la actividad económica o el servicio prestado."],
       ["¿Puedo incluir ventas ocasionales?","Sí, pero deben presentarse como ingresos eventuales si no son fijos ni periódicos."],
       ["¿Se puede certificar un promedio mensual?","Sí, siempre que el período y los soportes permitan explicar técnicamente ese promedio."]
@@ -177,20 +184,23 @@ const CERTIFICATION_SUPPORT_ROUTES=[
   {
     path:"/certificado-de-ingresos-para-banco",
     sectionId:"certificado-banco",
-    metaTitle:"Certificado de ingresos para banco o crédito | CONTARAE",
-    metaDescription:"Prepare una certificación de ingresos para banco, crédito, estudio financiero o entidad financiera con valores claros, soportes y firma profesional.",
+    metaTitle:"Certificado de ingresos para banco, crédito o préstamo | CONTARAE",
+    metaDescription:"Certificado de ingresos para banco, crédito o préstamo. Entrega promedio en 2 horas hábiles con soportes completos y pago confirmado.",
     badge:"BANCOS Y ENTIDADES FINANCIERAS",
     title:"Certificado de ingresos para banco o crédito",
-    intro:"Los bancos suelen solicitar un documento claro para evaluar capacidad de pago. La certificación debe mostrar ingresos verificables, período certificado y destino de presentación.",
+    intro:"Los bancos suelen solicitar un documento claro para evaluar capacidad de pago. La certificación debe mostrar ingresos verificables, período certificado y destino de presentación. Cuando los soportes están completos, puede recibir el documento en promedio en unas 2 horas hábiles.",
     intent:"Útil para créditos de libre inversión, tarjetas, estudios financieros, compra de vehículo, crédito hipotecario o solicitudes de productos bancarios.",
     cards:[
       ["Capacidad de pago","El documento ayuda a presentar de forma ordenada los ingresos acreditados para que la entidad pueda analizarlos dentro de su propio proceso."],
       ["Período certificado","Se debe indicar si la entidad pide último mes, tres meses, seis meses, año completo u otro período específico."],
       ["Claridad de valores","Los valores se expresan en números y letras, separando ingresos recurrentes e ingresos eventuales cuando existan."],
-      ["Alcance profesional","La certificación no reemplaza el análisis de crédito del banco; sirve como soporte profesional de la información suministrada."]
+      ["Alcance profesional","La certificación no reemplaza el análisis de crédito del banco; sirve como soporte profesional de la información suministrada."],
+      ["Trámites urgentes","Si el banco le pidió el certificado con urgencia, la revisión puede avanzar en promedio en unas 2 horas hábiles cuando ya están todos los soportes."]
     ],
     checklist:["Confirme el requisito exacto del banco.","Defina el producto financiero para el que se presenta.","Adjunte soportes del período solicitado.","Revise que sus datos personales coincidan con los documentos."],
     faqs:[
+      ["¿Sirve como justificante de ingresos para banco?","Sí. Puede servir como justificante o soporte de ingresos para banco, crédito, préstamo, tarjeta o estudio financiero, sujeto a las políticas internas de la entidad."],
+      ["¿Cuánto tarda si lo necesito para un crédito urgente?","Con pago confirmado y soportes completos, la entrega promedio es de unas 2 horas dentro de horario hábil o laboral."],
       ["¿El banco está obligado a aceptar el certificado?","La aceptación depende de la política interna de cada entidad, pero una certificación clara y soportada reduce observaciones."],
       ["¿Sirve para crédito hipotecario?","Puede servir como soporte dentro del estudio, siempre que cumpla los requisitos solicitados por la entidad financiera."],
       ["¿Puede incluir varios tipos de ingresos?","Sí. Pueden presentarse varias fuentes recurrentes y, si aplica, ingresos eventuales separados."]
@@ -199,20 +209,23 @@ const CERTIFICATION_SUPPORT_ROUTES=[
   {
     path:"/certificado-de-ingresos-para-arrendamiento",
     sectionId:"certificado-arrendamiento",
-    metaTitle:"Certificado de ingresos para arrendamiento | CONTARAE",
-    metaDescription:"Obtenga una certificación de ingresos para arrendar vivienda, inmobiliaria, aseguradora o arrendador, con revisión de soportes y firma de Contador Público.",
+    metaTitle:"Certificado de ingresos para arriendo o inmobiliaria | CONTARAE",
+    metaDescription:"Certificado de ingresos para arriendo, inmobiliaria o aseguradora. Entrega promedio en 2 horas hábiles con soportes completos.",
     badge:"ARRIENDOS E INMOBILIARIAS",
     title:"Certificado de ingresos para arrendamiento",
-    intro:"En procesos de arriendo, inmobiliarias y aseguradoras suelen pedir soporte de ingresos para evaluar capacidad de pago del canon. La certificación debe ser precisa, verificable y fácil de presentar.",
+    intro:"En procesos de arriendo, inmobiliarias y aseguradoras suelen pedir soporte de ingresos para evaluar capacidad de pago del canon. La certificación debe ser precisa, verificable y fácil de presentar. Si cuenta con soportes completos, puede recibirla en promedio en unas 2 horas hábiles.",
     intent:"Aplica para solicitudes ante inmobiliarias, aseguradoras de arrendamiento, propietarios directos, administraciones o estudios de arrendatario.",
     cards:[
       ["Destino del trámite","Conviene indicar si será presentado ante inmobiliaria, aseguradora, propietario o administración para ajustar el texto del documento."],
       ["Ingresos requeridos","Se certifican los ingresos demostrables del solicitante según el período exigido por quien evalúa el arriendo."],
       ["Soportes útiles","Desprendibles, contratos, extractos, certificaciones, facturas o comprobantes que evidencien ingresos estables o demostrables."],
-      ["Presentación formal","El PDF queda preparado para entregar digitalmente, con datos del solicitante, valores certificados y firma profesional."]
+      ["Presentación formal","El PDF queda preparado para entregar digitalmente, con datos del solicitante, valores certificados y firma profesional."],
+      ["Respuesta ágil","Para trámites de arriendo urgentes, la entrega promedio es de unas 2 horas hábiles si el pago y los soportes están completos."]
     ],
     checklist:["Confirme el canon o trámite para el que aplica.","Identifique el período que pide la inmobiliaria.","Adjunte soportes recientes.","Informe si la entidad exige formato propio."],
     faqs:[
+      ["¿Sirve para arrendar vivienda?","Sí. Puede usarse como soporte de ingresos para procesos de arriendo ante inmobiliarias, aseguradoras o propietarios directos."],
+      ["¿Cuánto tarda si la inmobiliaria me lo pidió hoy?","Con soportes completos y pago confirmado, la entrega promedio es de unas 2 horas dentro de horario hábil o laboral."],
       ["¿Sirve para aseguradora de arrendamiento?","Sí, puede usarse como soporte, aunque la aprobación final depende de la aseguradora."],
       ["¿Puedo solicitarla si soy codeudor?","Sí, si necesita acreditar ingresos propios dentro del estudio del arrendamiento."],
       ["¿Qué pasa si tengo varios ingresos pequeños?","Se pueden presentar por separado o en lista, según la cantidad y naturaleza de las fuentes."]
@@ -221,21 +234,23 @@ const CERTIFICATION_SUPPORT_ROUTES=[
   {
     path:"/comprar-certificado-de-ingresos",
     sectionId:"comprar-certificado-ingresos",
-    metaTitle:"Comprar certificado de ingresos en línea | CONTARAE",
-    metaDescription:"Compre y solicite en línea su certificación de ingresos con pago seguro, revisión profesional, soportes verificables y entrega en PDF firmado.",
+    metaTitle:"Solicitar certificado de ingresos en línea | CONTARAE",
+    metaDescription:"Solicite su certificado de ingresos en línea. Pago seguro y entrega promedio en 2 horas hábiles con soportes completos.",
     badge:"SOLICITUD EN LÍNEA",
-    title:"Comprar certificado de ingresos en línea",
-    intro:"En CONTARAE puede iniciar la solicitud en línea, pagar de forma segura y recibir seguimiento por referencia mientras se revisan los soportes y se prepara la certificación.",
+    title:"Solicitar certificado de ingresos en línea",
+    intro:"En CONTARAE puede iniciar la solicitud en línea, pagar de forma segura y recibir seguimiento por referencia mientras se revisan los soportes y se prepara la certificación. Si la documentación está completa, la entrega promedio es de unas 2 horas hábiles.",
     intent:"Ruta pensada para quien ya sabe que necesita una certificación de ingresos y quiere iniciar el proceso sin desplazamientos.",
     cards:[
       ["Formulario guiado","El sistema solicita datos personales, destino, período, ingresos recurrentes, ingresos eventuales y soportes disponibles."],
       ["Pago seguro","El pago se procesa mediante Wompi y la solicitud queda registrada para revisión profesional una vez se confirma la transacción."],
       ["Revisión antes de emitir","El equipo revisa que los ingresos reportados cuenten con soportes suficientes y coherentes antes de generar el PDF."],
-      ["Entrega digital","La certificación se entrega por medios digitales y puede validarse con los datos incorporados en el documento."]
+      ["Entrega digital","La certificación se entrega por medios digitales y puede validarse con los datos incorporados en el documento."],
+      ["Tiempo promedio","Con soportes completos y pago confirmado, la entrega suele tomar unas 2 horas dentro de horario hábil o laboral."]
     ],
     checklist:["Complete el formulario con datos reales.","Use un celular colombiano válido para el pago si elige Nequi.","Adjunte soportes si ya los tiene disponibles.","Revise el resumen antes de pagar."],
     faqs:[
       ["¿Puedo pagar en línea?","Sí. La página permite pagar por Wompi con los medios habilitados en la pasarela."],
+      ["¿Cuánto tarda después de pagar?","Si el pago queda confirmado y los soportes están completos, la entrega promedio es de unas 2 horas dentro de horario hábil o laboral."],
       ["¿Qué pasa después del pago?","La solicitud entra a revisión profesional y el equipo puede pedir soportes o aclaraciones si son necesarios."],
       ["¿Puedo iniciar si todavía no tengo todos los soportes?","Sí, pero la emisión depende de que finalmente existan soportes suficientes para certificar responsablemente."]
     ]
@@ -720,7 +735,7 @@ const getClientSeoMeta=({path,adminRoute,verifyRoute,paymentRoute,paymentsPortal
   if(toolRoute)return{title:toolConfig.metaTitle,description:toolConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
   if(certSupportConfig)return{title:certSupportConfig.metaTitle,description:certSupportConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
   if(serviceSeoConfig)return{title:serviceSeoConfig.metaTitle,description:serviceSeoConfig.metaDescription,canonical:canonicalUrlForPath(path),noindex:false};
-  if(certRoute)return{title:"Certificación de ingresos por Contador Público | CONTARAE",description:"Solicite su certificación de ingresos firmada por Contador Público en Colombia. Pago en línea, seguimiento de referencia y atención por WhatsApp o correo.",canonical:canonicalUrlForPath(CERT_ROUTE),noindex:false};
+  if(certRoute)return{title:"Certificación de ingresos por Contador Público en Colombia | CONTARAE",description:"Solicite en línea su certificación de ingresos firmada por Contador Público. Entrega promedio en 2 horas hábiles con soportes completos.",canonical:canonicalUrlForPath(CERT_ROUTE),noindex:false};
   return{title:"CONTARAE | Servicios contables, tributarios y financieros",description:"Certificación de ingresos por Contador Público. Servicios contables, tributarios y financieros para personas, emprendedores y pymes en Colombia.",canonical:canonicalUrlForPath("/"),noindex:false};
 };
 const buildBreadcrumbSchema=(items)=>({"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":items.map((item,index)=>({"@type":"ListItem","position":index+1,"name":item.name,"item":new URL(item.path,SITE_URL).href}))});
@@ -1855,6 +1870,11 @@ function CertificationSupportPage({config}){
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
               <a href={CERT_ROUTE} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>Solicitar certificación</a>
               <a href="#guia-certificacion" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Ver guía del caso</a>
+            </div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:16}}>
+              {[CERT_DELIVERY_PROMISE,"Firma de Contador Público","Pago seguro y atención por WhatsApp"].map(item=>(
+                <span key={item} style={{display:"inline-flex",alignItems:"center",padding:"9px 13px",borderRadius:999,background:"#fff",border:"1px solid rgba(37,99,235,.14)",color:"#1B3A5C",fontSize:13,fontWeight:800,fontFamily:F,boxShadow:"0 10px 24px rgba(15,23,42,.05)"}}>{item}</span>
+              ))}
             </div>
           </div>
           <div style={{display:"grid",gap:14}}>
