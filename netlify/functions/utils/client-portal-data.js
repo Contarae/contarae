@@ -20,7 +20,8 @@ const IMPORT_TEMPLATES = {
   },
   abonos: {
     label: "Abonos",
-    headers: ["id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "nota_devolucion", "valor_neto", "medio_pago", "referencia", "notas"]
+    headers: ["grupo_pago", "id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "nota_devolucion", "valor_neto", "medio_pago", "referencia", "notas"],
+    optionalHeaders: ["grupo_pago"]
   },
   inventario: {
     label: "Inventario maestro",
@@ -246,6 +247,22 @@ function nextInvoiceId(data = {}) {
 
 function nextPaymentId(data = {}) {
   return nextSequentialId(data.payments || [], "ABO");
+}
+
+function nextPaymentIds(data = {}, count = 1) {
+  const max = (data.payments || []).reduce((currentMax, payment) => {
+    const match = String(payment.id || "").match(/^ABO-(\d+)$/i);
+    return match ? Math.max(currentMax, Number(match[1])) : currentMax;
+  }, 0);
+  return Array.from({ length: count }, (_, index) => `ABO-${String(max + index + 1).padStart(6, "0")}`);
+}
+
+function nextPaymentGroupId(data = {}) {
+  const max = (data.payments || []).reduce((currentMax, payment) => {
+    const match = String(payment.paymentGroupId || "").match(/^PAGO-(\d+)$/i);
+    return match ? Math.max(currentMax, Number(match[1])) : currentMax;
+  }, 0);
+  return `PAGO-${String(max + 1).padStart(6, "0")}`;
 }
 
 function nextOrderId(data = {}) {
@@ -645,6 +662,170 @@ function ensureHistoricalCustomer(data, customerId, customerName, actor = "porta
 
 function paymentAmount(payment = {}) {
   return Number(payment.totalApplied || payment.netReceived || payment.grossAmount || 0) || 0;
+}
+
+function findInvoiceById(data = {}, invoiceId = "") {
+  const id = cleanText(invoiceId);
+  if (!id) return null;
+  const normalized = normalizeRecordId(id, "FAC");
+  return (data.invoices || []).find((invoice) => (
+    cleanText(invoice.id) === id
+    || cleanText(invoice.id) === normalized
+    || cleanText(invoice.externalReference) === id
+    || cleanText(invoice.externalReference) === normalized
+  )) || null;
+}
+
+function paymentApplicationFor(data = {}, invoiceId = "", source = "", paymentCondition = "") {
+  const normalizedSource = cleanText(source).toLowerCase();
+  if (normalizedSource === "factura_contado") return { paymentCondition: "contado", paymentApplicationType: "factura_contado" };
+  if (normalizedSource === "factura_abono_parcial") return { paymentCondition: "parcial", paymentApplicationType: "abono_parcial" };
+  const invoice = findInvoiceById(data, invoiceId);
+  const condition = cleanText(paymentCondition || invoice?.paymentCondition || (invoiceId ? "credito" : "global")).toLowerCase();
+  if (condition === "contado") return { paymentCondition: "contado", paymentApplicationType: "factura_contado" };
+  if (condition === "parcial") return { paymentCondition: "parcial", paymentApplicationType: "abono_parcial" };
+  if (condition === "credito") return { paymentCondition: "credito", paymentApplicationType: "factura_credito" };
+  return { paymentCondition: condition || "global", paymentApplicationType: invoiceId ? "factura_credito" : "abono_global" };
+}
+
+function paymentApplicationLabel(payment = {}) {
+  const type = cleanText(payment.paymentApplicationType || payment.source).toLowerCase();
+  if (type === "factura_contado") return "Factura de contado";
+  if (type === "abono_parcial" || type === "factura_abono_parcial") return "Abono parcial";
+  if (type === "factura_credito") return "Abono a factura credito";
+  return payment.invoiceId ? "Abono a factura" : "Abono global";
+}
+
+function distributeAmount(total = 0, weights = []) {
+  const roundedTotal = Math.round(Number(total || 0));
+  const normalizedWeights = weights.map((value) => Math.max(Number(value || 0), 0));
+  const weightTotal = normalizedWeights.reduce((sum, value) => sum + value, 0);
+  if (!normalizedWeights.length) return [];
+  if (weightTotal <= 0) return normalizedWeights.map((_, index) => index === normalizedWeights.length - 1 ? roundedTotal : 0);
+  let assigned = 0;
+  return normalizedWeights.map((weight, index) => {
+    if (index === normalizedWeights.length - 1) return roundedTotal - assigned;
+    const amount = Math.round((roundedTotal * weight) / weightTotal);
+    assigned += amount;
+    return amount;
+  });
+}
+
+function normalizePaymentMethods(methods = [], expectedNet = 0, fallback = {}) {
+  const cleanMethods = (Array.isArray(methods) ? methods : [])
+    .map((method) => ({
+      method: cleanText(method.method) || cleanText(fallback.method) || "No especificado",
+      amount: parseCurrency(method.amount ?? method.netReceived),
+      date: normalizeDate(method.date) || normalizeDate(fallback.date),
+      reference: cleanText(method.reference) || cleanText(fallback.reference),
+      notes: cleanText(method.notes)
+    }))
+    .filter((method) => method.amount > 0);
+  if (cleanMethods.length) return cleanMethods;
+  const amount = Math.round(Number(expectedNet || 0));
+  return amount > 0 ? [{
+    method: cleanText(fallback.method) || "No especificado",
+    amount,
+    date: normalizeDate(fallback.date),
+    reference: cleanText(fallback.reference),
+    notes: cleanText(fallback.notes)
+  }] : [];
+}
+
+function validatePaymentMethods(methods = [], expectedNet = 0) {
+  const total = methods.reduce((sum, method) => sum + Math.round(Number(method.amount || 0)), 0);
+  if (Math.round(Number(expectedNet || 0)) !== total) {
+    throw new Error("La suma de los metodos de pago debe ser igual al neto recibido.");
+  }
+}
+
+function buildProratedPayments({
+  data,
+  customer,
+  invoiceId = "",
+  date = "",
+  grossAmount = 0,
+  retentions = {},
+  discountAmount = 0,
+  discountConcept = "",
+  returnCreditAmount = 0,
+  returnCreditNote = "",
+  methods = [],
+  status = "aplicado",
+  source = "manual",
+  paymentCondition = "",
+  notes = "",
+  actor = "portal",
+  now = new Date().toISOString(),
+  auditAction = "payment_created",
+  sourceImportId = "",
+  importModule = ""
+}) {
+  const retentionTotals = {
+    retefuente: Math.round(Number(retentions.retefuente || 0)),
+    reteica: Math.round(Number(retentions.reteica || 0)),
+    reteiva: Math.round(Number(retentions.reteiva || 0)),
+    other: Math.round(Number(retentions.other || 0))
+  };
+  const weights = methods.map((method) => method.amount);
+  const grossParts = distributeAmount(grossAmount, weights);
+  const retefuenteParts = distributeAmount(retentionTotals.retefuente, weights);
+  const reteicaParts = distributeAmount(retentionTotals.reteica, weights);
+  const reteivaParts = distributeAmount(retentionTotals.reteiva, weights);
+  const otherRetentionParts = distributeAmount(retentionTotals.other, weights);
+  const discountParts = distributeAmount(discountAmount, weights);
+  const returnCreditParts = distributeAmount(returnCreditAmount, weights);
+  const application = paymentApplicationFor(data, invoiceId, source, paymentCondition);
+  const paymentGroupId = methods.length > 1 ? nextPaymentGroupId(data) : "";
+  const paymentIds = nextPaymentIds(data, methods.length);
+  return methods.map((method, index) => {
+    const paymentId = paymentIds[index];
+    const itemRetentions = {
+      retefuente: retefuenteParts[index] || 0,
+      reteica: reteicaParts[index] || 0,
+      reteiva: reteivaParts[index] || 0,
+      other: otherRetentionParts[index] || 0
+    };
+    const itemRetentionTotal = itemRetentions.retefuente + itemRetentions.reteica + itemRetentions.reteiva + itemRetentions.other;
+    const groupNote = paymentGroupId ? `Grupo ${paymentGroupId}, metodo ${index + 1} de ${methods.length}.` : "";
+    return {
+      id: paymentId,
+      customerId: customer.id,
+      customerNameSnapshot: customer.name,
+      invoiceId: cleanText(invoiceId),
+      date: method.date || normalizeDate(date) || new Date().toISOString().slice(0, 10),
+      grossAmount: grossParts[index] || 0,
+      retentions: itemRetentions,
+      retentionTotal: itemRetentionTotal,
+      discounts: {
+        amount: discountParts[index] || 0,
+        concept: cleanText(discountConcept)
+      },
+      returnCredit: {
+        amount: returnCreditParts[index] || 0,
+        note: cleanText(returnCreditNote)
+      },
+      netReceived: Math.round(Number(method.amount || 0)),
+      totalApplied: grossParts[index] || 0,
+      method: method.method,
+      reference: method.reference,
+      notes: [cleanText(method.notes), cleanText(notes), groupNote].filter(Boolean).join(" | "),
+      status: cleanText(status) || "aplicado",
+      source,
+      paymentCondition: application.paymentCondition,
+      paymentApplicationType: application.paymentApplicationType,
+      paymentApplicationLabel: paymentApplicationLabel({ paymentApplicationType: application.paymentApplicationType, invoiceId }),
+      paymentGroupId,
+      paymentGroupSize: methods.length,
+      createdAt: now,
+      createdBy: actor,
+      updatedAt: now,
+      updatedBy: actor,
+      ...(sourceImportId ? { sourceImportId } : {}),
+      ...(importModule ? { importModule } : {}),
+      auditTrail: [createAudit(auditAction, actor, { invoiceId, paymentGroupId })]
+    };
+  });
 }
 
 function parseDateOnly(value = "") {
@@ -1443,17 +1624,42 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     };
     if (invoice.total <= 0) throw new Error("Ingresa un valor total valido para la factura.");
     const incomingPaymentSplits = Array.isArray(payload.paymentSplits) ? payload.paymentSplits : [];
+    const incomingPaymentMethods = Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [];
+    const paymentGrossAmount = paymentCondition === "contado"
+      ? invoice.total
+      : parseCurrency(payload.paymentGrossAmount || payload.grossAmount) || incomingPaymentSplits.reduce((sum, split) => sum + parseCurrency(split.amount), 0);
+    const paymentRetentions = {
+      retefuente: parseCurrency(payload.retefuente),
+      reteica: parseCurrency(payload.reteica),
+      reteiva: parseCurrency(payload.reteiva),
+      other: parseCurrency(payload.otherRetentions)
+    };
+    const paymentRetentionTotal = paymentRetentions.retefuente + paymentRetentions.reteica + paymentRetentions.reteiva + paymentRetentions.other;
+    const paymentDiscountAmount = parseCurrency(payload.discountAmount);
+    const paymentReturnCreditAmount = parseCurrency(payload.returnCreditAmount);
+    const paymentNetReceived = Math.max(paymentGrossAmount - paymentRetentionTotal - paymentDiscountAmount - paymentReturnCreditAmount, 0);
     if (existingIndex < 0 && nextStatus !== "anulada" && paymentCondition !== "credito") {
-      const splitTotal = incomingPaymentSplits.reduce((sum, split) => sum + parseCurrency(split.amount), 0);
-      if (splitTotal <= 0) throw new Error("Registra al menos un valor bruto aplicado para la factura.");
-      if (splitTotal > invoice.total) throw new Error("El valor bruto aplicado no puede superar el total de la factura.");
-      if (paymentCondition === "contado" && splitTotal !== invoice.total) throw new Error("Para pago de contado, el valor bruto aplicado debe ser igual al total de la factura.");
-      if (paymentCondition === "parcial" && splitTotal >= invoice.total) throw new Error("Para pago parcial, el valor bruto aplicado debe ser menor al total de la factura.");
-      incomingPaymentSplits.forEach((split) => {
-        const amount = parseCurrency(split.amount);
-        const totalDeductions = parseCurrency(split.retefuente) + parseCurrency(split.reteica) + parseCurrency(split.reteiva) + parseCurrency(split.otherRetentions) + parseCurrency(split.discountAmount) + parseCurrency(split.returnCreditAmount);
-        if (amount > 0 && totalDeductions > amount) throw new Error("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado.");
-      });
+      if (!incomingPaymentMethods.length && !incomingPaymentSplits.length) throw new Error("Registra al menos un metodo de pago para la factura.");
+      if (paymentGrossAmount <= 0) throw new Error("Registra al menos un valor bruto aplicado para la factura.");
+      if (paymentGrossAmount > invoice.total) throw new Error("El valor bruto aplicado no puede superar el total de la factura.");
+      if (paymentCondition === "contado" && paymentGrossAmount !== invoice.total) throw new Error("Para pago de contado, el valor bruto aplicado debe ser igual al total de la factura.");
+      if (paymentCondition === "parcial" && paymentGrossAmount >= invoice.total) throw new Error("Para pago parcial, el valor bruto aplicado debe ser menor al total de la factura.");
+      if (paymentRetentionTotal + paymentDiscountAmount + paymentReturnCreditAmount > paymentGrossAmount) throw new Error("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado.");
+      if (incomingPaymentMethods.length) {
+        const methods = normalizePaymentMethods(incomingPaymentMethods, paymentNetReceived, {
+          date: payload.paymentDate || payload.date,
+          method: payload.method,
+          reference: payload.reference,
+          notes: payload.paymentNotes
+        });
+        validatePaymentMethods(methods, paymentNetReceived);
+      } else {
+        incomingPaymentSplits.forEach((split) => {
+          const amount = parseCurrency(split.amount);
+          const totalDeductions = parseCurrency(split.retefuente) + parseCurrency(split.reteica) + parseCurrency(split.reteiva) + parseCurrency(split.otherRetentions) + parseCurrency(split.discountAmount) + parseCurrency(split.returnCreditAmount);
+          if (amount > 0 && totalDeductions > amount) throw new Error("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado.");
+        });
+      }
     }
     data.invoices = existingIndex >= 0
       ? data.invoices.map((item, index) => index === existingIndex ? invoice : item)
@@ -1492,7 +1698,38 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
         };
       });
     }
-    if (existingIndex < 0 && nextStatus !== "anulada" && incomingPaymentSplits.length) {
+    if (existingIndex < 0 && nextStatus !== "anulada" && incomingPaymentMethods.length) {
+      const methods = normalizePaymentMethods(incomingPaymentMethods, paymentNetReceived, {
+        date: payload.paymentDate || invoice.date,
+        method: payload.method,
+        reference: payload.reference,
+        notes: payload.paymentNotes
+      });
+      const payments = buildProratedPayments({
+        data,
+        customer,
+        invoiceId: id,
+        date: payload.paymentDate || invoice.date,
+        grossAmount: paymentGrossAmount,
+        retentions: paymentRetentions,
+        discountAmount: paymentDiscountAmount,
+        discountConcept: payload.discountConcept,
+        returnCreditAmount: paymentReturnCreditAmount,
+        returnCreditNote: payload.returnCreditNote,
+        methods,
+        status: "aplicado",
+        source: paymentCondition === "contado" ? "factura_contado" : "factura_abono_parcial",
+        paymentCondition,
+        notes: `Pago automatico registrado con la factura ${id}.`,
+        actor,
+        now,
+        auditAction: "payment_created_from_invoice"
+      });
+      payments.forEach((payment) => {
+        tracker.add("payments", payment.id);
+        data.payments = [...data.payments, payment];
+      });
+    } else if (existingIndex < 0 && nextStatus !== "anulada" && incomingPaymentSplits.length) {
       incomingPaymentSplits.forEach((split) => {
         const amount = parseCurrency(split.amount);
         if (amount <= 0) return;
@@ -1534,6 +1771,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
             notes: [cleanText(split.notes), `Pago automatico registrado con la factura ${id}.`].filter(Boolean).join(" | "),
             status: "aplicado",
             source: paymentCondition === "contado" ? "factura_contado" : "factura_abono_parcial",
+            ...paymentApplicationFor(data, id, paymentCondition === "contado" ? "factura_contado" : "factura_abono_parcial", paymentCondition),
+            paymentApplicationLabel: paymentApplicationLabel({ source: paymentCondition === "contado" ? "factura_contado" : "factura_abono_parcial", invoiceId: id }),
             createdAt: now,
             createdBy: actor,
             updatedAt: now,
@@ -1658,6 +1897,44 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     const discountAmount = parseCurrency(payload.discountAmount);
     const returnCreditAmount = parseCurrency(payload.returnCreditAmount);
     const netReceived = Math.max(grossAmount - retentionTotal - discountAmount - returnCreditAmount, 0);
+    const incomingPaymentMethods = Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [];
+    if (incomingPaymentMethods.length && existingIndex >= 0) throw new Error("Para modificar un pago fraccionado existente, edita o anula cada abono del grupo por separado.");
+    if (incomingPaymentMethods.length) {
+      if (grossAmount <= 0) throw new Error("Ingresa un valor bruto valido para el abono.");
+      if (retentionTotal + discountAmount + returnCreditAmount > grossAmount) throw new Error("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado.");
+      const methods = normalizePaymentMethods(incomingPaymentMethods, netReceived, {
+        date: payload.date,
+        method: payload.method,
+        reference: payload.reference,
+        notes: payload.notes
+      });
+      validatePaymentMethods(methods, netReceived);
+      const payments = buildProratedPayments({
+        data,
+        customer,
+        invoiceId: cleanText(payload.invoiceId),
+        date: payload.date,
+        grossAmount,
+        retentions,
+        discountAmount,
+        discountConcept: payload.discountConcept,
+        returnCreditAmount,
+        returnCreditNote: payload.returnCreditNote,
+        methods,
+        status: cleanText(payload.status) || "aplicado",
+        source: "manual",
+        paymentCondition: payload.paymentCondition,
+        notes: payload.notes,
+        actor,
+        now,
+        auditAction: "payment_created_split"
+      });
+      data.payments = [...data.payments, ...payments];
+      payments.forEach((payment) => tracker.add("payments", payment.id));
+      tracker.customer(existing.customerId);
+      tracker.customer(customer.id);
+      requiresFullRefresh = true;
+    } else {
     const payment = {
       ...existing,
       id,
@@ -1682,6 +1959,11 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       reference: cleanText(payload.reference),
       notes: cleanText(payload.notes),
       status: cleanText(payload.status) || "aplicado",
+      source: cleanText(existing.source || payload.source || "manual"),
+      ...paymentApplicationFor(data, payload.invoiceId, existing.source || payload.source || "manual", payload.paymentCondition),
+      paymentApplicationLabel: paymentApplicationLabel(paymentApplicationFor(data, payload.invoiceId, existing.source || payload.source || "manual", payload.paymentCondition)),
+      paymentGroupId: cleanText(existing.paymentGroupId || payload.paymentGroupId),
+      paymentGroupSize: Number(existing.paymentGroupSize || payload.paymentGroupSize || 1) || 1,
       createdAt: existing.createdAt || now,
       createdBy: existing.createdBy || actor,
       updatedAt: now,
@@ -1695,6 +1977,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
     tracker.add("payments", payment.id);
     tracker.customer(existing.customerId);
     tracker.customer(customer.id);
+    }
   } else if (type === "inventory") {
     const sku = normalizeSku(payload.sku);
     if (!sku) throw new Error("Ingresa el SKU del producto.");
@@ -1807,7 +2090,9 @@ export function validateImportRows(data, module, rows = [], options = {}) {
   }
 
   const headers = new Set(Object.keys(rows[0] || {}));
+  const optionalHeaders = new Set(template.optionalHeaders || []);
   template.headers.forEach((header) => {
+    if (optionalHeaders.has(header)) return;
     if (!headers.has(header)) addImportError(errors, 1, header, "", `Falta la columna obligatoria ${header}.`, "Descarga la plantilla oficial y conserva los encabezados.");
   });
 
@@ -2131,6 +2416,8 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
       const retentionTotal = retentions.retefuente + retentions.reteica + retentions.reteiva + retentions.other;
       const netReceived = parseCurrency(row.valor_neto) || Math.max(grossAmount - retentionTotal - discountAmount - returnCreditAmount, 0);
       const paymentId = nextPaymentId(data);
+      const importedGroupId = cleanText(row.grupo_pago) ? normalizeRecordId(row.grupo_pago, "PAGO") : "";
+      const application = paymentApplicationFor(data, row.id_factura, "manual", "");
       data.payments.push({
         id: paymentId,
         customerId: customer.id,
@@ -2154,6 +2441,12 @@ function commitRows(data, module, rows = [], actor = "portal", warnings = [], op
         reference: cleanText(row.referencia),
         notes: cleanText(row.notas),
         status: "aplicado",
+        source: "manual",
+        paymentCondition: application.paymentCondition,
+        paymentApplicationType: application.paymentApplicationType,
+        paymentApplicationLabel: paymentApplicationLabel(application),
+        paymentGroupId: importedGroupId,
+        paymentGroupSize: importedGroupId ? rows.filter((candidate) => cleanText(candidate.grupo_pago) && normalizeRecordId(candidate.grupo_pago, "PAGO") === importedGroupId).length : 1,
         createdAt: now,
         createdBy: actor,
         updatedAt: now,

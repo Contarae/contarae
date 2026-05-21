@@ -2,6 +2,9 @@ import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-aut
 import { listAllCertifications } from "./utils/certification-admin.js";
 import { listClientLeads } from "./utils/client-leads.js";
 import { getServiceRequestByReference, listAllServiceRequests, listServicePayments } from "./utils/service-requests.js";
+import promoUtils from "./utils/promo-codes.cjs";
+
+const { listPromoCodes } = promoUtils;
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -35,11 +38,12 @@ export default async (req) => {
 
   try {
     const serviceSummaries = await listAllServiceRequests();
-    const [serviceRequests, servicePayments, clientLeads, certifications] = await Promise.all([
+    const [serviceRequests, servicePayments, clientLeads, certifications, promoCodes] = await Promise.all([
       Promise.all(serviceSummaries.map((record) => getServiceRequestByReference(record.reference))),
       listServicePayments(),
       listClientLeads(),
-      listAllCertifications()
+      listAllCertifications(),
+      listPromoCodes()
     ]);
 
     const generatedAt = new Date().toISOString();
@@ -50,7 +54,8 @@ export default async (req) => {
       serviceRequests: serviceRequests.filter(Boolean),
       servicePayments,
       clientLeads,
-      certifications
+      certifications,
+      promoCodes
     };
 
     return new Response(JSON.stringify(payload, null, 2), {

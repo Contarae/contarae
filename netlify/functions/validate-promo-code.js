@@ -1,5 +1,5 @@
 const {
-  calculateCertificationPricing,
+  calculateCertificationPricingAsync,
   normalizePromoCode
 } = require("./utils/promo-codes.cjs");
 
@@ -34,7 +34,7 @@ exports.handler = async (event) => {
       };
     }
 
-    const pricing = calculateCertificationPricing({
+    const pricing = await calculateCertificationPricingAsync({
       monthlyIncome: body.monthlyIncome,
       promoCode: code
     });

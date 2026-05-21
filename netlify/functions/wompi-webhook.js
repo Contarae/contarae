@@ -4,7 +4,8 @@ import { processServicePaymentEvent } from "./utils/service-requests.js";
 import promoUtils from "./utils/promo-codes.cjs";
 
 const {
-  parseMoneyValue
+  parseMoneyValue,
+  registerPromoCodeUse
 } = promoUtils;
 
 function getValueByPath(obj, path) {
@@ -891,6 +892,17 @@ export default async (req, context) => {
       (customerEmail ? Boolean(paidRecord.customerNotificationSentAt) : true) &&
       (promoReferralForCompletion ? Boolean(paidRecord.allyNotificationSentAt) : true);
     let updatedPaidRecord = await syncGa4PaymentApprovedEvent(paidRecord, reference);
+
+    if (promoReferralForCompletion && !updatedPaidRecord.promoUseRegisteredAt) {
+      await registerPromoCodeUse(promoReferralForCompletion.code, {
+        reference,
+        actor: "wompi-webhook"
+      });
+      updatedPaidRecord = {
+        ...updatedPaidRecord,
+        promoUseRegisteredAt: new Date().toISOString()
+      };
+    }
 
     if (updatedPaidRecord.netlifySubmittedAt && allNotificationsCompleted) {
       if (updatedPaidRecord !== paidRecord) {

@@ -1,5 +1,5 @@
 const {
-  calculateCertificationPricing,
+  calculateCertificationPricingAsync,
   normalizePromoCode
 } = require("./utils/promo-codes.cjs");
 
@@ -17,7 +17,7 @@ exports.handler = async (event) => {
   try {
     const { reference, amountInCents, currency, monthlyIncome, promoCode } = JSON.parse(event.body);
     const integrityKey = process.env.WOMPI_INTEGRITY_KEY;
-    const pricing = calculateCertificationPricing({
+    const pricing = await calculateCertificationPricingAsync({
       monthlyIncome,
       promoCode
     });

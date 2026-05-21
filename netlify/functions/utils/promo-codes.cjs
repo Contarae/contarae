@@ -1,4 +1,9 @@
 const COP_FORMATTER = new Intl.NumberFormat("es-CO");
+const crypto = require("crypto");
+const { getStore } = require("@netlify/blobs");
+
+const PROMO_CODE_STORE_NAME = "promo-codes";
+const PROMO_CODE_PREFIX = "code:";
 
 const STRATEGIC_ALLY_PROMO_CODES = [
   { id: "ALIADO_01", code: "EMBAJADA2026", allyName: "ANGGIE RAMIREZ", allyEmail: "conta.diegovera@gmail.com", discountRate: 0.15, commissionRate: 0.20, active: true },
@@ -39,6 +44,218 @@ function normalizePromoCode(value) {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function cleanText(value) {
+  return String(value || "").trim();
+}
+
+function randomId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function promoStore() {
+  return getStore(PROMO_CODE_STORE_NAME);
+}
+
+function getPromoCodeKey(code) {
+  return `${PROMO_CODE_PREFIX}${encodeURIComponent(normalizePromoCode(code))}`;
+}
+
+function normalizeRate(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  if (numeric > 1) return Math.max(0, Math.min(numeric / 100, 1));
+  return Math.max(0, Math.min(numeric, 1));
+}
+
+function formatRateLabel(value) {
+  const rate = normalizeRate(value);
+  return `${Math.round(rate * 100)}%`;
+}
+
+function normalizeDateValue(value = "") {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : raw;
+}
+
+function isPromoCurrentlyUsable(promo = {}, now = new Date()) {
+  if (!promo || typeof promo !== "object") return false;
+  if (promo.active !== true) return false;
+  if (!normalizePromoCode(promo.code)) return false;
+  if (!cleanText(promo.allyName)) return false;
+  if (!normalizeEmail(promo.allyEmail)) return false;
+
+  if (promo.startsAt) {
+    const startsAt = new Date(promo.startsAt);
+    if (!Number.isNaN(startsAt.getTime()) && startsAt > now) return false;
+  }
+
+  if (promo.expiresAt) {
+    const expiresAt = new Date(promo.expiresAt);
+    if (!Number.isNaN(expiresAt.getTime()) && expiresAt < now) return false;
+  }
+
+  const maxUses = Number(promo.maxUses || 0);
+  const usesCount = Number(promo.usesCount || 0);
+  if (maxUses > 0 && usesCount >= maxUses) return false;
+
+  return true;
+}
+
+function normalizeStoredPromoCode(input = {}, existing = {}, actor = "admin") {
+  const now = new Date().toISOString();
+  const code = normalizePromoCode(input.code ?? existing.code);
+  if (!code) throw new Error("Ingresa el código promocional.");
+
+  const allyName = cleanText(input.allyName ?? existing.allyName);
+  const allyEmail = normalizeEmail(input.allyEmail ?? existing.allyEmail);
+  if (!allyName) throw new Error("Ingresa el nombre del aliado.");
+  if (!allyEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(allyEmail)) {
+    throw new Error("Ingresa un correo válido para el aliado.");
+  }
+
+  const discountRate = normalizeRate(input.discountRate ?? existing.discountRate, 0.15);
+  const commissionRate = normalizeRate(input.commissionRate ?? existing.commissionRate, 0.1);
+  const maxUses = Math.max(0, Math.round(Number(input.maxUses ?? existing.maxUses ?? 0) || 0));
+  const usesCount = Math.max(0, Math.round(Number(existing.usesCount || 0) || 0));
+  const startsAt = normalizeDateValue(input.startsAt ?? existing.startsAt);
+  const expiresAt = normalizeDateValue(input.expiresAt ?? existing.expiresAt);
+
+  if (startsAt && expiresAt && new Date(startsAt) > new Date(expiresAt)) {
+    throw new Error("La fecha de inicio no puede ser posterior al vencimiento.");
+  }
+
+  return {
+    id: existing.id || input.id || `PROMO-${randomId().replace(/-/g, "").slice(0, 10).toUpperCase()}`,
+    code,
+    allyName,
+    allyEmail,
+    discountRate,
+    discountRateLabel: formatRateLabel(discountRate),
+    commissionRate,
+    commissionRateLabel: formatRateLabel(commissionRate),
+    active: input.active === undefined ? existing.active !== false : Boolean(input.active),
+    startsAt,
+    expiresAt,
+    maxUses,
+    usesCount,
+    notes: cleanText(input.notes ?? existing.notes),
+    source: "blob",
+    createdAt: existing.createdAt || now,
+    createdBy: existing.createdBy || actor,
+    updatedAt: now,
+    updatedBy: actor,
+    auditTrail: [
+      ...(Array.isArray(existing.auditTrail) ? existing.auditTrail : []),
+      {
+        id: randomId(),
+        action: existing.id ? "updated" : "created",
+        at: now,
+        by: actor
+      }
+    ]
+  };
+}
+
+function normalizeLegacyPromoCode(item = {}) {
+  const discountRate = normalizeRate(item.discountRate, 0.15);
+  const commissionRate = normalizeRate(item.commissionRate, 0.1);
+  return {
+    ...item,
+    code: normalizePromoCode(item.code),
+    allyName: cleanText(item.allyName),
+    allyEmail: normalizeEmail(item.allyEmail),
+    discountRate,
+    discountRateLabel: formatRateLabel(discountRate),
+    commissionRate,
+    commissionRateLabel: formatRateLabel(commissionRate),
+    active: item.active === true,
+    startsAt: "",
+    expiresAt: "",
+    maxUses: 0,
+    usesCount: 0,
+    notes: "",
+    source: "legacy"
+  };
+}
+
+function hydratePromoRecord(record = {}) {
+  const discountRate = normalizeRate(record.discountRate, 0.15);
+  const commissionRate = normalizeRate(record.commissionRate, 0.1);
+  return {
+    ...record,
+    code: normalizePromoCode(record.code),
+    allyName: cleanText(record.allyName),
+    allyEmail: normalizeEmail(record.allyEmail),
+    discountRate,
+    discountRateLabel: formatRateLabel(discountRate),
+    commissionRate,
+    commissionRateLabel: formatRateLabel(commissionRate),
+    active: record.active === true,
+    startsAt: normalizeDateValue(record.startsAt),
+    expiresAt: normalizeDateValue(record.expiresAt),
+    maxUses: Math.max(0, Math.round(Number(record.maxUses || 0) || 0)),
+    usesCount: Math.max(0, Math.round(Number(record.usesCount || 0) || 0)),
+    notes: cleanText(record.notes),
+    source: "blob",
+    auditTrail: Array.isArray(record.auditTrail) ? record.auditTrail : []
+  };
+}
+
+async function listStoredPromoCodes() {
+  const store = promoStore();
+  const list = await store.list({ prefix: PROMO_CODE_PREFIX });
+  const records = await Promise.all(
+    (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
+  );
+
+  return records
+    .filter(Boolean)
+    .map(hydratePromoRecord);
+}
+
+async function listPromoCodes({ includeLegacy = true } = {}) {
+  const entries = new Map();
+  const stored = await listStoredPromoCodes();
+
+  stored.forEach((record) => {
+    entries.set(normalizePromoCode(record.code), record);
+  });
+
+  if (includeLegacy) {
+    STRATEGIC_ALLY_PROMO_CODES
+      .map(normalizeLegacyPromoCode)
+      .filter((record) => normalizePromoCode(record.code))
+      .forEach((record) => {
+        if (!entries.has(normalizePromoCode(record.code))) {
+          entries.set(normalizePromoCode(record.code), record);
+        }
+      });
+  }
+
+  return Array.from(entries.values()).sort((left, right) => {
+    if (left.active !== right.active) return left.active ? -1 : 1;
+    return normalizePromoCode(left.code).localeCompare(normalizePromoCode(right.code));
+  });
+}
+
+async function getPromoCodeByCode(code, { includeLegacy = true } = {}) {
+  const normalized = normalizePromoCode(code);
+  if (!normalized) return null;
+
+  const store = promoStore();
+  const stored = await store.get(getPromoCodeKey(normalized), { type: "json" });
+  if (stored) return hydratePromoRecord(stored);
+
+  if (!includeLegacy) return null;
+  const legacy = STRATEGIC_ALLY_PROMO_CODES
+    .map(normalizeLegacyPromoCode)
+    .find((record) => normalizePromoCode(record.code) === normalized);
+  return legacy || null;
 }
 
 function parseMoneyValue(value) {
@@ -102,6 +319,11 @@ function getActivePromoCode(inputCode) {
   );
 }
 
+async function getActivePromoCodeAsync(inputCode) {
+  const promo = await getPromoCodeByCode(inputCode);
+  return isPromoCurrentlyUsable(promo) ? promo : null;
+}
+
 function calculateCertificationPricing({ monthlyIncome, promoCode } = {}) {
   const monthlyAmount = typeof monthlyIncome === "number" ? monthlyIncome : parseMoneyValue(monthlyIncome);
   const baseAmount = getCertificationPriceByMonthlyIncome(monthlyAmount);
@@ -133,6 +355,109 @@ function calculateCertificationPricing({ monthlyIncome, promoCode } = {}) {
   };
 }
 
+async function calculateCertificationPricingAsync({ monthlyIncome, promoCode } = {}) {
+  const monthlyAmount = typeof monthlyIncome === "number" ? monthlyIncome : parseMoneyValue(monthlyIncome);
+  const baseAmount = getCertificationPriceByMonthlyIncome(monthlyAmount);
+  const promo = await getActivePromoCodeAsync(promoCode);
+  const discountRate = promo ? Number(promo.discountRate || 0) : 0;
+  const commissionRate = promo ? Number(promo.commissionRate || 0) : 0;
+  const discountAmount = promo ? Math.round(baseAmount * discountRate) : 0;
+  const finalAmount = Math.max(0, baseAmount - discountAmount);
+  const commissionAmount = promo ? Math.round(finalAmount * commissionRate) : 0;
+
+  return {
+    monthlyIncome: monthlyAmount,
+    baseAmount,
+    baseAmountLabel: formatMoneyValue(baseAmount),
+    promoApplied: Boolean(promo),
+    promoCode: promo ? normalizePromoCode(promo.code) : "",
+    promoAllyName: promo ? cleanText(promo.allyName) : "",
+    promoAllyEmail: promo ? normalizeEmail(promo.allyEmail) : "",
+    discountRate,
+    discountRateLabel: promo ? formatRateLabel(discountRate) : "",
+    discountAmount,
+    discountAmountLabel: promo ? formatMoneyValue(discountAmount) : "",
+    finalAmount,
+    finalAmountLabel: formatMoneyValue(finalAmount),
+    commissionRate,
+    commissionRateLabel: promo ? formatRateLabel(commissionRate) : "",
+    commissionAmount,
+    commissionAmountLabel: promo ? formatMoneyValue(commissionAmount) : ""
+  };
+}
+
+async function upsertPromoCode(input = {}, actor = "admin") {
+  const store = promoStore();
+  const originalCode = normalizePromoCode(input.originalCode || input.previousCode || input.code);
+  const nextCode = normalizePromoCode(input.code);
+  const existingByOriginal = originalCode
+    ? await store.get(getPromoCodeKey(originalCode), { type: "json" })
+    : null;
+  const existingByNext = nextCode
+    ? await store.get(getPromoCodeKey(nextCode), { type: "json" })
+    : null;
+
+  if (
+    existingByNext &&
+    existingByOriginal &&
+    existingByNext.id &&
+    existingByOriginal.id &&
+    existingByNext.id !== existingByOriginal.id
+  ) {
+    throw new Error("Ya existe un código promocional con ese nombre.");
+  }
+
+  if (existingByNext && !existingByOriginal && input.id && existingByNext.id !== input.id) {
+    throw new Error("Ya existe un código promocional con ese nombre.");
+  }
+
+  const promo = normalizeStoredPromoCode(input, existingByOriginal || existingByNext || {}, actor);
+  await store.setJSON(getPromoCodeKey(promo.code), promo);
+
+  if (originalCode && originalCode !== promo.code) {
+    await store.delete(getPromoCodeKey(originalCode));
+  }
+
+  return promo;
+}
+
+async function updatePromoCodeStatus(code, active, actor = "admin") {
+  const existing = await getPromoCodeByCode(code, { includeLegacy: false });
+  if (!existing) throw new Error("El código promocional no existe en el administrador.");
+  return upsertPromoCode({ ...existing, originalCode: existing.code, active }, actor);
+}
+
+async function registerPromoCodeUse(code, { reference = "", actor = "system" } = {}) {
+  const existing = await getPromoCodeByCode(code, { includeLegacy: false });
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const previousReferences = Array.isArray(existing.useReferences) ? existing.useReferences : [];
+  if (reference && previousReferences.includes(reference)) return existing;
+
+  const nextRecord = {
+    ...existing,
+    usesCount: Math.max(0, Number(existing.usesCount || 0)) + 1,
+    useReferences: reference ? [...previousReferences, reference] : previousReferences,
+    updatedAt: now,
+    updatedBy: actor,
+    auditTrail: [
+      ...(Array.isArray(existing.auditTrail) ? existing.auditTrail : []),
+      {
+        id: randomId(),
+        action: "used",
+        at: now,
+        by: actor,
+        reference
+      }
+    ]
+  };
+
+  const store = promoStore();
+  await store.setJSON(getPromoCodeKey(nextRecord.code), nextRecord);
+  return nextRecord;
+}
+
 function buildReferralSnapshot(pricing) {
   if (!pricing?.promoApplied) return null;
 
@@ -162,6 +487,13 @@ module.exports = {
   formatMoneyValue,
   getCertificationPriceByMonthlyIncome,
   getActivePromoCode,
+  getActivePromoCodeAsync,
   calculateCertificationPricing,
+  calculateCertificationPricingAsync,
+  listPromoCodes,
+  getPromoCodeByCode,
+  upsertPromoCode,
+  updatePromoCodeStatus,
+  registerPromoCodeUse,
   buildReferralSnapshot
 };

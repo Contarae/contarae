@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 import promoUtils from "./utils/promo-codes.cjs";
 
 const {
-  calculateCertificationPricing,
+  calculateCertificationPricingAsync,
   buildReferralSnapshot,
   normalizePromoCode
 } = promoUtils;
@@ -51,7 +51,7 @@ export default async (req, context) => {
       reference: ignoredReference,
       ...formPayload
     } = data;
-    const pricing = calculateCertificationPricing({
+    const pricing = await calculateCertificationPricingAsync({
       monthlyIncome: formPayload.total_ingresos_num || formPayload.total_ingresos,
       promoCode: formPayload.codigo_promocional
     });

@@ -653,8 +653,8 @@ function buildRowsForExport(data, type, context = {}) {
   }
   if (type === "abonos") {
     return [
-      ["id_abono", "id_cliente", "nombre_cliente", "id_factura", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "nota_devolucion", "valor_neto", "medio_pago", "referencia", "estado"],
-      ...(data.payments || []).map((payment) => [payment.id, payment.customerId, payment.customerNameSnapshot, payment.invoiceId, payment.date, payment.grossAmount, payment.retentions?.retefuente, payment.retentions?.reteica, payment.retentions?.reteiva, payment.retentions?.other, payment.discounts?.amount || 0, payment.discounts?.concept || "", payment.returnCredit?.amount || 0, payment.returnCredit?.note || "", payment.netReceived, payment.method, payment.reference, payment.status])
+      ["id_abono", "grupo_pago", "id_cliente", "nombre_cliente", "id_factura", "tipo_abono", "fecha", "valor_bruto_aplicado", "retefuente", "reteica", "reteiva", "otras_retenciones", "total_retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "nota_devolucion", "neto_recibido", "medio_pago", "referencia", "estado", "notas"],
+      ...(data.payments || []).map((payment) => [payment.id, payment.paymentGroupId || "", payment.customerId, payment.customerNameSnapshot, payment.invoiceId, payment.paymentApplicationLabel || paymentApplicationLabel(payment), payment.date, payment.grossAmount, payment.retentions?.retefuente, payment.retentions?.reteica, payment.retentions?.reteiva, payment.retentions?.other, payment.retentionTotal || 0, payment.discounts?.amount || 0, payment.discounts?.concept || "", payment.returnCredit?.amount || 0, payment.returnCredit?.note || "", payment.netReceived, payment.method, payment.reference, payment.status, payment.notes || ""])
     ];
   }
   return [
@@ -735,8 +735,8 @@ function buildWorkbookForExport(data, type, context = {}) {
     sheets.push({
       name: "Abonos registrados",
       rows: [
-        ["id_cliente", "nombre_cliente", "id_abono", "id_factura", "fecha", "valor_bruto", "retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "neto_recibido", "metodo", "referencia", "estado"],
-        ...(data.payments || []).map((payment) => [payment.customerId, payment.customerNameSnapshot, payment.id, payment.invoiceId || "Global FIFO", payment.date, payment.grossAmount, payment.retentionTotal, payment.discounts?.amount || 0, payment.discounts?.concept || "", payment.returnCredit?.amount || 0, payment.netReceived, payment.method, payment.reference, payment.status])
+        ["id_cliente", "nombre_cliente", "id_abono", "grupo_pago", "id_factura", "tipo_abono", "fecha", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "retenciones", "descuento", "concepto_descuento", "saldo_favor_devolucion", "neto_recibido", "metodo", "referencia", "estado"],
+        ...(data.payments || []).map((payment) => [payment.customerId, payment.customerNameSnapshot, payment.id, payment.paymentGroupId || "", payment.invoiceId || "Global FIFO", payment.paymentApplicationLabel || paymentApplicationLabel(payment), payment.date, payment.grossAmount, payment.retentions?.retefuente || 0, payment.retentions?.reteica || 0, payment.retentions?.reteiva || 0, payment.retentions?.other || 0, payment.retentionTotal, payment.discounts?.amount || 0, payment.discounts?.concept || "", payment.returnCredit?.amount || 0, payment.netReceived, payment.method, payment.reference, payment.status])
       ]
     });
   }
@@ -1063,8 +1063,8 @@ function activityRowsForExport(data = {}, filters = {}, section = "all") {
     payments: {
       name: "Abonos",
       rows: [
-        ["id_abono", "id_cliente", "cliente", "fecha_registro", "fecha_abono", "valor_bruto", "neto_recibido", "medio_pago", "referencia", "estado"],
-        ...activity.payments.map((payment) => [payment.id, payment.customerId, payment.customerNameSnapshot, clean(payment.createdAt).slice(0, 10), payment.date, payment.grossAmount, payment.netReceived, payment.method, payment.reference, payment.status])
+        ["id_abono", "grupo_pago", "id_cliente", "cliente", "id_factura", "tipo_abono", "fecha_registro", "fecha_abono", "valor_bruto", "retefuente", "reteica", "reteiva", "otras_retenciones", "total_retenciones", "descuento", "saldo_favor_devolucion", "neto_recibido", "medio_pago", "referencia", "estado"],
+        ...activity.payments.map((payment) => [payment.id, payment.paymentGroupId || "", payment.customerId, payment.customerNameSnapshot, payment.invoiceId || "", payment.paymentApplicationLabel || paymentApplicationLabel(payment), clean(payment.createdAt).slice(0, 10), payment.date, payment.grossAmount, payment.retentions?.retefuente || 0, payment.retentions?.reteica || 0, payment.retentions?.reteiva || 0, payment.retentions?.other || 0, payment.retentionTotal || 0, payment.discounts?.amount || 0, payment.returnCredit?.amount || 0, payment.netReceived, payment.method, payment.reference, payment.status])
       ]
     },
     orders: {
@@ -1160,14 +1160,81 @@ function paymentSplitsTotal(splits = []) {
 }
 
 function isAutomaticCashSplit(paymentCondition, splits = []) {
-  return paymentCondition === "contado" && splits.length <= 1;
+  return paymentCondition !== "credito" && splits.length <= 1;
 }
 
-function effectiveInvoicePaymentSplits(splits = [], paymentCondition = "credito", documentTotal = 0) {
+function effectiveInvoicePaymentSplits(splits = [], paymentCondition = "credito", netTotal = 0) {
   if (isAutomaticCashSplit(paymentCondition, splits)) {
-    return (splits.length ? splits : [blankPaymentSplit(today())]).map((split, index) => index === 0 ? { ...split, amount: documentTotal } : split);
+    return (splits.length ? splits : [blankPaymentSplit(today())]).map((split, index) => index === 0 ? { ...split, amount: netTotal } : split);
   }
   return splits;
+}
+
+function paymentGroupSummary(source = {}, paymentCondition = "credito", documentTotal = 0) {
+  const grossAmount = paymentCondition === "contado" ? Math.round(Number(documentTotal || 0)) : moneyValue(source.paymentGrossAmount ?? source.grossAmount);
+  const retentionTotal = moneyValue(source.retefuente) + moneyValue(source.reteica) + moneyValue(source.reteiva) + moneyValue(source.otherRetentions);
+  const discountTotal = moneyValue(source.discountAmount) + moneyValue(source.returnCreditAmount);
+  return {
+    grossAmount,
+    retentionTotal,
+    discountTotal,
+    netReceived: Math.max(grossAmount - retentionTotal - discountTotal, 0),
+    deductionsExceedGross: retentionTotal + discountTotal > grossAmount
+  };
+}
+
+function paymentApplicationLabel(record = {}) {
+  const type = clean(record.paymentApplicationType || record.source).toLowerCase();
+  if (type === "factura_contado") return "Factura de contado";
+  if (type === "factura_abono_parcial" || type === "abono_parcial") return "Abono parcial";
+  if (type === "factura_credito") return "Abono a credito";
+  return record.invoiceId ? "Abono a factura" : "Abono global";
+}
+
+function paymentGroupKey(payment = {}) {
+  return clean(payment.paymentGroupId) || clean(payment.id);
+}
+
+function groupedPayments(payments = []) {
+  const map = new Map();
+  payments.forEach((payment) => {
+    const key = paymentGroupKey(payment);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        ids: [],
+        payments: [],
+        paymentGroupId: clean(payment.paymentGroupId),
+        customerId: payment.customerId,
+        customerNameSnapshot: payment.customerNameSnapshot,
+        invoiceId: payment.invoiceId,
+        date: payment.date,
+        createdAt: payment.createdAt,
+        status: payment.status,
+        applicationLabel: payment.paymentApplicationLabel || paymentApplicationLabel(payment),
+        grossAmount: 0,
+        netReceived: 0,
+        retentionTotal: 0,
+        methodCount: 0,
+        methods: []
+      });
+    }
+    const group = map.get(key);
+    group.ids.push(payment.id);
+    group.payments.push(payment);
+    group.grossAmount += Number(payment.grossAmount || 0);
+    group.netReceived += Number(payment.netReceived || 0);
+    group.retentionTotal += Number(payment.retentionTotal || 0);
+    group.methodCount += 1;
+    group.methods.push(payment.method || "Sin medio");
+    group.status = group.status === "anulado" ? group.status : payment.status;
+  });
+  return Array.from(map.values()).map((group) => ({
+    ...group,
+    methodsLabel: [...new Set(group.methods)].join(", "),
+    displayId: group.paymentGroupId || group.ids[0],
+    isGrouped: group.methodCount > 1
+  }));
 }
 
 function paymentSplitSummary(split = {}) {
@@ -2564,6 +2631,7 @@ function Activity({ data, onExport }) {
   const activeInvoices = activity.invoices.filter((invoice) => invoice.status !== "anulada");
   const voidInvoices = activity.invoices.filter((invoice) => invoice.status === "anulada");
   const activePayments = activity.payments.filter((payment) => payment.status !== "anulado");
+  const activityPaymentGroups = groupedPayments(activity.payments);
   const voidPayments = activity.payments.filter((payment) => payment.status === "anulado");
   const activeOrders = activity.orders.filter((order) => order.status !== "anulada");
   const invoiceTotal = recordsTotal(activeInvoices, (invoice) => invoice.total);
@@ -2623,19 +2691,20 @@ function Activity({ data, onExport }) {
       title: "Abonos registrados",
       label: "abonos",
       icon: "wallet",
-      count: activity.payments.length,
+      count: activityPaymentGroups.length,
       totalLabel: money(paymentGrossTotal),
-      headers: ["ID", "Cliente", "Registro", "Abono", "Bruto", "Medio", "Acciones"],
-      rows: activity.payments.map((payment) => [
-        payment.id,
+      headers: ["Grupo/ID", "Cliente", "Registro", "Abono", "Bruto", "Neto", "Tipo", "Acciones"],
+      rows: activityPaymentGroups.map((payment) => [
+        payment.displayId,
         payment.customerNameSnapshot || customerById(data, payment.customerId)?.name || payment.customerId,
         clean(payment.createdAt).slice(0, 10) || "-",
         payment.date || "-",
         money(payment.grossAmount),
-        payment.method || "-",
-        <button type="button" onClick={() => setSelectedDetail({ type: "payment", record: payment })} style={ghostButton}>Ver</button>
+        money(payment.netReceived),
+        payment.applicationLabel || "-",
+        <button type="button" onClick={() => setSelectedDetail({ type: "payment", record: payment.payments[0] })} style={ghostButton}>Ver</button>
       ]),
-      keys: activity.payments.map((payment) => payment.id)
+      keys: activityPaymentGroups.map((payment) => payment.key)
     },
     orders: {
       title: "Ordenes creadas",
@@ -2719,6 +2788,8 @@ function Activity({ data, onExport }) {
         ["Abono", record.id],
         ["Cliente", record.customerNameSnapshot || record.customerId],
         ["Factura", record.invoiceId || "Global"],
+        ["Grupo pago", record.paymentGroupId || "-"],
+        ["Tipo abono", record.paymentApplicationLabel || paymentApplicationLabel(record)],
         ["Fecha registro", clean(record.createdAt).slice(0, 10) || "-"],
         ["Fecha abono", record.date || "-"],
         ["Valor bruto", money(record.grossAmount)],
@@ -3105,6 +3176,16 @@ function Invoices({ data, onSave, onExport }) {
     internalConsecutive: "",
     paymentCondition: "credito",
     summaryBreakdown: blankTotalizedBreakdown(),
+    paymentGrossAmount: "",
+    retefuente: "",
+    reteica: "",
+    reteiva: "",
+    otherRetentions: "",
+    discountAmount: "",
+    discountConcept: "Comercial",
+    returnCreditAmount: "",
+    returnCreditNote: "",
+    paymentNotes: "",
     paymentSplits: [blankPaymentSplit(today())]
   });
   const [lines, setLines] = useState([blankLine()]);
@@ -3122,10 +3203,11 @@ function Invoices({ data, onSave, onExport }) {
   const summaryTotals = totalizedInvoiceTotals(draft.summaryBreakdown);
   const documentTotal = mode === "detallada" ? totals.total : summaryTotals.total;
   const currentPaymentSplits = draft.paymentSplits || [];
+  const invoicePaymentSummary = paymentGroupSummary(draft, draft.paymentCondition, documentTotal);
   const automaticCashSplit = isAutomaticCashSplit(draft.paymentCondition, currentPaymentSplits);
-  const effectivePaymentSplits = effectiveInvoicePaymentSplits(currentPaymentSplits, draft.paymentCondition, documentTotal);
+  const effectivePaymentSplits = effectiveInvoicePaymentSplits(currentPaymentSplits, draft.paymentCondition, invoicePaymentSummary.netReceived);
   const splitTotal = paymentSplitsTotal(effectivePaymentSplits);
-  const paymentSummary = paymentSplitsSummary(effectivePaymentSplits);
+  const paymentDifference = invoicePaymentSummary.netReceived - splitTotal;
   const invoices = data.invoices || [];
   const visibleInvoices = searched ? sortRecords(filterRecordsByQuery(invoices, data, filters), data, filters.sort || "idDesc") : [];
 
@@ -3142,6 +3224,16 @@ function Invoices({ data, onSave, onExport }) {
       internalConsecutive: "",
       paymentCondition: "credito",
       summaryBreakdown: blankTotalizedBreakdown(),
+      paymentGrossAmount: "",
+      retefuente: "",
+      reteica: "",
+      reteiva: "",
+      otherRetentions: "",
+      discountAmount: "",
+      discountConcept: "Comercial",
+      returnCreditAmount: "",
+      returnCreditNote: "",
+      paymentNotes: "",
       paymentSplits: [blankPaymentSplit(today())]
     });
     setLines([blankLine()]);
@@ -3176,6 +3268,16 @@ function Invoices({ data, onSave, onExport }) {
         advanceCredit: formatCurrencyInput(invoice.summaryBreakdown?.advanceCredit),
         advanceCreditNote: invoice.summaryBreakdown?.advanceCreditNote || ""
       },
+      paymentGrossAmount: "",
+      retefuente: "",
+      reteica: "",
+      reteiva: "",
+      otherRetentions: "",
+      discountAmount: "",
+      discountConcept: "Comercial",
+      returnCreditAmount: "",
+      returnCreditNote: "",
+      paymentNotes: "",
       paymentSplits: [blankPaymentSplit(invoice.date || today())]
     });
     setLines((invoice.lines || []).length ? invoice.lines.map(lineToDraft) : [blankLine()]);
@@ -3209,20 +3311,28 @@ function Invoices({ data, onSave, onExport }) {
         window.alert("Registra al menos un medio de pago para la factura de contado o con abono parcial.");
         return;
       }
-      if (paymentSummary.deductionsExceedGross) {
+      if (invoicePaymentSummary.grossAmount <= 0) {
+        window.alert(draft.paymentCondition === "contado" ? "El total de la factura debe ser mayor a cero." : "Ingresa el valor bruto aplicado del abono parcial.");
+        return;
+      }
+      if (invoicePaymentSummary.deductionsExceedGross) {
         window.alert("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado en ningun medio de pago.");
         return;
       }
-      if (splitTotal > documentTotal) {
+      if (invoicePaymentSummary.grossAmount > documentTotal) {
         window.alert("Los pagos registrados no pueden superar el total de la factura.");
         return;
       }
-      if (draft.paymentCondition === "contado" && splitTotal !== documentTotal) {
-        window.alert("Para pago de contado, la suma de los medios de pago debe ser igual al total de la factura.");
+      if (draft.paymentCondition === "contado" && invoicePaymentSummary.grossAmount !== documentTotal) {
+        window.alert("Para pago de contado, el valor bruto aplicado debe ser igual al total de la factura.");
         return;
       }
-      if (draft.paymentCondition === "parcial" && splitTotal >= documentTotal) {
-        window.alert("Para pago parcial, la suma pagada debe ser menor al total. Si ya esta totalmente pagada, usa contado.");
+      if (draft.paymentCondition === "parcial" && invoicePaymentSummary.grossAmount >= documentTotal) {
+        window.alert("Para pago parcial, el valor bruto aplicado debe ser menor al total. Si ya esta totalmente pagada, usa contado.");
+        return;
+      }
+      if (paymentDifference !== 0) {
+        window.alert("La suma de los metodos de pago debe ser igual al neto recibido.");
         return;
       }
     }
@@ -3237,7 +3347,8 @@ function Invoices({ data, onSave, onExport }) {
       total: mode === "resumida" ? summaryTotals.total : "",
       summaryBreakdown: mode === "resumida" ? draft.summaryBreakdown : null,
       lines: payloadLines,
-      paymentSplits: draft.id || draft.paymentCondition === "credito" ? [] : normalizedSplits,
+      paymentMethods: draft.id || draft.paymentCondition === "credito" ? [] : normalizedSplits,
+      paymentGrossAmount: invoicePaymentSummary.grossAmount,
       paymentCondition: draft.paymentCondition
     };
     const customer = customerById(data, draft.customerId);
@@ -3254,12 +3365,13 @@ function Invoices({ data, onSave, onExport }) {
         { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Total", value: money(documentTotal) },
         { label: "Estado", value: draft.status },
-        { label: "Condicion", value: draft.paymentCondition === "contado" ? "Pago de contado" : draft.paymentCondition === "parcial" ? `Abono parcial ${money(splitTotal)}` : "Credito" },
+        { label: "Condicion", value: draft.paymentCondition === "contado" ? "Pago de contado" : draft.paymentCondition === "parcial" ? `Abono parcial ${money(invoicePaymentSummary.grossAmount)}` : "Credito" },
         ...(draft.paymentCondition !== "credito" ? [
-          { label: "Bruto aplicado", value: money(paymentSummary.grossAmount) },
-          { label: "Retenciones", value: money(paymentSummary.retentionTotal) },
-          { label: "Descuentos / devoluciones", value: money(paymentSummary.discountTotal) },
-          { label: "Neto recibido", value: money(paymentSummary.netReceived) }
+          { label: "Bruto aplicado", value: money(invoicePaymentSummary.grossAmount) },
+          { label: "Retenciones", value: money(invoicePaymentSummary.retentionTotal) },
+          { label: "Descuentos / devoluciones", value: money(invoicePaymentSummary.discountTotal) },
+          { label: "Neto recibido", value: money(invoicePaymentSummary.netReceived) },
+          { label: "Metodos", value: `${normalizedSplits.length} metodo(s)` }
         ] : [])
       ]
     };
@@ -3340,7 +3452,7 @@ function Invoices({ data, onSave, onExport }) {
       const currentSplits = current.paymentSplits || [];
       const shouldSeedAutomaticCash = isAutomaticCashSplit(current.paymentCondition, currentSplits);
       const seededSplits = shouldSeedAutomaticCash
-        ? effectiveInvoicePaymentSplits(currentSplits, current.paymentCondition, documentTotal).map((split) => ({ ...split, amount: formatCurrencyInput(moneyValue(split.amount)) }))
+        ? effectiveInvoicePaymentSplits(currentSplits, current.paymentCondition, paymentGroupSummary(current, current.paymentCondition, documentTotal).netReceived).map((split) => ({ ...split, amount: formatCurrencyInput(moneyValue(split.amount)) }))
         : currentSplits;
       return { ...current, paymentSplits: [...seededSplits, blankPaymentSplit(current.date)] };
     });
@@ -3348,6 +3460,19 @@ function Invoices({ data, onSave, onExport }) {
 
   function removePaymentSplit(id) {
     setDraft((current) => ({ ...current, paymentSplits: (current.paymentSplits || []).length > 1 ? current.paymentSplits.filter((split) => split.id !== id) : [blankPaymentSplit(current.date)] }));
+  }
+
+  function completeLastPaymentSplit() {
+    setDraft((current) => {
+      const methods = current.paymentSplits || [blankPaymentSplit(current.date)];
+      const summary = paymentGroupSummary(current, current.paymentCondition, documentTotal);
+      const previousTotal = methods.slice(0, -1).reduce((sum, split) => sum + moneyValue(split.amount), 0);
+      const nextAmount = Math.max(summary.netReceived - previousTotal, 0);
+      return {
+        ...current,
+        paymentSplits: methods.map((split, index) => index === methods.length - 1 ? { ...split, amount: formatCurrencyInput(nextAmount) } : split)
+      };
+    });
   }
 
   function openSubtotalAssistant() {
@@ -3493,58 +3618,62 @@ function Invoices({ data, onSave, onExport }) {
                 <div>
                   <div style={{ fontSize: 12, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PAGO DE LA FACTURA</div>
                   <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>
-                    {automaticCashSplit ? "Pago de contado: el bruto aplicado se toma automaticamente por el total de la factura." : "El valor bruto aplicado cruza la cartera; el neto recibido se calcula despues de retenciones, descuentos o saldos a favor."}
+                    {draft.paymentCondition === "contado" ? "Pago de contado: el bruto aplicado se toma automaticamente por el total de la factura. Los metodos deben sumar el neto recibido." : "El valor bruto aplicado cruza la cartera; los metodos de pago deben sumar el neto recibido."}
                   </p>
                 </div>
-                <button type="button" onClick={addPaymentSplit} style={ghostButton}>Agregar medio</button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={addPaymentSplit} style={ghostButton}>Pago fraccionado / agregar metodo</button>
+                  <button type="button" onClick={completeLastPaymentSplit} style={ghostButton}>Completar diferencia</button>
+                </div>
               </div>
+              <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, alignItems: "end" }}>
+                <Field label="Bruto aplicado"><input required readOnly={draft.paymentCondition === "contado"} style={{ ...input, background: draft.paymentCondition === "contado" ? "#F8FBFF" : input.background }} value={draft.paymentCondition === "contado" ? formatCurrencyInput(documentTotal) : draft.paymentGrossAmount || ""} onChange={(event) => setDraft((current) => ({ ...current, paymentGrossAmount: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="ReteFuente"><input style={input} value={draft.retefuente || ""} onChange={(event) => setDraft((current) => ({ ...current, retefuente: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="ReteICA"><input style={input} value={draft.reteica || ""} onChange={(event) => setDraft((current) => ({ ...current, reteica: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="ReteIVA"><input style={input} value={draft.reteiva || ""} onChange={(event) => setDraft((current) => ({ ...current, reteiva: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="Otras retenciones"><input style={input} value={draft.otherRetentions || ""} onChange={(event) => setDraft((current) => ({ ...current, otherRetentions: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="Descuento"><input style={input} value={draft.discountAmount || ""} onChange={(event) => setDraft((current) => ({ ...current, discountAmount: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="Concepto descuento">
+                  <select style={input} value={draft.discountConcept || "Comercial"} onChange={(event) => setDraft((current) => ({ ...current, discountConcept: event.target.value }))}>
+                    {DISCOUNT_CONCEPTS.map((concept) => <option key={concept}>{concept}</option>)}
+                  </select>
+                </Field>
+                <Field label="Saldo a favor por devolucion"><input style={input} value={draft.returnCreditAmount || ""} onChange={(event) => setDraft((current) => ({ ...current, returnCreditAmount: formatCurrencyInput(event.target.value) }))} /></Field>
+                <Field label="Neto recibido"><input readOnly style={{ ...input, background: "#F8FBFF", fontWeight: 900, color: "#15803D" }} value={money(invoicePaymentSummary.netReceived)} /></Field>
+              </div>
+              <textarea style={{ ...input, minHeight: 58 }} placeholder="Observacion del saldo a favor por devolucion, si aplica" value={draft.returnCreditNote || ""} onChange={(event) => setDraft((current) => ({ ...current, returnCreditNote: event.target.value }))} />
+              <textarea style={{ ...input, minHeight: 58 }} placeholder="Notas internas de este pago" value={draft.paymentNotes || ""} onChange={(event) => setDraft((current) => ({ ...current, paymentNotes: event.target.value }))} />
               {currentPaymentSplits.map((split, index) => {
-                const splitForDisplay = automaticCashSplit && index === 0 ? { ...split, amount: documentTotal } : split;
-                const splitSummary = paymentSplitSummary(splitForDisplay);
+                const splitForDisplay = automaticCashSplit && index === 0 ? { ...split, amount: invoicePaymentSummary.netReceived } : split;
+                const methodAmount = moneyValue(splitForDisplay.amount);
                 const amountIsAutomatic = automaticCashSplit && index === 0;
                 return (
                   <div key={split.id} style={{ display: "grid", gap: 10, padding: 12, borderRadius: 16, background: "#FFFFFF", border: "1px solid rgba(37,99,235,.12)" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <strong style={{ fontFamily: F, color: "#0B1D3A" }}>Medio de pago #{index + 1}{amountIsAutomatic ? " · bruto automatico" : ""}</strong>
+                      <strong style={{ fontFamily: F, color: "#0B1D3A" }}>Metodo de pago #{index + 1}{amountIsAutomatic ? " · neto automatico" : ""}</strong>
                       <button type="button" onClick={() => removePaymentSplit(split.id)} style={dangerGhostButton}>Quitar</button>
                     </div>
                     <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, alignItems: "end" }}>
-                      <Field label="Valor bruto aplicado"><input required readOnly={amountIsAutomatic} style={{ ...input, background: amountIsAutomatic ? "#F8FBFF" : input.background }} value={amountIsAutomatic ? formatCurrencyInput(documentTotal) : split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
+                      <Field label="Valor neto recibido"><input required readOnly={amountIsAutomatic} style={{ ...input, background: amountIsAutomatic ? "#F8FBFF" : input.background }} value={amountIsAutomatic ? formatCurrencyInput(invoicePaymentSummary.netReceived) : split.amount} onChange={(event) => updatePaymentSplit(split.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
                       <Field label="Metodo"><select style={input} value={split.method} onChange={(event) => updatePaymentSplit(split.id, { method: event.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></Field>
                       <Field label="Fecha pago"><input type="date" style={input} value={split.date || draft.date} onChange={(event) => updatePaymentSplit(split.id, { date: event.target.value })} /></Field>
                       <Field label="Referencia"><input style={input} value={split.reference || ""} onChange={(event) => updatePaymentSplit(split.id, { reference: event.target.value })} placeholder="Opcional" /></Field>
                     </div>
-                    <div className="client-portal-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, alignItems: "end" }}>
-                      <Field label="ReteFuente"><input style={input} value={split.retefuente || ""} onChange={(event) => updatePaymentSplit(split.id, { retefuente: formatCurrencyInput(event.target.value) })} /></Field>
-                      <Field label="ReteICA"><input style={input} value={split.reteica || ""} onChange={(event) => updatePaymentSplit(split.id, { reteica: formatCurrencyInput(event.target.value) })} /></Field>
-                      <Field label="ReteIVA"><input style={input} value={split.reteiva || ""} onChange={(event) => updatePaymentSplit(split.id, { reteiva: formatCurrencyInput(event.target.value) })} /></Field>
-                      <Field label="Otras retenciones"><input style={input} value={split.otherRetentions || ""} onChange={(event) => updatePaymentSplit(split.id, { otherRetentions: formatCurrencyInput(event.target.value) })} /></Field>
-                      <Field label="Descuento"><input style={input} value={split.discountAmount || ""} onChange={(event) => updatePaymentSplit(split.id, { discountAmount: formatCurrencyInput(event.target.value) })} /></Field>
-                      <Field label="Concepto descuento">
-                        <select style={input} value={split.discountConcept || "Comercial"} onChange={(event) => updatePaymentSplit(split.id, { discountConcept: event.target.value })}>
-                          {DISCOUNT_CONCEPTS.map((concept) => <option key={concept}>{concept}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Saldo a favor por devolucion"><input style={input} value={split.returnCreditAmount || ""} onChange={(event) => updatePaymentSplit(split.id, { returnCreditAmount: formatCurrencyInput(event.target.value) })} /></Field>
-                      <Field label="Neto recibido"><input readOnly style={{ ...input, background: "#F8FBFF", fontWeight: 900, color: "#15803D" }} value={money(splitSummary.netReceived)} /></Field>
-                    </div>
-                    <textarea style={{ ...input, minHeight: 58 }} placeholder="Observacion del saldo a favor por devolucion, si aplica" value={split.returnCreditNote || ""} onChange={(event) => updatePaymentSplit(split.id, { returnCreditNote: event.target.value })} />
                     <textarea style={{ ...input, minHeight: 58 }} placeholder="Notas internas de este pago" value={split.notes || ""} onChange={(event) => updatePaymentSplit(split.id, { notes: event.target.value })} />
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontFamily: F, color: "#334155", fontSize: 13 }}>
-                      <span>Bruto aplicado: <strong>{money(splitSummary.grossAmount)}</strong></span>
-                      <span>Retenciones: <strong>{money(splitSummary.retentionTotal)}</strong></span>
-                      <span>Descuentos/devoluciones: <strong>{money(splitSummary.discountTotal)}</strong></span>
-                      <span>Neto recibido: <strong style={{ color: "#15803D" }}>{money(splitSummary.netReceived)}</strong></span>
+                      <span>Neto de este metodo: <strong style={{ color: "#15803D" }}>{money(methodAmount)}</strong></span>
                     </div>
                   </div>
                 );
               })}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontFamily: F, color: "#0B1D3A" }}>
                 <strong>Total factura: {money(documentTotal)}</strong>
-                <strong>Bruto aplicado: {money(paymentSummary.grossAmount)}</strong>
-                <strong>Retenciones: {money(paymentSummary.retentionTotal)}</strong>
-                <strong>Neto recibido: {money(paymentSummary.netReceived)}</strong>
-                <strong>Saldo: {money(Math.max(documentTotal - splitTotal, 0))}</strong>
+                <strong>Bruto aplicado: {money(invoicePaymentSummary.grossAmount)}</strong>
+                <strong>Retenciones: {money(invoicePaymentSummary.retentionTotal)}</strong>
+                <strong>Neto recibido: {money(invoicePaymentSummary.netReceived)}</strong>
+                <strong>Detallado en metodos: {money(splitTotal)}</strong>
+                <strong style={{ color: paymentDifference === 0 ? "#15803D" : "#B45309" }}>Diferencia: {money(paymentDifference)}</strong>
+                <strong>Saldo cartera: {money(Math.max(documentTotal - invoicePaymentSummary.grossAmount, 0))}</strong>
               </div>
             </section>
           ) : null}
@@ -3693,7 +3822,7 @@ function Invoices({ data, onSave, onExport }) {
 
 function Payments({ data, onSave, onExport }) {
   const customers = data.customerSummary || data.customers || [];
-  const blank = () => ({ id: "", customerId: "", invoiceId: "", date: today(), grossAmount: "", retefuente: "", reteica: "", reteiva: "", otherRetentions: "", discountAmount: "", discountConcept: "Comercial", returnCreditAmount: "", returnCreditNote: "", method: "Transferencia bancaria", reference: "", notes: "", status: "aplicado" });
+  const blank = () => ({ id: "", customerId: "", invoiceId: "", date: today(), grossAmount: "", retefuente: "", reteica: "", reteiva: "", otherRetentions: "", discountAmount: "", discountConcept: "Comercial", returnCreditAmount: "", returnCreditNote: "", method: "Transferencia bancaria", reference: "", notes: "", status: "aplicado", paymentMethods: [blankPaymentSplit(today())] });
   const [draft, setDraft] = useState(blank());
   const [modalOpen, setModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
@@ -3707,7 +3836,10 @@ function Payments({ data, onSave, onExport }) {
   const retentionTotal = moneyValue(draft.retefuente) + moneyValue(draft.reteica) + moneyValue(draft.reteiva) + moneyValue(draft.otherRetentions);
   const discountTotal = moneyValue(draft.discountAmount) + moneyValue(draft.returnCreditAmount);
   const calculatedNet = Math.max(moneyValue(draft.grossAmount) - retentionTotal - discountTotal, 0);
+  const paymentMethodsTotal = paymentSplitsTotal(draft.paymentMethods || []);
+  const paymentMethodsDifference = calculatedNet - paymentMethodsTotal;
   const visiblePayments = searched ? sortRecords(filterRecordsByQuery(data.payments || [], data, filters), data, filters.sort || "idDesc") : [];
+  const visiblePaymentGroups = groupedPayments(visiblePayments);
 
   const openNew = () => {
     setDraft(blank());
@@ -3733,7 +3865,8 @@ function Payments({ data, onSave, onExport }) {
       method: payment.method || "Transferencia bancaria",
       reference: payment.reference || "",
       notes: payment.notes || "",
-      status: payment.status || "aplicado"
+      status: payment.status || "aplicado",
+      paymentMethods: [blankPaymentSplit(payment.date || today(), formatCurrencyInput(payment.netReceived))]
     });
     setModalOpen(true);
   };
@@ -3754,18 +3887,27 @@ function Payments({ data, onSave, onExport }) {
       window.alert("No fue posible encontrar el cliente seleccionado. Vuelve a buscarlo antes de guardar.");
       return;
     }
+    if (retentionTotal + discountTotal > moneyValue(draft.grossAmount)) {
+      window.alert("Las retenciones, descuentos y saldos a favor no pueden superar el valor bruto aplicado.");
+      return;
+    }
+    const normalizedMethods = normalizePaymentSplits(draft.paymentMethods || []);
+    if (normalizedMethods.length && paymentMethodsDifference !== 0) {
+      window.alert("La suma de los metodos de pago debe ser igual al neto recibido.");
+      return;
+    }
     const nextConfirm = {
       type: "save",
       title: draft.id ? "Guardar cambios del abono" : "Registrar abono",
       body: "Confirma el abono antes de guardarlo. Las retenciones y el neto recibido quedaran trazados en cartera.",
-      payload: draft,
+      payload: { ...draft, paymentMethods: draft.id ? [] : normalizedMethods },
       details: [
         { label: "Cliente", value: customer?.name || draft.customerId },
         { label: "Valor bruto", value: formatCurrencyInput(draft.grossAmount) },
         { label: "Retenciones", value: money(retentionTotal) },
         { label: "Descuentos / devoluciones", value: money(discountTotal) },
         { label: "Neto recibido", value: money(calculatedNet) },
-        { label: "Medio", value: draft.method }
+        { label: "Metodos", value: normalizedMethods.length > 1 ? `${normalizedMethods.length} metodo(s)` : draft.method }
       ]
     };
     if (customerNeedsUpdate(customer)) {
@@ -3825,6 +3967,36 @@ function Payments({ data, onSave, onExport }) {
     }
   }
 
+  function updatePaymentMethod(id, patch) {
+    setDraft((current) => ({
+      ...current,
+      paymentMethods: (current.paymentMethods || []).map((method) => method.id === id ? { ...method, ...patch } : method)
+    }));
+  }
+
+  function addPaymentMethod() {
+    setDraft((current) => {
+      const methods = current.paymentMethods || [blankPaymentSplit(current.date)];
+      const seededMethods = methods.length === 1 && !moneyValue(methods[0].amount)
+        ? [{ ...methods[0], amount: formatCurrencyInput(calculatedNet), method: current.method, date: current.date, reference: current.reference }]
+        : methods;
+      return { ...current, paymentMethods: [...seededMethods, blankPaymentSplit(current.date)] };
+    });
+  }
+
+  function removePaymentMethod(id) {
+    setDraft((current) => ({ ...current, paymentMethods: (current.paymentMethods || []).length > 1 ? current.paymentMethods.filter((method) => method.id !== id) : [blankPaymentSplit(current.date)] }));
+  }
+
+  function completeLastPaymentMethod() {
+    setDraft((current) => {
+      const methods = current.paymentMethods || [blankPaymentSplit(current.date)];
+      const previousTotal = methods.slice(0, -1).reduce((sum, method) => sum + moneyValue(method.amount), 0);
+      const nextAmount = Math.max(calculatedNet - previousTotal, 0);
+      return { ...current, paymentMethods: methods.map((method, index) => index === methods.length - 1 ? { ...method, amount: formatCurrencyInput(nextAmount) } : method) };
+    });
+  }
+
   return (
     <ModuleWithForm title="Abonos" count={(data.payments || []).length} onExport={() => onExport("abonos", searched ? { filters } : {})}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -3867,6 +4039,32 @@ function Payments({ data, onSave, onExport }) {
           <Field label="Saldo a favor por devolucion"><input style={input} value={draft.returnCreditAmount} onChange={(event) => setDraft((current) => ({ ...current, returnCreditAmount: formatCurrencyInput(event.target.value) }))} /></Field>
           <Field label="Neto recibido"><input readOnly style={{ ...input, background: "#F8FBFF", fontWeight: 900, color: "#15803D" }} value={money(calculatedNet)} /></Field>
           <Field label="Referencia"><input style={input} value={draft.reference} onChange={(event) => setDraft((current) => ({ ...current, reference: event.target.value }))} /></Field>
+          <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", display: "grid", gap: 10, padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: "1.2px", color: "#1D4ED8", fontWeight: 900, fontFamily: F }}>PAGO FRACCIONADO</div>
+                <p style={{ margin: "4px 0 0", color: "#64748B", fontFamily: F, fontSize: 13 }}>Si el abono entro por varios metodos, registra cada valor neto recibido. El sistema prorratea el bruto y las retenciones en el Excel.</p>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={addPaymentMethod} style={ghostButton}>Agregar metodo</button>
+                <button type="button" onClick={completeLastPaymentMethod} style={ghostButton}>Completar diferencia</button>
+              </div>
+            </div>
+            {(draft.paymentMethods || []).map((method, index) => (
+              <div key={method.id} style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr)) auto", gap: 8, alignItems: "end" }}>
+                <Field label={`Metodo #${index + 1}`}><select style={input} value={method.method} onChange={(event) => updatePaymentMethod(method.id, { method: event.target.value })}>{PAYMENT_METHODS.map((item) => <option key={item}>{item}</option>)}</select></Field>
+                <Field label="Neto recibido"><input style={input} value={method.amount || ""} onChange={(event) => updatePaymentMethod(method.id, { amount: formatCurrencyInput(event.target.value) })} /></Field>
+                <Field label="Fecha"><input type="date" style={input} value={method.date || draft.date} onChange={(event) => updatePaymentMethod(method.id, { date: event.target.value })} /></Field>
+                <Field label="Referencia"><input style={input} value={method.reference || ""} onChange={(event) => updatePaymentMethod(method.id, { reference: event.target.value })} /></Field>
+                <button type="button" onClick={() => removePaymentMethod(method.id)} style={dangerGhostButton}>Quitar</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontFamily: F, color: "#0B1D3A" }}>
+              <strong>Neto esperado: {money(calculatedNet)}</strong>
+              <strong>Detallado: {money(paymentMethodsTotal)}</strong>
+              <strong style={{ color: paymentMethodsDifference === 0 ? "#15803D" : "#B45309" }}>Diferencia: {money(paymentMethodsDifference)}</strong>
+            </div>
+          </div>
           <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 64, gridColumn: "1/-1" }} placeholder="Observacion del saldo a favor por devolucion, si aplica" value={draft.returnCreditNote} onChange={(event) => setDraft((current) => ({ ...current, returnCreditNote: event.target.value }))} />
           <textarea className="client-portal-form-wide" style={{ ...input, minHeight: 78, gridColumn: "1/-1" }} placeholder="Notas internas del abono" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
           <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
@@ -3910,36 +4108,36 @@ function Payments({ data, onSave, onExport }) {
           </div>
         ) : null}
       </PortalModal>
-      <PaginatedRecordList rows={visiblePayments.map((payment) => [
-        <strong style={{ whiteSpace: "nowrap" }}>{payment.id}</strong>,
+      <PaginatedRecordList rows={visiblePaymentGroups.map((payment) => [
+        <strong style={{ whiteSpace: "nowrap" }}>{payment.displayId}</strong>,
         <div style={{ display: "grid", gap: 3 }}>
           <strong style={{ color: "#0F172A" }}>{payment.customerNameSnapshot}</strong>
-          <span style={{ color: "#64748B", fontSize: 11 }}>{payment.invoiceId || "Sin factura"} · {payment.reference ? `Ref. ${payment.reference}` : "Sin referencia"}</span>
+          <span style={{ color: "#64748B", fontSize: 11 }}>{payment.invoiceId || "Sin factura"} · {payment.applicationLabel}{payment.isGrouped ? ` · ${payment.methodCount} metodos` : ""}</span>
         </div>,
         payment.date,
         <strong>{money(payment.grossAmount)}</strong>,
-        <span>{payment.method || "Sin medio"}</span>,
+        <span>{payment.isGrouped ? `${payment.methodCount} metodos` : payment.methodsLabel || "Sin medio"}</span>,
         <RecordActions
           primary={[
-            { label: "Ver", onClick: () => { setSelectedPaymentId(payment.id); setViewRecord(payment); } },
-            { label: "Editar", onClick: () => edit(payment) }
+            { label: "Ver", onClick: () => { setSelectedPaymentId(payment.key); setViewRecord(payment.payments[0]); } },
+            ...(!payment.isGrouped ? [{ label: "Editar", onClick: () => edit(payment.payments[0]) }] : [])
           ]}
           more={[
-            { label: "Duplicar", onClick: () => duplicate(payment) },
-            ...(payment.status !== "anulado" ? [{ label: "Anular", danger: true, onClick: () => voidPayment(payment) }] : [])
+            ...(!payment.isGrouped ? [{ label: "Duplicar", onClick: () => duplicate(payment.payments[0]) }] : []),
+            ...(!payment.isGrouped && payment.status !== "anulado" ? [{ label: "Anular", danger: true, onClick: () => voidPayment(payment.payments[0]) }] : [])
           ]}
         />
       ])}
-      rowKeys={visiblePayments.map((payment) => payment.id)}
+      rowKeys={visiblePaymentGroups.map((payment) => payment.key)}
       selectedKey={selectedPaymentId}
       onRowClick={(key) => {
-        const payment = visiblePayments.find((item) => item.id === key);
+        const payment = visiblePaymentGroups.find((item) => item.key === key);
         if (payment) {
-          setSelectedPaymentId(payment.id);
-          setViewRecord(payment);
+          setSelectedPaymentId(payment.key);
+          setViewRecord(payment.payments[0]);
         }
       }}
-      headers={["ID", "Cliente", "Fecha", "Valor bruto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
+      headers={["Grupo/ID", "Cliente", "Fecha", "Valor bruto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
@@ -4001,6 +4199,7 @@ function Portfolio({ data, onExport, onSave }) {
   const activeView = activeCustomer ? customerBalanceView(activeCustomer) : null;
   const activeInvoices = activeCustomer?.receivableInvoices || [];
   const activePayments = activeCustomer ? (paymentsByCustomer.get(activeCustomer.id) || []) : [];
+  const activePaymentGroups = groupedPayments(activePayments);
 
   function handleSearch() {
     const matches = getFilteredRows(filters);
@@ -4223,7 +4422,7 @@ function Portfolio({ data, onExport, onSave }) {
                   ))}
                 </div>
                 <RecordList rows={activeInvoices.map((invoice) => [invoice.id, invoice.date, invoice.dueDate || "Sin vencimiento", invoice.totalLabel || money(invoice.total), invoice.paidLabel || money(invoice.paid), invoice.balanceLabel || money(invoice.balance), invoice.ageLabel || invoice.status])} headers={["Factura", "Fecha", "Vence", "Total", "Aplicado", "Saldo", "Edad"]} />
-                <RecordList rows={activePayments.map((payment) => [payment.id, payment.date, payment.invoiceId || "Global FIFO", money(payment.grossAmount), money(payment.retentionTotal), money(payment.netReceived), payment.method])} headers={["Abono", "Fecha", "Aplicacion", "Bruto", "Retenciones", "Neto", "Medio"]} />
+                <RecordList rows={activePaymentGroups.map((payment) => [payment.displayId, payment.date, payment.invoiceId || "Global FIFO", payment.applicationLabel, money(payment.grossAmount), money(payment.netReceived), payment.isGrouped ? `${payment.methodCount} metodos` : payment.methodsLabel])} headers={["Grupo/Abono", "Fecha", "Aplicacion", "Tipo", "Bruto", "Neto", "Medio"]} />
               </section>
             ) : null}
           </div>
@@ -4931,7 +5130,7 @@ function Imports({ data, onData, onGoHistory }) {
       clientes: ["", "Cliente Ejemplo SAS", "Cliente Alterno", "900123456", "3001234567", "cliente@correo.com", "Carrera 1 # 2-3", "Bogota", "Norte", "Cliente cargado por plantilla"],
       facturas_historicas: ["FAC-EXT-001", "C0001", "Cliente Ejemplo SAS", today(), today(), "OC-001", "INT-001", "credito", 1000000, "Cargue inicial sin detalle"],
       facturas_detalladas: ["FAC-EXT-002", "C0001", "Cliente Ejemplo SAS", today(), today(), "OC-002", "INT-002", "credito", "SKU-001", "Producto o servicio", 1, 100000, 0, "SI", 19, "Factura detallada"],
-      abonos: ["C0001", "Cliente Ejemplo SAS", "FAC-000001", today(), 500000, 0, 0, 0, 0, 0, "Comercial", 0, "", 500000, "Transferencia bancaria", "REF123", "Abono ejemplo"],
+      abonos: ["PAGO-000001", "C0001", "Cliente Ejemplo SAS", "FAC-000001", today(), 500000, 0, 0, 0, 0, 0, "Comercial", 0, "", 500000, "Transferencia bancaria", "REF123", "Abono ejemplo"],
       inventario: ["SKU-001", "Producto ejemplo", "", "", "SI", 19, "activo", "Producto creado sin stock inicial"],
       actualizacion_productos: ["SKU-001", "", 120000, 80000, "SI", 19, "activo", "Actualizacion por SKU"],
       movimientos_inventario: [today(), "SKU-001", "entrada", 10, 80000, "CARGUE-INICIAL", "Saldo inicial"],

@@ -58,6 +58,12 @@ const ADMIN_MODULES = [
     description: "Gestiona links de pago, pagos manuales, saldos pendientes y recaudo por solicitud."
   },
   {
+    id: "codigosPromo",
+    label: "Códigos promo",
+    title: "Códigos promocionales",
+    description: "Crea, edita y desactiva códigos de aliados para certificaciones de ingresos."
+  },
+  {
     id: "certificaciones",
     label: "Certificaciones",
     title: "Certificaciones de ingresos",
@@ -105,6 +111,19 @@ const EMPTY_TASK_DRAFT = {
   title: "",
   dueDate: "",
   note: ""
+};
+const EMPTY_PROMO_CODE_DRAFT = {
+  originalCode: "",
+  code: "",
+  allyName: "",
+  allyEmail: "",
+  discountPercent: "15",
+  commissionPercent: "10",
+  active: true,
+  startsAt: "",
+  expiresAt: "",
+  maxUses: "",
+  notes: ""
 };
 const EMPTY_DELETE_CREDENTIALS = { username: "", password: "", reason: "" };
 
@@ -383,6 +402,20 @@ function getServiceStateSummary(record = {}) {
 function formatMoney(value) {
   const amount = parseCurrency(value);
   return amount > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(amount)}` : "$ 0";
+}
+
+function parsePercent(value) {
+  const raw = String(value || "").replace(",", ".").replace(/[^\d.]/g, "");
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(numeric, 100));
+}
+
+function formatPercent(value) {
+  const numeric = Number(value || 0);
+  const percent = numeric <= 1 ? numeric * 100 : numeric;
+  if (!Number.isFinite(percent)) return "0";
+  return Number.isInteger(percent) ? String(percent) : percent.toFixed(2).replace(/\.?0+$/, "");
 }
 
 function formatDateOnly(value) {
@@ -835,6 +868,50 @@ function buildCertificationsCsv(records = []) {
     creado: record.createdAt,
     actualizado: record.updatedAt
   })));
+}
+
+function buildPromoCodesCsv(records = []) {
+  const headers = ["codigo", "aliado", "correo", "estado", "descuento", "comision", "usos", "limite_usos", "inicio", "vencimiento", "origen", "notas", "actualizado"];
+  return buildCsv(headers, records.map((record) => ({
+    codigo: record.code,
+    aliado: record.allyName,
+    correo: record.allyEmail,
+    estado: record.active ? "activo" : "inactivo",
+    descuento: `${formatPercent(record.discountRate)}%`,
+    comision: `${formatPercent(record.commissionRate)}%`,
+    usos: record.usesCount || 0,
+    limite_usos: record.maxUses || "",
+    inicio: record.startsAt || "",
+    vencimiento: record.expiresAt || "",
+    origen: record.source || "",
+    notas: record.notes || "",
+    actualizado: record.updatedAt || record.createdAt || ""
+  })));
+}
+
+function buildPromoCodeDraft(record = null) {
+  if (!record) return { ...EMPTY_PROMO_CODE_DRAFT };
+  return {
+    originalCode: record.code || "",
+    code: record.code || "",
+    allyName: record.allyName || "",
+    allyEmail: record.allyEmail || "",
+    discountPercent: formatPercent(record.discountRate),
+    commissionPercent: formatPercent(record.commissionRate),
+    active: record.active !== false,
+    startsAt: record.startsAt ? String(record.startsAt).slice(0, 10) : "",
+    expiresAt: record.expiresAt ? String(record.expiresAt).slice(0, 10) : "",
+    maxUses: record.maxUses ? String(record.maxUses) : "",
+    notes: record.notes || ""
+  };
+}
+
+function getPromoCodeStatusMeta(record = {}) {
+  if (record.active !== true) return { label: "Inactivo", tone: "#64748B", bg: "rgba(100,116,139,.10)" };
+  if (record.expiresAt && new Date(record.expiresAt) < new Date()) return { label: "Vencido", tone: "#B45309", bg: "rgba(245,158,11,.14)" };
+  if (record.startsAt && new Date(record.startsAt) > new Date()) return { label: "Programado", tone: "#7C3AED", bg: "rgba(124,58,237,.10)" };
+  if (Number(record.maxUses || 0) > 0 && Number(record.usesCount || 0) >= Number(record.maxUses || 0)) return { label: "Límite usado", tone: "#B45309", bg: "rgba(245,158,11,.14)" };
+  return { label: "Activo", tone: "#15803D", bg: "rgba(34,197,94,.12)" };
 }
 
 function normalizeComparableValue(field, value) {
@@ -3225,6 +3302,164 @@ function ProtectedDeleteDialog({
   );
 }
 
+function PromoCodesModule({
+  promoCodes = [],
+  draft,
+  loading,
+  saving,
+  error,
+  onDraftChange,
+  onEdit,
+  onCancelEdit,
+  onSave,
+  onToggle,
+  onExport
+}) {
+  const activeCount = promoCodes.filter((record) => record.active === true).length;
+  const legacyCount = promoCodes.filter((record) => record.source === "legacy").length;
+  const commissionAverage = promoCodes.length
+    ? promoCodes.reduce((sum, record) => sum + Number(record.commissionRate || 0), 0) / promoCodes.length
+    : 0;
+
+  return (
+    <section style={{ display: "grid", gap: 18 }}>
+      <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
+        <StatCard compact label="CÓDIGOS" value={loading ? "..." : promoCodes.length} note="Incluye códigos heredados aún en archivo." />
+        <StatCard compact label="ACTIVOS" value={loading ? "..." : activeCount} tone="#15803D" note="Disponibles para clientes." />
+        <StatCard compact label="HEREDADOS" value={loading ? "..." : legacyCount} tone="#B45309" note="Conviene guardarlos desde este módulo." />
+        <StatCard compact label="COMISIÓN PROM." value={`${formatPercent(commissionAverage)}%`} tone="#7C3AED" note="Sobre códigos listados." />
+      </div>
+
+      <div className="admin-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px,420px) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
+        <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+          <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 6 }}>
+            {draft.originalCode ? "EDITAR CÓDIGO" : "NUEVO CÓDIGO"}
+          </div>
+          <h2 style={{ margin: "0 0 16px", fontFamily: FH, fontSize: 24, color: "#0B1D3A" }}>Aliado estratégico</h2>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Código
+              <input style={{ ...inputStyle, textTransform: "uppercase" }} value={draft.code} onChange={(event) => onDraftChange("code", event.target.value.toUpperCase())} placeholder="Ej: EMBAJADA2026" />
+            </label>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Nombre del aliado
+              <input style={inputStyle} value={draft.allyName} onChange={(event) => onDraftChange("allyName", event.target.value)} placeholder="Nombre o razón comercial" />
+            </label>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Correo del aliado
+              <input style={inputStyle} type="email" value={draft.allyEmail} onChange={(event) => onDraftChange("allyEmail", event.target.value)} placeholder="aliado@correo.com" />
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+                Descuento cliente (%)
+                <input style={inputStyle} inputMode="decimal" value={draft.discountPercent} onChange={(event) => onDraftChange("discountPercent", event.target.value)} />
+              </label>
+              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+                Comisión aliado (%)
+                <input style={inputStyle} inputMode="decimal" value={draft.commissionPercent} onChange={(event) => onDraftChange("commissionPercent", event.target.value)} />
+              </label>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+                Inicio
+                <input style={inputStyle} type="date" value={draft.startsAt} onChange={(event) => onDraftChange("startsAt", event.target.value)} />
+              </label>
+              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+                Vencimiento
+                <input style={inputStyle} type="date" value={draft.expiresAt} onChange={(event) => onDraftChange("expiresAt", event.target.value)} />
+              </label>
+            </div>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Límite de usos
+              <input style={inputStyle} inputMode="numeric" value={draft.maxUses} onChange={(event) => onDraftChange("maxUses", event.target.value.replace(/\D/g, ""))} placeholder="Sin límite" />
+            </label>
+            <label style={{ display: "flex", gap: 10, alignItems: "center", fontFamily: F, fontSize: 14, color: "#334155", fontWeight: 800 }}>
+              <input type="checkbox" checked={draft.active} onChange={(event) => onDraftChange("active", event.target.checked)} style={{ width: 18, height: 18, accentColor: "#2563EB" }} />
+              Código activo
+            </label>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Notas internas
+              <textarea style={{ ...inputStyle, minHeight: 84, resize: "vertical" }} value={draft.notes} onChange={(event) => onDraftChange("notes", event.target.value)} />
+            </label>
+          </div>
+
+          {error ? <div style={{ marginTop: 14, padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, lineHeight: 1.6 }}>{error}</div> : null}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+            <button type="button" onClick={onSave} disabled={saving} style={{ padding: "12px 16px", borderRadius: 14, border: "none", background: saving ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+              {saving ? "Guardando..." : draft.originalCode ? "Guardar cambios" : "Crear código"}
+            </button>
+            {draft.originalCode ? (
+              <button type="button" onClick={onCancelEdit} disabled={saving} style={{ padding: "12px 16px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+                Cancelar edición
+              </button>
+            ) : null}
+            <button type="button" onClick={onExport} disabled={!promoCodes.length} style={{ padding: "12px 16px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: promoCodes.length ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, cursor: promoCodes.length ? "pointer" : "not-allowed" }}>
+              Exportar CSV
+            </button>
+          </div>
+        </section>
+
+        <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F }}>LISTADO</div>
+              <h2 style={{ margin: "4px 0 0", fontFamily: FH, fontSize: 24, color: "#0B1D3A" }}>Códigos disponibles</h2>
+            </div>
+            {loading ? <Badge meta={{ tone: "#64748B", bg: "rgba(100,116,139,.10)" }}>Cargando</Badge> : null}
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {promoCodes.map((record) => {
+              const statusMeta = getPromoCodeStatusMeta(record);
+              const isLegacy = record.source === "legacy";
+              return (
+                <article key={`${record.source}-${record.code}`} style={{ padding: 16, borderRadius: 18, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontFamily: F, fontSize: 18, fontWeight: 900, color: "#0F172A", lineHeight: 1.3 }}>{record.code}</div>
+                      <div style={{ fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7, marginTop: 3 }}>
+                        {record.allyName || "Aliado sin nombre"} · {record.allyEmail || "Sin correo"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <Badge meta={statusMeta}>{statusMeta.label}</Badge>
+                      {isLegacy ? <Badge meta={{ tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>Heredado</Badge> : null}
+                    </div>
+                  </div>
+                  <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+                    <InfoTile label="Descuento" value={`${formatPercent(record.discountRate)}%`} />
+                    <InfoTile label="Comisión" value={`${formatPercent(record.commissionRate)}%`} />
+                    <InfoTile label="Usos" value={`${record.usesCount || 0}${record.maxUses ? ` / ${record.maxUses}` : ""}`} />
+                    <InfoTile label="Vigencia" value={record.expiresAt ? `Hasta ${String(record.expiresAt).slice(0, 10)}` : "Sin vencimiento"} />
+                  </div>
+                  {record.notes ? <div style={{ marginTop: 10, fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7 }}>{record.notes}</div> : null}
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => onEdit(record)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
+                      {isLegacy ? "Guardar y editar" : "Editar"}
+                    </button>
+                    {!isLegacy ? (
+                      <button type="button" onClick={() => onToggle(record)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: record.active ? "rgba(220,38,38,.06)" : "rgba(34,197,94,.08)", color: record.active ? "#B91C1C" : "#15803D", fontFamily: F, fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
+                        {record.active ? "Desactivar" : "Activar"}
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+            {!promoCodes.length && !loading ? (
+              <div style={{ padding: 18, borderRadius: 18, background: "#F8FBFF", border: "1px dashed rgba(37,99,235,.18)", fontFamily: F, color: "#64748B", lineHeight: 1.8 }}>
+                Aún no hay códigos promocionales registrados.
+              </div>
+            ) : null}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function PaymentsModule({ payments, certificationRecords = [], loading, error, onOpenRequest, onOpenCertification, onCopyPaymentLink, onExportPayments, onVoidPayment }) {
   const [paymentView, setPaymentView] = useState("servicios");
   const pendingLinks = payments.filter((payment) => payment.kind === "link" && payment.status === "pending");
@@ -3606,6 +3841,11 @@ export default function AdminPanel() {
   const [portalUserActionError, setPortalUserActionError] = useState("");
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
   const [clientDetailDialog, setClientDetailDialog] = useState(null);
+  const [promoCodes, setPromoCodes] = useState([]);
+  const [promoCodesLoading, setPromoCodesLoading] = useState(false);
+  const [promoCodesError, setPromoCodesError] = useState("");
+  const [promoCodeDraft, setPromoCodeDraft] = useState(EMPTY_PROMO_CODE_DRAFT);
+  const [promoCodeSaving, setPromoCodeSaving] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(null);
   const [deleteCredentials, setDeleteCredentials] = useState(EMPTY_DELETE_CREDENTIALS);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -3854,6 +4094,26 @@ export default function AdminPanel() {
     }
   };
 
+  const loadPromoCodes = async () => {
+    setPromoCodesLoading(true);
+    setPromoCodesError("");
+
+    try {
+      const response = await fetch("/api/admin-list-promo-codes");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar los códigos promocionales.");
+      }
+
+      setPromoCodes(data.promoCodes || []);
+    } catch (error) {
+      setPromoCodesError(error.message);
+    } finally {
+      setPromoCodesLoading(false);
+    }
+  };
+
   const loadDetail = async (reference) => {
     if (!reference) return;
     const requestId = certificationDetailRequestRef.current + 1;
@@ -3906,6 +4166,7 @@ export default function AdminPanel() {
       loadServicePayments();
       loadClientLeads();
       loadPortalUsers();
+      loadPromoCodes();
     }
   }, [session.authenticated]);
 
@@ -4026,6 +4287,9 @@ export default function AdminPanel() {
     setServicePayments([]);
     setClientLeads([]);
     setPortalUsers([]);
+    setPromoCodes([]);
+    setPromoCodesError("");
+    setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
     setPortalUserActionDialog(null);
     setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "" });
     setPortalUserActionError("");
@@ -4934,6 +5198,97 @@ export default function AdminPanel() {
     }
   };
 
+  const handlePromoCodeDraftChange = (field, value) => {
+    setPromoCodeDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const handleEditPromoCode = (record) => {
+    setPromoCodeDraft(buildPromoCodeDraft(record));
+    setPromoCodesError("");
+  };
+
+  const handleCancelPromoCodeEdit = () => {
+    setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
+    setPromoCodesError("");
+  };
+
+  const handleSavePromoCode = async () => {
+    setPromoCodeSaving(true);
+    setPromoCodesError("");
+
+    try {
+      const payload = {
+        originalCode: promoCodeDraft.originalCode,
+        code: promoCodeDraft.code,
+        allyName: promoCodeDraft.allyName,
+        allyEmail: promoCodeDraft.allyEmail,
+        discountRate: parsePercent(promoCodeDraft.discountPercent) / 100,
+        commissionRate: parsePercent(promoCodeDraft.commissionPercent) / 100,
+        active: promoCodeDraft.active,
+        startsAt: promoCodeDraft.startsAt,
+        expiresAt: promoCodeDraft.expiresAt,
+        maxUses: promoCodeDraft.maxUses,
+        notes: promoCodeDraft.notes
+      };
+
+      const response = await fetch("/api/admin-upsert-promo-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible guardar el código promocional.");
+      }
+
+      setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
+      await loadPromoCodes();
+      setNotice(promoCodeDraft.originalCode ? "Código promocional actualizado." : "Código promocional creado.");
+    } catch (error) {
+      setPromoCodesError(error.message);
+    } finally {
+      setPromoCodeSaving(false);
+    }
+  };
+
+  const handleTogglePromoCode = async (record) => {
+    if (!record?.code) return;
+    setPromoCodeSaving(true);
+    setPromoCodesError("");
+
+    try {
+      const response = await fetch("/api/admin-toggle-promo-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: record.code,
+          active: record.active !== true
+        })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cambiar el estado del código.");
+      }
+
+      await loadPromoCodes();
+      setNotice(record.active ? "Código promocional desactivado." : "Código promocional activado.");
+    } catch (error) {
+      setPromoCodesError(error.message);
+    } finally {
+      setPromoCodeSaving(false);
+    }
+  };
+
+  const handleExportPromoCodes = () => {
+    downloadCsvFile(`codigos-promocionales-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildPromoCodesCsv(promoCodes));
+    setNotice("Códigos promocionales exportados.");
+  };
+
   const handleOpenPortalUserAction = (type, user) => {
     setPortalUserActionDialog({ type, user });
     setPortalUserActionDraft({
@@ -5046,6 +5401,7 @@ export default function AdminPanel() {
     loadServicePayments();
     loadClientLeads();
     loadPortalUsers();
+    loadPromoCodes();
     if (selectedServiceReference) {
       loadServiceDetail(selectedServiceReference);
     }
@@ -5368,6 +5724,7 @@ export default function AdminPanel() {
                 usuariosPortal: portalUsers.length,
                 potenciales: clientLeadRows.length,
                 pagos: servicePayments.length,
+                codigosPromo: promoCodes.length,
                 certificaciones: records.length
               }}
             />
@@ -5509,6 +5866,22 @@ export default function AdminPanel() {
             onCopyPaymentLink={handleCopyPaymentLink}
             onExportPayments={handleExportPayments}
             onVoidPayment={handleRequestPaymentVoid}
+          />
+        ) : null}
+
+        {activeModule === "codigosPromo" ? (
+          <PromoCodesModule
+            promoCodes={promoCodes}
+            draft={promoCodeDraft}
+            loading={promoCodesLoading}
+            saving={promoCodeSaving}
+            error={promoCodesError}
+            onDraftChange={handlePromoCodeDraftChange}
+            onEdit={handleEditPromoCode}
+            onCancelEdit={handleCancelPromoCodeEdit}
+            onSave={handleSavePromoCode}
+            onToggle={handleTogglePromoCode}
+            onExport={handleExportPromoCodes}
           />
         ) : null}
 
