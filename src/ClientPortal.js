@@ -4166,8 +4166,8 @@ function Payments({ data, onSave, onExport }) {
       <PortalModal open={Boolean(viewRecord)} title={`Abono ${viewRecord?.id || ""}`} eyebrow="DETALLE" onClose={() => setViewRecord(null)} wide={false}>
         {viewRecord ? (
           <div style={{ display: "grid", gap: 12, fontFamily: F }}>
-            <Stat label="NETO RECIBIDO" value={money(viewRecord.netReceived)} note={`${viewRecord.customerNameSnapshot} · ${viewRecord.method}`} tone="#15803D" />
-            <RecordList headers={["Bruto", "Retenciones", "Descuentos", "Devolucion", "Neto", "Estado"]} rows={[[money(viewRecord.grossAmount), money(viewRecord.retentionTotal), money(viewRecord.discounts?.amount), money(viewRecord.returnCredit?.amount), money(viewRecord.netReceived), viewRecord.status]]} />
+            <Stat label="NETO RECIBIDO" value={money(viewRecord.netReceived)} note={`${viewRecord.customerNameSnapshot} · ${viewRecord.method}`} tone={viewRecord.status === "anulado" ? "#B91C1C" : "#15803D"} />
+            <RecordList headers={["Bruto", "Retenciones", "Descuentos", "Devolucion", "Neto", "Estado"]} rows={[[money(viewRecord.grossAmount), money(viewRecord.retentionTotal), money(viewRecord.discounts?.amount), money(viewRecord.returnCredit?.amount), money(viewRecord.netReceived), <StatusPill tone={viewRecord.status === "anulado" ? "#B91C1C" : "#15803D"}>{viewRecord.status || "aplicado"}</StatusPill>]]} />
             <div className="client-action-group">
               <button type="button" onClick={() => { setViewRecord(null); edit(viewRecord); }} style={ghostButton}>Editar</button>
               {viewRecord.status !== "anulado" ? <button type="button" onClick={() => { setViewRecord(null); voidPayment(viewRecord); }} style={dangerGhostButton}>Anular</button> : null}
@@ -4184,6 +4184,7 @@ function Payments({ data, onSave, onExport }) {
         payment.date,
         <strong>{money(payment.grossAmount)}</strong>,
         <span>{payment.isGrouped ? `${payment.methodCount} metodos` : payment.methodsLabel || "Sin medio"}</span>,
+        <StatusPill tone={payment.status === "anulado" ? "#B91C1C" : "#15803D"}>{payment.status || "aplicado"}</StatusPill>,
         <RecordActions
           primary={[
             { label: "Ver", onClick: () => { setSelectedPaymentId(payment.key); setViewRecord(payment.payments[0]); } },
@@ -4204,7 +4205,7 @@ function Payments({ data, onSave, onExport }) {
           setViewRecord(payment.payments[0]);
         }
       }}
-      headers={["Grupo/ID", "Cliente", "Fecha", "Valor bruto", "Medio", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
+      headers={["Grupo/ID", "Cliente", "Fecha", "Valor bruto", "Medio", "Estado", "Acciones"]} emptyMessage={searched ? "No se encontraron abonos con esos filtros." : "Usa los filtros para consultar abonos sin cargar todo el historial."} />
     </ModuleWithForm>
   );
 }
