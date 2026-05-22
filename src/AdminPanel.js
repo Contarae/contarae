@@ -889,6 +889,26 @@ function buildPromoCodesCsv(records = []) {
   })));
 }
 
+function buildPromoCodeReportCsv(report = {}) {
+  const headers = ["codigo", "periodo", "fecha_aprobacion", "referencia", "consecutivo", "cliente", "correo", "destino", "transaccion_wompi", "metodo_pago", "valor_base", "descuento", "valor_pagado", "comision_estimada"];
+  return buildCsv(headers, (report.sales || []).map((sale) => ({
+    codigo: report.code,
+    periodo: String(sale.approvedAt || "").slice(0, 7),
+    fecha_aprobacion: sale.approvedAt,
+    referencia: sale.reference,
+    consecutivo: sale.consecutive,
+    cliente: sale.customerName,
+    correo: sale.customerEmail,
+    destino: sale.destination,
+    transaccion_wompi: sale.wompiTransactionId,
+    metodo_pago: sale.paymentMethod,
+    valor_base: sale.baseAmountLabel,
+    descuento: sale.discountAmountLabel,
+    valor_pagado: sale.finalAmountLabel,
+    comision_estimada: sale.commissionAmountLabel
+  })));
+}
+
 function buildPromoCodeDraft(record = null) {
   if (!record) return { ...EMPTY_PROMO_CODE_DRAFT };
   return {
@@ -3302,120 +3322,252 @@ function ProtectedDeleteDialog({
   );
 }
 
-function PromoCodesModule({
-  promoCodes = [],
+function PromoCodeFormModal({
+  open,
   draft,
-  loading,
   saving,
   error,
   onDraftChange,
+  onClose,
+  onSave
+}) {
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15020, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <section className="admin-modal-card" style={{ width: "min(620px,100%)", maxHeight: "92vh", overflowY: "auto", padding: 24, borderRadius: 28, background: "rgba(255,255,255,.98)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 5 }}>{draft.originalCode ? "EDITAR CÓDIGO" : "CREAR NUEVO CÓDIGO"}</div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A" }}>Código promocional</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>
+            X
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+            Código
+            <input style={{ ...inputStyle, textTransform: "uppercase" }} value={draft.code} onChange={(event) => onDraftChange("code", event.target.value.toUpperCase())} placeholder="Ej: EMBAJADA2026" />
+          </label>
+          <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+            Nombre del aliado
+            <input style={inputStyle} value={draft.allyName} onChange={(event) => onDraftChange("allyName", event.target.value)} placeholder="Nombre o razón comercial" />
+          </label>
+          <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+            Correo del aliado
+            <input style={inputStyle} type="email" value={draft.allyEmail} onChange={(event) => onDraftChange("allyEmail", event.target.value)} placeholder="aliado@correo.com" />
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Descuento cliente (%)
+              <input style={inputStyle} inputMode="decimal" value={draft.discountPercent} onChange={(event) => onDraftChange("discountPercent", event.target.value)} />
+            </label>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Comisión aliado (%)
+              <input style={inputStyle} inputMode="decimal" value={draft.commissionPercent} onChange={(event) => onDraftChange("commissionPercent", event.target.value)} />
+            </label>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Inicio
+              <input style={inputStyle} type="date" value={draft.startsAt} onChange={(event) => onDraftChange("startsAt", event.target.value)} />
+            </label>
+            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+              Vencimiento
+              <input style={inputStyle} type="date" value={draft.expiresAt} onChange={(event) => onDraftChange("expiresAt", event.target.value)} />
+            </label>
+          </div>
+          <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+            Límite de usos
+            <input style={inputStyle} inputMode="numeric" value={draft.maxUses} onChange={(event) => onDraftChange("maxUses", event.target.value.replace(/\D/g, ""))} placeholder="Sin límite" />
+          </label>
+          <label style={{ display: "flex", gap: 10, alignItems: "center", fontFamily: F, fontSize: 14, color: "#334155", fontWeight: 800 }}>
+            <input type="checkbox" checked={draft.active} onChange={(event) => onDraftChange("active", event.target.checked)} style={{ width: 18, height: 18, accentColor: "#2563EB" }} />
+            Código activo
+          </label>
+          <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
+            Notas internas
+            <textarea style={{ ...inputStyle, minHeight: 84, resize: "vertical" }} value={draft.notes} onChange={(event) => onDraftChange("notes", event.target.value)} />
+          </label>
+        </div>
+
+        {error ? <div style={{ marginTop: 14, padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, lineHeight: 1.6 }}>{error}</div> : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+          <button type="button" onClick={onClose} disabled={saving} style={{ padding: "12px 16px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={onSave} disabled={saving} style={{ padding: "12px 16px", borderRadius: 14, border: "none", background: saving ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+            {saving ? "Guardando..." : draft.originalCode ? "Guardar cambios" : "Crear código"}
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function PromoCodeDetailModal({
+  record,
+  report,
+  loading,
+  error,
+  saving,
+  onClose,
   onEdit,
-  onCancelEdit,
-  onSave,
   onToggle,
+  onExportReport,
+  onOpenCertification
+}) {
+  if (!record || typeof document === "undefined") return null;
+  const statusMeta = getPromoCodeStatusMeta(record);
+  const totals = report?.totals || record.wompiSummary || {};
+  const periods = report?.periods || [];
+  const sales = report?.sales || [];
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15010, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <section className="admin-modal-card" style={{ width: "min(1180px,100%)", maxHeight: "92vh", overflowY: "auto", padding: 24, borderRadius: 28, background: "rgba(255,255,255,.98)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 30px 80px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <Badge meta={statusMeta}>{statusMeta.label}</Badge>
+              {record.source === "legacy" ? <Badge meta={{ tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>Heredado</Badge> : null}
+            </div>
+            <h2 style={{ margin: 0, fontFamily: FH, fontSize: "clamp(28px,3vw,42px)", color: "#0B1D3A", lineHeight: 1.08 }}>{record.code}</h2>
+            <p style={{ margin: "8px 0 0", fontFamily: F, fontSize: 14, color: "#52647F", lineHeight: 1.7 }}>
+              {record.allyName || "Aliado sin nombre"} · {record.allyEmail || "Sin correo"}
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => onEdit(record)} style={{ padding: "11px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              Editar
+            </button>
+            {record.source !== "legacy" ? (
+              <button type="button" onClick={() => onToggle(record)} disabled={saving} style={{ padding: "11px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: record.active ? "rgba(220,38,38,.06)" : "rgba(34,197,94,.08)", color: record.active ? "#B91C1C" : "#15803D", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
+                {record.active ? "Desactivar" : "Activar"}
+              </button>
+            ) : null}
+            <button type="button" onClick={onExportReport} disabled={!sales.length} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: sales.length ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: sales.length ? "pointer" : "not-allowed" }}>
+              Exportar informe
+            </button>
+            <button type="button" onClick={onClose} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#0B1D3A", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+              X
+            </button>
+          </div>
+        </div>
+
+        <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+          <InfoTile label="Descuento cliente" value={`${formatPercent(record.discountRate)}%`} />
+          <InfoTile label="Comisión aliado" value={`${formatPercent(record.commissionRate)}%`} />
+          <InfoTile label="Usos registrados" value={`${record.usesCount || 0}${record.maxUses ? ` / ${record.maxUses}` : ""}`} />
+          <InfoTile label="Vigencia" value={record.expiresAt ? `Hasta ${String(record.expiresAt).slice(0, 10)}` : "Sin vencimiento"} />
+        </div>
+
+        {loading ? <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", fontFamily: F, color: "#64748B", fontWeight: 700 }}>Cargando ventas confirmadas por Wompi...</div> : null}
+        {error ? <div style={{ padding: 16, borderRadius: 18, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700 }}>{error}</div> : null}
+
+        <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10, marginBottom: 18 }}>
+          <StatCard compact label="VENTAS WOMPI" value={totals.salesCount || 0} note="Pagos aprobados." />
+          <StatCard compact label="VALOR BASE" value={totals.baseAmountLabel || "$ 0"} />
+          <StatCard compact label="DESCUENTO" value={totals.discountAmountLabel || "$ 0"} tone="#B45309" />
+          <StatCard compact label="PAGADO" value={totals.finalAmountLabel || "$ 0"} tone="#15803D" />
+          <StatCard compact label="COMISIÓN" value={totals.commissionAmountLabel || "$ 0"} tone="#7C3AED" />
+        </div>
+
+        <div className="admin-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px,360px) minmax(0,1fr)", gap: 16, alignItems: "start" }}>
+          <section style={{ padding: 18, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>RESUMEN POR PERÍODO</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {periods.map((period) => (
+                <div key={period.period} style={{ padding: 12, borderRadius: 14, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.08)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontFamily: F, fontSize: 13, fontWeight: 900, color: "#0F172A" }}>
+                    <span>{period.period}</span>
+                    <span>{period.salesCount} venta(s)</span>
+                  </div>
+                  <div style={{ marginTop: 5, fontFamily: F, fontSize: 12, color: "#52647F", lineHeight: 1.6 }}>
+                    Pagado: <strong>{period.finalAmountLabel}</strong><br />
+                    Comisión: <strong>{period.commissionAmountLabel}</strong>
+                  </div>
+                </div>
+              ))}
+              {!periods.length && !loading ? <div style={{ fontFamily: F, color: "#64748B", fontSize: 14, lineHeight: 1.7 }}>No hay ventas Wompi aprobadas para este código.</div> : null}
+            </div>
+          </section>
+
+          <section style={{ padding: 18, borderRadius: 22, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+            <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>VENTAS CONFIRMADAS POR WOMPI</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {sales.map((sale) => (
+                <button key={sale.reference} type="button" onClick={() => onOpenCertification(sale.reference)} style={{ textAlign: "left", padding: 14, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 5 }}>
+                    <strong style={{ fontFamily: F, color: "#0F172A", fontSize: 14 }}>{sale.consecutive ? `N° ${sale.consecutive}` : sale.reference}</strong>
+                    <span style={{ fontFamily: F, color: "#64748B", fontSize: 12 }}>{formatDate(sale.approvedAt)}</span>
+                  </div>
+                  <div style={{ fontFamily: F, color: "#52647F", fontSize: 13, lineHeight: 1.65 }}>
+                    {formatProperName(sale.customerName) || "Cliente sin nombre"} · Wompi {sale.wompiTransactionId}<br />
+                    Base: <strong>{sale.baseAmountLabel}</strong> · Descuento: <strong>{sale.discountAmountLabel}</strong> · Pagado: <strong>{sale.finalAmountLabel}</strong> · Comisión: <strong>{sale.commissionAmountLabel}</strong>
+                  </div>
+                </button>
+              ))}
+              {!sales.length && !loading ? <div style={{ fontFamily: F, color: "#64748B", fontSize: 14, lineHeight: 1.7 }}>Sin ventas confirmadas por Wompi todavía.</div> : null}
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function PromoCodesModule({
+  promoCodes = [],
+  loading,
+  onCreate,
+  onOpen,
   onExport
 }) {
   const activeCount = promoCodes.filter((record) => record.active === true).length;
   const legacyCount = promoCodes.filter((record) => record.source === "legacy").length;
-  const commissionAverage = promoCodes.length
-    ? promoCodes.reduce((sum, record) => sum + Number(record.commissionRate || 0), 0) / promoCodes.length
-    : 0;
+  const totals = promoCodes.reduce((acc, record) => ({
+    salesCount: acc.salesCount + Number(record.wompiSummary?.salesCount || 0),
+    finalAmount: acc.finalAmount + Number(record.wompiSummary?.finalAmount || 0),
+    commissionAmount: acc.commissionAmount + Number(record.wompiSummary?.commissionAmount || 0)
+  }), { salesCount: 0, finalAmount: 0, commissionAmount: 0 });
 
   return (
     <section style={{ display: "grid", gap: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", padding: 18, borderRadius: 24, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 16px 36px rgba(15,23,42,.06)" }}>
+        <div>
+          <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F }}>GESTIÓN DE ALIADOS</div>
+          <h2 style={{ margin: "4px 0 0", fontFamily: FH, fontSize: 28, color: "#0B1D3A" }}>Listado de códigos promocionales</h2>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" onClick={onExport} disabled={!promoCodes.length} style={{ padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: promoCodes.length ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, cursor: promoCodes.length ? "pointer" : "not-allowed" }}>
+            Exportar listado
+          </button>
+          <button type="button" onClick={onCreate} style={{ padding: "12px 16px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+            Crear nuevo código
+          </button>
+        </div>
+      </div>
+
       <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
         <StatCard compact label="CÓDIGOS" value={loading ? "..." : promoCodes.length} note="Incluye códigos heredados aún en archivo." />
         <StatCard compact label="ACTIVOS" value={loading ? "..." : activeCount} tone="#15803D" note="Disponibles para clientes." />
-        <StatCard compact label="HEREDADOS" value={loading ? "..." : legacyCount} tone="#B45309" note="Conviene guardarlos desde este módulo." />
-        <StatCard compact label="COMISIÓN PROM." value={`${formatPercent(commissionAverage)}%`} tone="#7C3AED" note="Sobre códigos listados." />
+        <StatCard compact label="VENTAS WOMPI" value={loading ? "..." : totals.salesCount} tone="#0F766E" note="Pagos aprobados por Wompi." />
+        <StatCard compact label="COMISIÓN EST." value={formatMoney(totals.commissionAmount)} tone="#7C3AED" note={`${legacyCount} heredado(s) visibles.`} />
       </div>
 
-      <div className="admin-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(320px,420px) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
-        <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
-          <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 6 }}>
-            {draft.originalCode ? "EDITAR CÓDIGO" : "NUEVO CÓDIGO"}
-          </div>
-          <h2 style={{ margin: "0 0 16px", fontFamily: FH, fontSize: 24, color: "#0B1D3A" }}>Aliado estratégico</h2>
-
-          <div style={{ display: "grid", gap: 12 }}>
-            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-              Código
-              <input style={{ ...inputStyle, textTransform: "uppercase" }} value={draft.code} onChange={(event) => onDraftChange("code", event.target.value.toUpperCase())} placeholder="Ej: EMBAJADA2026" />
-            </label>
-            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-              Nombre del aliado
-              <input style={inputStyle} value={draft.allyName} onChange={(event) => onDraftChange("allyName", event.target.value)} placeholder="Nombre o razón comercial" />
-            </label>
-            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-              Correo del aliado
-              <input style={inputStyle} type="email" value={draft.allyEmail} onChange={(event) => onDraftChange("allyEmail", event.target.value)} placeholder="aliado@correo.com" />
-            </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-                Descuento cliente (%)
-                <input style={inputStyle} inputMode="decimal" value={draft.discountPercent} onChange={(event) => onDraftChange("discountPercent", event.target.value)} />
-              </label>
-              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-                Comisión aliado (%)
-                <input style={inputStyle} inputMode="decimal" value={draft.commissionPercent} onChange={(event) => onDraftChange("commissionPercent", event.target.value)} />
-              </label>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-                Inicio
-                <input style={inputStyle} type="date" value={draft.startsAt} onChange={(event) => onDraftChange("startsAt", event.target.value)} />
-              </label>
-              <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-                Vencimiento
-                <input style={inputStyle} type="date" value={draft.expiresAt} onChange={(event) => onDraftChange("expiresAt", event.target.value)} />
-              </label>
-            </div>
-            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-              Límite de usos
-              <input style={inputStyle} inputMode="numeric" value={draft.maxUses} onChange={(event) => onDraftChange("maxUses", event.target.value.replace(/\D/g, ""))} placeholder="Sin límite" />
-            </label>
-            <label style={{ display: "flex", gap: 10, alignItems: "center", fontFamily: F, fontSize: 14, color: "#334155", fontWeight: 800 }}>
-              <input type="checkbox" checked={draft.active} onChange={(event) => onDraftChange("active", event.target.checked)} style={{ width: 18, height: 18, accentColor: "#2563EB" }} />
-              Código activo
-            </label>
-            <label style={{ display: "grid", gap: 5, fontFamily: F, fontSize: 13, color: "#334155", fontWeight: 800 }}>
-              Notas internas
-              <textarea style={{ ...inputStyle, minHeight: 84, resize: "vertical" }} value={draft.notes} onChange={(event) => onDraftChange("notes", event.target.value)} />
-            </label>
-          </div>
-
-          {error ? <div style={{ marginTop: 14, padding: 14, borderRadius: 16, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 700, lineHeight: 1.6 }}>{error}</div> : null}
-
-          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-            <button type="button" onClick={onSave} disabled={saving} style={{ padding: "12px 16px", borderRadius: 14, border: "none", background: saving ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
-              {saving ? "Guardando..." : draft.originalCode ? "Guardar cambios" : "Crear código"}
-            </button>
-            {draft.originalCode ? (
-              <button type="button" onClick={onCancelEdit} disabled={saving} style={{ padding: "12px 16px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer" }}>
-                Cancelar edición
-              </button>
-            ) : null}
-            <button type="button" onClick={onExport} disabled={!promoCodes.length} style={{ padding: "12px 16px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: promoCodes.length ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, cursor: promoCodes.length ? "pointer" : "not-allowed" }}>
-              Exportar CSV
-            </button>
-          </div>
-        </section>
-
-        <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 12, letterSpacing: "1.4px", fontWeight: 900, color: "#1D4ED8", fontFamily: F }}>LISTADO</div>
-              <h2 style={{ margin: "4px 0 0", fontFamily: FH, fontSize: 24, color: "#0B1D3A" }}>Códigos disponibles</h2>
-            </div>
-            {loading ? <Badge meta={{ tone: "#64748B", bg: "rgba(100,116,139,.10)" }}>Cargando</Badge> : null}
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
+      <section style={{ padding: 22, borderRadius: 26, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
+        <div style={{ display: "grid", gap: 10 }}>
             {promoCodes.map((record) => {
               const statusMeta = getPromoCodeStatusMeta(record);
               const isLegacy = record.source === "legacy";
               return (
-                <article key={`${record.source}-${record.code}`} style={{ padding: 16, borderRadius: 18, background: "#fff", border: "1px solid rgba(37,99,235,.10)" }}>
+                <button key={`${record.source}-${record.code}`} type="button" onClick={() => onOpen(record)} style={{ textAlign: "left", padding: 16, borderRadius: 18, background: "#fff", border: "1px solid rgba(37,99,235,.10)", cursor: "pointer" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
                     <div>
                       <div style={{ fontFamily: F, fontSize: 18, fontWeight: 900, color: "#0F172A", lineHeight: 1.3 }}>{record.code}</div>
@@ -3431,21 +3583,11 @@ function PromoCodesModule({
                   <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
                     <InfoTile label="Descuento" value={`${formatPercent(record.discountRate)}%`} />
                     <InfoTile label="Comisión" value={`${formatPercent(record.commissionRate)}%`} />
-                    <InfoTile label="Usos" value={`${record.usesCount || 0}${record.maxUses ? ` / ${record.maxUses}` : ""}`} />
-                    <InfoTile label="Vigencia" value={record.expiresAt ? `Hasta ${String(record.expiresAt).slice(0, 10)}` : "Sin vencimiento"} />
+                    <InfoTile label="Ventas Wompi" value={record.wompiSummary?.salesCount || 0} />
+                    <InfoTile label="Valor referido" value={record.wompiSummary?.finalAmountLabel || "$ 0"} />
                   </div>
                   {record.notes ? <div style={{ marginTop: 10, fontFamily: F, fontSize: 13, color: "#52647F", lineHeight: 1.7 }}>{record.notes}</div> : null}
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => onEdit(record)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
-                      {isLegacy ? "Guardar y editar" : "Editar"}
-                    </button>
-                    {!isLegacy ? (
-                      <button type="button" onClick={() => onToggle(record)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: record.active ? "rgba(220,38,38,.06)" : "rgba(34,197,94,.08)", color: record.active ? "#B91C1C" : "#15803D", fontFamily: F, fontSize: 12, fontWeight: 900, cursor: "pointer" }}>
-                        {record.active ? "Desactivar" : "Activar"}
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
+                </button>
               );
             })}
             {!promoCodes.length && !loading ? (
@@ -3453,9 +3595,8 @@ function PromoCodesModule({
                 Aún no hay códigos promocionales registrados.
               </div>
             ) : null}
-          </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </section>
   );
 }
@@ -3846,6 +3987,11 @@ export default function AdminPanel() {
   const [promoCodesError, setPromoCodesError] = useState("");
   const [promoCodeDraft, setPromoCodeDraft] = useState(EMPTY_PROMO_CODE_DRAFT);
   const [promoCodeSaving, setPromoCodeSaving] = useState(false);
+  const [promoCodeFormOpen, setPromoCodeFormOpen] = useState(false);
+  const [selectedPromoCode, setSelectedPromoCode] = useState(null);
+  const [promoCodeReport, setPromoCodeReport] = useState(null);
+  const [promoCodeReportLoading, setPromoCodeReportLoading] = useState(false);
+  const [promoCodeReportError, setPromoCodeReportError] = useState("");
   const [deleteDialog, setDeleteDialog] = useState(null);
   const [deleteCredentials, setDeleteCredentials] = useState(EMPTY_DELETE_CREDENTIALS);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -4290,6 +4436,10 @@ export default function AdminPanel() {
     setPromoCodes([]);
     setPromoCodesError("");
     setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
+    setPromoCodeFormOpen(false);
+    setSelectedPromoCode(null);
+    setPromoCodeReport(null);
+    setPromoCodeReportError("");
     setPortalUserActionDialog(null);
     setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "" });
     setPortalUserActionError("");
@@ -4566,6 +4716,14 @@ export default function AdminPanel() {
       setManualPaymentDraft(EMPTY_MANUAL_PAYMENT_DRAFT);
       setManualPaymentFiles([]);
       setTaskDraft(EMPTY_TASK_DRAFT);
+    }
+    if (moduleId !== "codigosPromo") {
+      setPromoCodeFormOpen(false);
+      setSelectedPromoCode(null);
+      setPromoCodeReport(null);
+      setPromoCodeReportError("");
+      setPromoCodesError("");
+      setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
     }
   };
 
@@ -5205,14 +5363,60 @@ export default function AdminPanel() {
     }));
   };
 
+  const loadPromoCodeReport = async (code) => {
+    if (!code) return null;
+    setPromoCodeReportLoading(true);
+    setPromoCodeReportError("");
+
+    try {
+      const response = await fetch(`/api/admin-get-promo-code-report?code=${encodeURIComponent(code)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "No fue posible cargar el informe del código.");
+      }
+
+      setPromoCodeReport(data.report || null);
+      return data.report || null;
+    } catch (error) {
+      setPromoCodeReportError(error.message);
+      return null;
+    } finally {
+      setPromoCodeReportLoading(false);
+    }
+  };
+
+  const handleCreatePromoCode = () => {
+    setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
+    setPromoCodesError("");
+    setPromoCodeFormOpen(true);
+  };
+
+  const handleOpenPromoCode = (record) => {
+    setSelectedPromoCode(record);
+    setPromoCodeReport(null);
+    setPromoCodeReportError("");
+    loadPromoCodeReport(record.code);
+  };
+
   const handleEditPromoCode = (record) => {
     setPromoCodeDraft(buildPromoCodeDraft(record));
     setPromoCodesError("");
+    setPromoCodeFormOpen(true);
   };
 
-  const handleCancelPromoCodeEdit = () => {
+  const handleClosePromoCodeForm = () => {
+    if (promoCodeSaving) return;
     setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
     setPromoCodesError("");
+    setPromoCodeFormOpen(false);
+  };
+
+  const handleClosePromoCodeDetail = () => {
+    if (promoCodeSaving) return;
+    setSelectedPromoCode(null);
+    setPromoCodeReport(null);
+    setPromoCodeReportError("");
   };
 
   const handleSavePromoCode = async () => {
@@ -5247,6 +5451,14 @@ export default function AdminPanel() {
 
       setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
       await loadPromoCodes();
+      if (selectedPromoCode?.code) {
+        const freshRecord = (data.promoCode && data.promoCode.code)
+          ? data.promoCode
+          : selectedPromoCode;
+        setSelectedPromoCode(freshRecord);
+        await loadPromoCodeReport(freshRecord.code);
+      }
+      setPromoCodeFormOpen(false);
       setNotice(promoCodeDraft.originalCode ? "Código promocional actualizado." : "Código promocional creado.");
     } catch (error) {
       setPromoCodesError(error.message);
@@ -5276,6 +5488,10 @@ export default function AdminPanel() {
       }
 
       await loadPromoCodes();
+      if (selectedPromoCode?.code === record.code) {
+        setSelectedPromoCode(data.promoCode || { ...record, active: record.active !== true });
+        await loadPromoCodeReport(record.code);
+      }
       setNotice(record.active ? "Código promocional desactivado." : "Código promocional activado.");
     } catch (error) {
       setPromoCodesError(error.message);
@@ -5287,6 +5503,19 @@ export default function AdminPanel() {
   const handleExportPromoCodes = () => {
     downloadCsvFile(`codigos-promocionales-contarae-${new Date().toISOString().slice(0, 10)}.csv`, buildPromoCodesCsv(promoCodes));
     setNotice("Códigos promocionales exportados.");
+  };
+
+  const handleExportPromoCodeReport = () => {
+    if (!promoCodeReport) return;
+    downloadCsvFile(`informe-codigo-${promoCodeReport.code}-${new Date().toISOString().slice(0, 10)}.csv`, buildPromoCodeReportCsv(promoCodeReport));
+    setNotice("Informe del código promocional exportado.");
+  };
+
+  const handleOpenPromoSaleCertification = (reference) => {
+    setSelectedPromoCode(null);
+    setPromoCodeReport(null);
+    setPromoCodeReportError("");
+    handleOpenCertificationRecord(reference);
   };
 
   const handleOpenPortalUserAction = (type, user) => {
@@ -5872,18 +6101,35 @@ export default function AdminPanel() {
         {activeModule === "codigosPromo" ? (
           <PromoCodesModule
             promoCodes={promoCodes}
-            draft={promoCodeDraft}
             loading={promoCodesLoading}
-            saving={promoCodeSaving}
-            error={promoCodesError}
-            onDraftChange={handlePromoCodeDraftChange}
-            onEdit={handleEditPromoCode}
-            onCancelEdit={handleCancelPromoCodeEdit}
-            onSave={handleSavePromoCode}
-            onToggle={handleTogglePromoCode}
+            onCreate={handleCreatePromoCode}
+            onOpen={handleOpenPromoCode}
             onExport={handleExportPromoCodes}
           />
         ) : null}
+
+        <PromoCodeFormModal
+          open={promoCodeFormOpen}
+          draft={promoCodeDraft}
+          saving={promoCodeSaving}
+          error={promoCodesError}
+          onDraftChange={handlePromoCodeDraftChange}
+          onClose={handleClosePromoCodeForm}
+          onSave={handleSavePromoCode}
+        />
+
+        <PromoCodeDetailModal
+          record={selectedPromoCode}
+          report={promoCodeReport}
+          loading={promoCodeReportLoading}
+          error={promoCodeReportError}
+          saving={promoCodeSaving}
+          onClose={handleClosePromoCodeDetail}
+          onEdit={handleEditPromoCode}
+          onToggle={handleTogglePromoCode}
+          onExportReport={handleExportPromoCodeReport}
+          onOpenCertification={handleOpenPromoSaleCertification}
+        />
 
         {activeModule === "certificaciones" ? (
         <div className="admin-shell-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 18, alignItems: "start" }}>

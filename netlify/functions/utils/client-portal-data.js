@@ -3,6 +3,7 @@ import { getStore as getBlobStore } from "@netlify/blobs";
 
 const PORTAL_STORE_NAME = "client-portal";
 const COMPANY_PREFIX = "company:";
+const CUSTOMER_UPDATE_ALERT_MODES = new Set(["blocking", "informative", "disabled"]);
 const DEFAULT_CURRENCY = "COP";
 
 const IMPORT_TEMPLATES = {
@@ -485,7 +486,8 @@ function defaultData(companyId, companyName = "") {
       email: "",
       address: "",
       logoDataUrl: "",
-      color: "#1D4ED8"
+      color: "#1D4ED8",
+      customerUpdateAlertsMode: "blocking"
     },
     customers: [],
     invoices: [],
@@ -502,6 +504,7 @@ function defaultData(companyId, companyName = "") {
 
 function normalizeData(data = {}, companyId, companyName = "") {
   const base = defaultData(companyId, companyName);
+  const customerUpdateAlertsMode = cleanText(data.company?.customerUpdateAlertsMode || base.company.customerUpdateAlertsMode);
   return {
     ...base,
     ...data,
@@ -509,7 +512,8 @@ function normalizeData(data = {}, companyId, companyName = "") {
     company: {
       ...base.company,
       ...(data.company || {}),
-      name: cleanText(data.company?.name) || companyName || base.company.name
+      name: cleanText(data.company?.name) || companyName || base.company.name,
+      customerUpdateAlertsMode: CUSTOMER_UPDATE_ALERT_MODES.has(customerUpdateAlertsMode) ? customerUpdateAlertsMode : base.company.customerUpdateAlertsMode
     },
     customers: Array.isArray(data.customers) ? data.customers : [],
     invoices: Array.isArray(data.invoices) ? data.invoices : [],
@@ -1506,6 +1510,7 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
   let requiresFullRefresh = false;
 
   if (type === "company") {
+    const customerUpdateAlertsMode = cleanText(payload.customerUpdateAlertsMode);
     data.company = {
       ...data.company,
       name: cleanText(payload.name) || data.company.name,
@@ -1514,7 +1519,8 @@ export async function upsertPortalEntity(companyId, type, payload = {}, actor = 
       email: cleanText(payload.email).toLowerCase(),
       address: cleanText(payload.address),
       logoDataUrl: Object.prototype.hasOwnProperty.call(payload, "logoDataUrl") ? String(payload.logoDataUrl || "") : String(data.company.logoDataUrl || ""),
-      color: cleanText(payload.color) || data.company.color
+      color: cleanText(payload.color) || data.company.color,
+      customerUpdateAlertsMode: CUSTOMER_UPDATE_ALERT_MODES.has(customerUpdateAlertsMode) ? customerUpdateAlertsMode : data.company.customerUpdateAlertsMode || "blocking"
     };
   } else if (type === "customer") {
     const id = normalizeCustomerId(payload.id) || nextCustomerId(data.customers);

@@ -1783,6 +1783,13 @@ const REQUIRED_CUSTOMER_FIELDS = [
   ["department", "departamento"]
 ];
 
+const CUSTOMER_UPDATE_ALERT_MODES = new Set(["blocking", "informative", "disabled"]);
+
+function customerUpdateAlertMode(data = {}) {
+  const mode = clean(data.company?.customerUpdateAlertsMode || "blocking");
+  return CUSTOMER_UPDATE_ALERT_MODES.has(mode) ? mode : "blocking";
+}
+
 function missingCustomerFields(customer = {}) {
   return REQUIRED_CUSTOMER_FIELDS
     .filter(([field]) => !clean(customer[field]))
@@ -1792,6 +1799,28 @@ function missingCustomerFields(customer = {}) {
 function customerNeedsUpdate(customer = {}) {
   if (!customer?.id) return true;
   return clean(customer.dataStatus) !== "actualizado" || missingCustomerFields(customer).length > 0;
+}
+
+function customerUpdateNoticeDetail(customer = {}) {
+  const missing = missingCustomerFields(customer);
+  return missing.length
+    ? `Pendiente: ${missing.join(", ")}`
+    : "Pendiente de confirmacion";
+}
+
+function shouldBlockForCustomerUpdate(data = {}, customer = {}) {
+  return customerUpdateAlertMode(data) === "blocking" && customerNeedsUpdate(customer);
+}
+
+function withCustomerUpdateNotice(action = {}, data = {}, customer = {}) {
+  if (customerUpdateAlertMode(data) !== "informative" || !customerNeedsUpdate(customer)) return action;
+  return {
+    ...action,
+    details: [
+      ...(action.details || []),
+      { label: "Datos cliente", value: customerUpdateNoticeDetail(customer) }
+    ]
+  };
 }
 
 function isValidCustomerPhone(customer = {}) {
@@ -3384,11 +3413,11 @@ function Invoices({ data, onSave, onExport }) {
         ] : [])
       ]
     };
-    if (customerNeedsUpdate(customer)) {
+    if (shouldBlockForCustomerUpdate(data, customer)) {
       setCustomerUpdateRequest({ customer, context: "guardar esta factura", nextConfirm });
       return;
     }
-    setConfirmAction(nextConfirm);
+    setConfirmAction(withCustomerUpdateNotice(nextConfirm, data, customer));
   }
 
   function voidInvoice(invoice) {
@@ -3940,11 +3969,11 @@ function Payments({ data, onSave, onExport }) {
         { label: "Metodos", value: splitPaymentEnabled ? `${normalizedMethods.length} metodo(s)` : draft.method }
       ]
     };
-    if (customerNeedsUpdate(customer)) {
+    if (shouldBlockForCustomerUpdate(data, customer)) {
       setCustomerUpdateRequest({ customer, context: "registrar este abono", nextConfirm });
       return;
     }
-    setConfirmAction(nextConfirm);
+    setConfirmAction(withCustomerUpdateNotice(nextConfirm, data, customer));
   }
 
   function voidPayment(payment) {
@@ -4847,11 +4876,11 @@ function Orders({ data, onSave, onExport }) {
         { label: "Estado", value: draft.status }
       ]
     };
-    if (customerNeedsUpdate(customer)) {
+    if (shouldBlockForCustomerUpdate(data, customer)) {
       setCustomerUpdateRequest({ customer, context: "guardar esta orden", nextConfirm });
       return;
     }
-    setConfirmAction(nextConfirm);
+    setConfirmAction(withCustomerUpdateNotice(nextConfirm, data, customer));
   }
 
   async function convert(order) {
@@ -4871,11 +4900,11 @@ function Orders({ data, onSave, onExport }) {
         { label: "Total", value: order.totalLabel || money(order.total) }
       ]
     };
-    if (customerNeedsUpdate(customer)) {
+    if (shouldBlockForCustomerUpdate(data, customer)) {
       setCustomerUpdateRequest({ customer, context: "convertir esta orden en factura", nextConfirm });
       return;
     }
-    setConfirmAction(nextConfirm);
+    setConfirmAction(withCustomerUpdateNotice(nextConfirm, data, customer));
   }
 
   function voidOrder(order) {
@@ -5471,9 +5500,19 @@ function Config({ data, onSave }) {
       <form className="client-portal-form-grid" onSubmit={async (event) => { event.preventDefault(); if (window.confirm("Deseas guardar la configuracion de la empresa?")) await onSave("company", draft); }} style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
         {["name", "nit", "phone", "email", "address"].map((field) => <Field key={field} label={{ name: "Nombre empresa", nit: "NIT / documento", phone: "Telefono", email: "Correo", address: "Direccion" }[field]}><input style={input} value={draft[field] || ""} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))} /></Field>)}
         <Field label="Color principal"><input style={input} type="color" value={draft.color || "#1D4ED8"} onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))} /></Field>
+        <Field label="Alertas por clientes desactualizados">
+          <select style={input} value={customerUpdateAlertMode({ company: draft })} onChange={(event) => setDraft((current) => ({ ...current, customerUpdateAlertsMode: event.target.value }))}>
+            <option value="blocking">Bloquear registro hasta actualizar</option>
+            <option value="informative">Solo avisar y permitir continuar</option>
+            <option value="disabled">No mostrar alertas</option>
+          </select>
+        </Field>
         <Field label="Logo de la empresa">
           <input style={input} type="file" accept="image/*" onChange={(event) => selectLogo(event.target.files?.[0])} />
         </Field>
+        <div className="client-portal-form-wide" style={{ gridColumn: "1/-1", padding: 13, borderRadius: 16, background: "rgba(37,99,235,.06)", color: "#1E3A8A", fontFamily: F, lineHeight: 1.65 }}>
+          Esta configuracion aplica para facturas, abonos, ordenes y conversion de orden a factura. WhatsApp conserva una validacion independiente: solo exige que el celular sea valido.
+        </div>
         <div style={{ padding: 14, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", display: "grid", gap: 10, alignContent: "center" }}>
           {draft.logoDataUrl ? <img src={draft.logoDataUrl} alt="Logo empresa" style={{ maxHeight: 72, maxWidth: "100%", objectFit: "contain" }} /> : <span style={{ fontFamily: F, color: "#64748B" }}>Sin logo cargado.</span>}
           {draft.logoDataUrl ? <button type="button" onClick={() => setDraft((current) => ({ ...current, logoDataUrl: "" }))} style={{ ...button, background: "#fff", color: "#B91C1C", border: "1px solid rgba(220,38,38,.14)" }}>Quitar logo</button> : null}

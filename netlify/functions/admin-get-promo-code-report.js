@@ -1,8 +1,5 @@
 import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-auth.js";
-import promoUtils from "./utils/promo-codes.cjs";
-import { buildPromoCodeSalesIndex } from "./utils/promo-code-reports.js";
-
-const { listPromoCodes, normalizePromoCode } = promoUtils;
+import { buildPromoCodeReport } from "./utils/promo-code-reports.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -35,29 +32,13 @@ export default async (req) => {
   }
 
   try {
-    const [promoCodes, salesIndex] = await Promise.all([
-      listPromoCodes(),
-      buildPromoCodeSalesIndex()
-    ]);
-    const enrichedPromoCodes = promoCodes.map((promoCode) => ({
-      ...promoCode,
-      wompiSummary: salesIndex[normalizePromoCode(promoCode.code)] || {
-        salesCount: 0,
-        baseAmount: 0,
-        baseAmountLabel: "$ 0",
-        discountAmount: 0,
-        discountAmountLabel: "$ 0",
-        finalAmount: 0,
-        finalAmountLabel: "$ 0",
-        commissionAmount: 0,
-        commissionAmountLabel: "$ 0"
-      }
-    }));
+    const url = new URL(req.url);
+    const report = await buildPromoCodeReport(url.searchParams.get("code") || "");
 
     return new Response(
       JSON.stringify({
         ok: true,
-        promoCodes: enrichedPromoCodes
+        report
       }),
       {
         status: 200,
@@ -67,11 +48,11 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible listar los códigos promocionales.",
+        error: "No fue posible generar el informe del código promocional.",
         detail: error.message
       }),
       {
-        status: 500,
+        status: 400,
         headers
       }
     );
