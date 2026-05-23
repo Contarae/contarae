@@ -1,5 +1,6 @@
 const SITE_URL = "https://contarae.com";
 const LOGO_PATH = "/logo512.png";
+const SOCIAL_IMAGE_PATH = "/contarae-og.png";
 const SAME_AS = [
   "https://www.facebook.com/share/1ENSxjgYCH/?mibextid=wwXIfr",
   "https://www.instagram.com/oficial.contarae?igsh=OWJmd250d3ljMmR2&utm_source=qr",
@@ -460,6 +461,8 @@ const injectSchema = (html, meta, canonicalUrl) => {
       thumbnailUrl: ["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],
       embedUrl: "https://www.youtube.com/embed/yHF1p9T9kgU",
       contentUrl: "https://www.youtube.com/watch?v=yHF1p9T9kgU",
+      uploadDate: "2026-04-30",
+      inLanguage: "es-CO",
       publisher: { "@id": `${SITE_URL}/#negocio` },
     });
     extraGraph.push(buildBreadcrumbSchema([{ name: "Inicio", path: "/" }, { name: "Certificación de ingresos", path: "/certificacion" }]));
@@ -527,6 +530,7 @@ const injectSchema = (html, meta, canonicalUrl) => {
         description:
           "Servicios contables, tributarios y financieros en Colombia, con certificación de ingresos por Contador Público y herramientas de cálculo tributario y laboral.",
         url: SITE_URL,
+        logo: new URL(LOGO_PATH, SITE_URL).href,
         telephone: "+573001432008",
         email: "info@contarae.com",
         address: {
@@ -592,7 +596,7 @@ const injectMeta = (html, requestUrl, meta) => {
   const title = escapeHtml(meta.title);
   const description = escapeHtml(meta.description);
   const canonicalUrl = escapeHtml(new URL(meta.canonicalPath || request.pathname, SITE_URL).href);
-  const image = escapeHtml(new URL(LOGO_PATH, SITE_URL).href);
+  const image = escapeHtml(new URL(SOCIAL_IMAGE_PATH, SITE_URL).href);
   const robots = meta.noindex ? "noindex, nofollow" : "index, follow";
 
   let nextHtml = html.replace(/<title>.*?<\/title>/is, `<title>${title}</title>`);
@@ -607,6 +611,8 @@ const injectMeta = (html, requestUrl, meta) => {
   nextHtml = replaceMetaTag(nextHtml, "property", "og:description", description);
   nextHtml = replaceMetaTag(nextHtml, "property", "og:url", canonicalUrl);
   nextHtml = replaceMetaTag(nextHtml, "property", "og:image", image);
+  nextHtml = replaceMetaTag(nextHtml, "property", "og:image:width", "1200");
+  nextHtml = replaceMetaTag(nextHtml, "property", "og:image:height", "400");
   nextHtml = replaceMetaTag(nextHtml, "property", "og:image:alt", title);
   nextHtml = replaceMetaTag(nextHtml, "name", "twitter:card", "summary_large_image");
   nextHtml = replaceMetaTag(nextHtml, "name", "twitter:title", title);

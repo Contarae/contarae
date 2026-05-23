@@ -747,12 +747,12 @@ const buildFaqSchema=faqs=>{
 const buildStructuredData=(path,meta,toolConfig,certSupportConfig,serviceSeoConfig)=>{
   const normalized=normPath(path);
   const base=[
-    {"@context":"https://schema.org","@type":"ProfessionalService","@id":`${SITE_URL}/#negocio`,"name":"CONTARAE","description":"Servicios contables, tributarios y financieros en Colombia, con certificación de ingresos por Contador Público y herramientas de cálculo tributario y laboral.","url":SITE_URL,"telephone":"+573001432008","email":EM,"address":{"@type":"PostalAddress","addressLocality":"Bogotá D.C.","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00","sameAs":SOCIAL_LINKS.map(([,url])=>url)},
+    {"@context":"https://schema.org","@type":"ProfessionalService","@id":`${SITE_URL}/#negocio`,"name":"CONTARAE","description":"Servicios contables, tributarios y financieros en Colombia, con certificación de ingresos por Contador Público y herramientas de cálculo tributario y laboral.","url":SITE_URL,"logo":new URL("/logo512.png",SITE_URL).href,"telephone":"+573001432008","email":EM,"address":{"@type":"PostalAddress","addressLocality":"Bogotá D.C.","addressCountry":"CO"},"areaServed":"CO","priceRange":"$$","openingHours":"Mo-Fr 08:00-18:00","sameAs":SOCIAL_LINKS.map(([,url])=>url)},
     {"@context":"https://schema.org","@type":"WebSite","@id":`${SITE_URL}/#website`,"name":"CONTARAE","url":SITE_URL,"inLanguage":"es-CO"}
   ];
   if(isCertificationPath(normalized)){
     base.push({"@context":"https://schema.org","@type":"Service","name":"Certificación de ingresos por Contador Público","description":meta.description,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":"Certificación de ingresos","url":meta.canonical,"offers":{"@type":"AggregateOffer","priceCurrency":"COP","lowPrice":80000,"highPrice":155000}});
-    base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","publisher":{"@id":`${SITE_URL}/#negocio`}});
+    base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","uploadDate":"2026-04-30","inLanguage":"es-CO","publisher":{"@id":`${SITE_URL}/#negocio`}});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE}]));
     const faqSchema=buildFaqSchema((typeof FQ!=="undefined"?FQ:[]).slice(0,6));
     if(faqSchema)base.push(faqSchema);
@@ -786,12 +786,14 @@ const syncSeoTags=(meta,path,toolConfig,certSupportConfig,serviceSeoConfig)=>{
   upsertMeta('meta[property="og:title"]',{property:"og:title",content:meta.title});
   upsertMeta('meta[property="og:description"]',{property:"og:description",content:meta.description});
   upsertMeta('meta[property="og:url"]',{property:"og:url",content:meta.canonical});
-  upsertMeta('meta[property="og:image"]',{property:"og:image",content:new URL("/logo512.png",SITE_URL).href});
+  upsertMeta('meta[property="og:image"]',{property:"og:image",content:new URL("/contarae-og.png",SITE_URL).href});
+  upsertMeta('meta[property="og:image:width"]',{property:"og:image:width",content:"1200"});
+  upsertMeta('meta[property="og:image:height"]',{property:"og:image:height",content:"400"});
   upsertMeta('meta[property="og:image:alt"]',{property:"og:image:alt",content:meta.title});
   upsertMeta('meta[name="twitter:card"]',{name:"twitter:card",content:"summary_large_image"});
   upsertMeta('meta[name="twitter:title"]',{name:"twitter:title",content:meta.title});
   upsertMeta('meta[name="twitter:description"]',{name:"twitter:description",content:meta.description});
-  upsertMeta('meta[name="twitter:image"]',{name:"twitter:image",content:new URL("/logo512.png",SITE_URL).href});
+  upsertMeta('meta[name="twitter:image"]',{name:"twitter:image",content:new URL("/contarae-og.png",SITE_URL).href});
   document.querySelectorAll("script[data-contarae-schema]").forEach(el=>el.remove());
   if(meta.noindex)return;
   buildStructuredData(path,meta,toolConfig,certSupportConfig,serviceSeoConfig).forEach(schema=>{
