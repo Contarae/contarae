@@ -461,7 +461,7 @@ const injectSchema = (html, meta, canonicalUrl) => {
       thumbnailUrl: ["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],
       embedUrl: "https://www.youtube.com/embed/yHF1p9T9kgU",
       contentUrl: "https://www.youtube.com/watch?v=yHF1p9T9kgU",
-      uploadDate: "2026-04-30",
+      uploadDate: "2026-04-30T09:00:00-05:00",
       inLanguage: "es-CO",
       publisher: { "@id": `${SITE_URL}/#negocio` },
     });

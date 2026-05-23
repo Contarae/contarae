@@ -752,7 +752,7 @@ const buildStructuredData=(path,meta,toolConfig,certSupportConfig,serviceSeoConf
   ];
   if(isCertificationPath(normalized)){
     base.push({"@context":"https://schema.org","@type":"Service","name":"Certificación de ingresos por Contador Público","description":meta.description,"provider":{"@id":`${SITE_URL}/#negocio`},"areaServed":"CO","serviceType":"Certificación de ingresos","url":meta.canonical,"offers":{"@type":"AggregateOffer","priceCurrency":"COP","lowPrice":80000,"highPrice":155000}});
-    base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","uploadDate":"2026-04-30","inLanguage":"es-CO","publisher":{"@id":`${SITE_URL}/#negocio`}});
+    base.push({"@context":"https://schema.org","@type":"VideoObject","name":"Paso a paso certificación de ingresos CONTARAE","description":"Video explicativo sobre cómo solicitar una certificación de ingresos firmada por Contador Público en CONTARAE.","thumbnailUrl":["https://i.ytimg.com/vi/yHF1p9T9kgU/hqdefault.jpg"],"embedUrl":CERTIFICATION_VIDEO_EMBED,"contentUrl":"https://www.youtube.com/watch?v=yHF1p9T9kgU","uploadDate":"2026-04-30T09:00:00-05:00","inLanguage":"es-CO","publisher":{"@id":`${SITE_URL}/#negocio`}});
     base.push(buildBreadcrumbSchema([{name:"Inicio",path:"/"},{name:"Certificación de ingresos",path:CERT_ROUTE}]));
     const faqSchema=buildFaqSchema((typeof FQ!=="undefined"?FQ:[]).slice(0,6));
     if(faqSchema)base.push(faqSchema);
