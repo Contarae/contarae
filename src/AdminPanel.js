@@ -1427,6 +1427,19 @@ function getDashboardRecordDate(record = {}) {
   return record.createdAt || record.updatedAt || record.dueDate || "";
 }
 
+function isApprovedCertificationSale(record = {}) {
+  const paymentStatus = String(record.paymentStatus || "").toLowerCase();
+  return paymentStatus === "approved" || record.source === "paid";
+}
+
+function getCertificationSaleDate(record = {}) {
+  return record.approvedAt || record.createdAt || record.updatedAt || "";
+}
+
+function getCertificationSaleAmount(record = {}) {
+  return isApprovedCertificationSale(record) ? parseCurrency(record.fee) : 0;
+}
+
 function getTrendText(current, previous, period) {
   if (period === "all") return "Vista histórica";
   if (!previous && !current) return "Sin movimiento previo";
@@ -1677,22 +1690,39 @@ function OperationsDashboard({
   const certificationPending = certificationRecords.filter((record) => ["en_revision", "documentos_solicitados"].includes(record.certificationStatus)).length;
   const currentPayments = payments.filter((payment) => payment.kind === "payment" && isAppliedServicePayment(payment) && isWithinDashboardRange(payment.paidAt || payment.createdAt, range));
   const previousPayments = payments.filter((payment) => payment.kind === "payment" && isAppliedServicePayment(payment) && isWithinDashboardRange(payment.paidAt || payment.createdAt, previousRange));
-  const currentPaidAmount = currentPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
-  const previousPaidAmount = previousPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
   const currentLeads = clientLeads.filter((lead) => isWithinDashboardRange(lead.createdAt, range));
   const previousLeads = clientLeads.filter((lead) => isWithinDashboardRange(lead.createdAt, previousRange));
   const pendingTasks = serviceRecords.reduce((sum, record) => sum + Number(record.pendingTasksCount || 0), 0);
   const overdueTasks = serviceRecords.reduce((sum, record) => sum + Number(record.overdueTasksCount || 0), 0);
   const currentServiceRecords = serviceRecords.filter((record) => isWithinDashboardRange(getDashboardRecordDate(record), range));
   const previousServiceRecords = serviceRecords.filter((record) => isWithinDashboardRange(getDashboardRecordDate(record), previousRange));
-  const currentSalesAmount = currentServiceRecords
+  const approvedCertificationRecords = certificationRecords.filter(isApprovedCertificationSale);
+  const currentCertificationSalesRecords = approvedCertificationRecords.filter((record) => isWithinDashboardRange(getCertificationSaleDate(record), range));
+  const previousCertificationSalesRecords = approvedCertificationRecords.filter((record) => isWithinDashboardRange(getCertificationSaleDate(record), previousRange));
+  const currentServiceSalesAmount = currentServiceRecords
     .reduce((sum, record) => sum + parseCurrency(record.agreedPrice), 0);
-  const previousSalesAmount = previousServiceRecords
+  const previousServiceSalesAmount = previousServiceRecords
     .reduce((sum, record) => sum + parseCurrency(record.agreedPrice), 0);
+  const currentCertificationSalesAmount = currentCertificationSalesRecords
+    .reduce((sum, record) => sum + getCertificationSaleAmount(record), 0);
+  const previousCertificationSalesAmount = previousCertificationSalesRecords
+    .reduce((sum, record) => sum + getCertificationSaleAmount(record), 0);
+  const currentSalesAmount = currentServiceSalesAmount + currentCertificationSalesAmount;
+  const previousSalesAmount = previousServiceSalesAmount + previousCertificationSalesAmount;
+  const currentServicePaidAmount = currentPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
+  const previousServicePaidAmount = previousPayments.reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
+  const currentPaidAmount = currentServicePaidAmount + currentCertificationSalesAmount;
+  const previousPaidAmount = previousServicePaidAmount + previousCertificationSalesAmount;
   const paidServiceCount = serviceRecords.filter((record) => parseCurrency(record.amountPaid) > 0).length;
   const finishedServiceCount = serviceRecords.filter((record) => record.status === "finalizado").length;
-  const ticketAverage = currentServiceRecords.length ? currentSalesAmount / currentServiceRecords.length : 0;
-  const paymentRate = summary.totalSales === "$ 0" ? 0 : Math.round((parseCurrency(summary.totalPaid) / Math.max(parseCurrency(summary.totalSales), 1)) * 100);
+  const currentSalesCount = currentServiceRecords.length + currentCertificationSalesRecords.length;
+  const ticketAverage = currentSalesCount ? currentSalesAmount / currentSalesCount : 0;
+  const historicalServiceSalesAmount = parseCurrency(summary.totalSales);
+  const historicalServicePaidAmount = parseCurrency(summary.totalPaid);
+  const historicalCertificationSalesAmount = approvedCertificationRecords.reduce((sum, record) => sum + getCertificationSaleAmount(record), 0);
+  const historicalTotalSalesAmount = historicalServiceSalesAmount + historicalCertificationSalesAmount;
+  const historicalTotalPaidAmount = historicalServicePaidAmount + historicalCertificationSalesAmount;
+  const paymentRate = historicalTotalSalesAmount <= 0 ? 0 : Math.round((historicalTotalPaidAmount / Math.max(historicalTotalSalesAmount, 1)) * 100);
   const appliedPayments = payments.filter((payment) => payment.kind === "payment" && isAppliedServicePayment(payment));
   const voidedPayments = payments.filter((payment) => payment.kind === "payment" && isVoidedServicePayment(payment));
   const activeRecords = serviceRecords.filter((record) => !["finalizado", "cancelado"].includes(record.status));
@@ -1738,13 +1768,23 @@ function OperationsDashboard({
   const maxAgingAmount = Math.max(...agingBuckets.map((item) => item.amount), 1);
   const monthSeries = [-5, -4, -3, -2, -1, 0].map((offset) => {
     const monthKey = getMonthKeyOffset(today, offset);
-    const sales = serviceRecords
+    const serviceSales = serviceRecords
       .filter((record) => String(record.createdAt || record.updatedAt || "").startsWith(monthKey))
       .reduce((sum, record) => sum + parseCurrency(record.agreedPrice), 0);
-    const paid = payments
+    const certificationSales = approvedCertificationRecords
+      .filter((record) => String(getCertificationSaleDate(record)).startsWith(monthKey))
+      .reduce((sum, record) => sum + getCertificationSaleAmount(record), 0);
+    const servicePaid = payments
       .filter((payment) => payment.kind === "payment" && isAppliedServicePayment(payment) && String(payment.paidAt || payment.createdAt || "").startsWith(monthKey))
       .reduce((sum, payment) => sum + parseCurrency(payment.amount), 0);
-    return { monthKey, label: getShortMonthLabel(monthKey), sales, paid };
+    return {
+      monthKey,
+      label: getShortMonthLabel(monthKey),
+      sales: serviceSales + certificationSales,
+      paid: servicePaid + certificationSales,
+      serviceSales,
+      certificationSales
+    };
   });
   const maxMonthAmount = Math.max(...monthSeries.flatMap((item) => [item.sales, item.paid]), 1);
   const byTypeDetailed = SERVICE_TYPES.map(([type, label]) => {
@@ -1819,17 +1859,29 @@ function OperationsDashboard({
         </div>
       </section>
       <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-        <StatCard label="VENTAS DEL PERÍODO" value={loading ? "..." : formatMoney(currentSalesAmount)} tone="#1D4ED8" note={`${currentServiceRecords.length} solicitud(es) creada(s).`} trend={getTrendText(currentSalesAmount, previousSalesAmount, period)} />
-        <StatCard label="RECAUDO DEL PERÍODO" value={loading ? "..." : formatMoney(currentPaidAmount)} tone="#15803D" note={`${currentPayments.length} pago(s) aplicado(s).`} trend={getTrendText(currentPaidAmount, previousPaidAmount, period)} />
+        <StatCard
+          label="VENTAS DEL PERÍODO"
+          value={loading ? "..." : formatMoney(currentSalesAmount)}
+          tone="#1D4ED8"
+          note={loading ? "Calculando desglose..." : `Servicios: ${formatMoney(currentServiceSalesAmount)} · Certificaciones: ${formatMoney(currentCertificationSalesAmount)} · Total: ${formatMoney(currentSalesAmount)}`}
+          trend={getTrendText(currentSalesAmount, previousSalesAmount, period)}
+        />
+        <StatCard
+          label="RECAUDO DEL PERÍODO"
+          value={loading ? "..." : formatMoney(currentPaidAmount)}
+          tone="#15803D"
+          note={loading ? "Calculando recaudo..." : `Servicios: ${formatMoney(currentServicePaidAmount)} · Certificaciones: ${formatMoney(currentCertificationSalesAmount)}`}
+          trend={getTrendText(currentPaidAmount, previousPaidAmount, period)}
+        />
         <StatCard label="CUENTAS POR COBRAR" value={loading ? "..." : summary.receivables} tone="#0F766E" note={`${summary.pendingPaymentCount} solicitud(es) con pago pendiente o parcial.`} />
-        <StatCard label="TICKET PROMEDIO" value={loading ? "..." : formatMoney(ticketAverage)} tone="#7C3AED" note="Promedio de venta pactada por servicio del período." />
+        <StatCard label="TICKET PROMEDIO" value={loading ? "..." : formatMoney(ticketAverage)} tone="#7C3AED" note="Promedio sobre servicios y certificaciones del período." />
         <StatCard label="SOLICITUDES ACTIVAS" value={loading ? "..." : summary.activeCount} note="Servicios generales, no certificaciones." />
         <StatCard label="VENCIDAS" value={loading ? "..." : summary.overdueCount} tone="#DC2626" note="Requieren atención prioritaria." />
         <StatCard label="PRÓXIMAS A VENCER" value={loading ? "..." : summary.dueSoonCount} tone="#B45309" note="Vencen hoy o en máximo 3 días." />
         <StatCard label="CLIENTES NUEVOS" value={loading ? "..." : currentLeads.length} tone="#7C3AED" note="Leads captados desde la web." trend={getTrendText(currentLeads.length, previousLeads.length, period)} />
         <StatCard label="CERTIFICACIONES" value={loading ? "..." : certificationPending} tone="#C2410C" note="Pendientes o con documentos solicitados." />
         <StatCard label="TAREAS ABIERTAS" value={loading ? "..." : pendingTasks} tone="#B45309" note={`${overdueTasks} tarea(s) vencida(s).`} />
-        <StatCard label="TASA DE PAGO" value={loading ? "..." : `${paymentRate}%`} tone="#15803D" note={`${formatMoney(parseCurrency(summary.totalPaid))} recaudado sobre ${summary.totalSales}.`} />
+        <StatCard label="TASA DE PAGO" value={loading ? "..." : `${paymentRate}%`} tone="#15803D" note={`${formatMoney(historicalTotalPaidAmount)} recaudado sobre ${formatMoney(historicalTotalSalesAmount)}.`} />
         <StatCard label="PAGOS ANULADOS" value={loading ? "..." : voidedPayments.length} tone="#C2410C" note={`${appliedPayments.length} pago(s) aplicado(s) en histórico.`} />
       </div>
 
@@ -1997,9 +2049,10 @@ function OperationsDashboard({
           )}
           <div style={{ marginTop: 18, fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#1D4ED8", fontFamily: F, marginBottom: 10 }}>RESUMEN FINANCIERO</div>
           <div style={{ display: "grid", gap: 12 }}>
-            <InfoTile label="Ventas pactadas" value={summary.totalSales} />
-            <InfoTile label="Ingresos recibidos" value={summary.totalPaid} />
-            <InfoTile label="Servicios registrados" value={serviceRecords.length} />
+            <InfoTile label="Ventas servicios" value={formatMoney(historicalServiceSalesAmount)} />
+            <InfoTile label="Ventas certificaciones" value={formatMoney(historicalCertificationSalesAmount)} />
+            <InfoTile label="Ventas totales" value={formatMoney(historicalTotalSalesAmount)} />
+            <InfoTile label="Recaudo total" value={formatMoney(historicalTotalPaidAmount)} />
           </div>
         </DashboardPanel>
       </div>
@@ -5988,8 +6041,8 @@ export default function AdminPanel() {
             certificationRecords={records}
             clientLeads={clientLeads}
             payments={servicePayments}
-            loading={serviceLoading}
-            error={serviceError}
+            loading={serviceLoading || listLoading || servicePaymentsLoading}
+            error={serviceError || listError || servicePaymentsError}
             onOpenRequest={handleSelectServiceRequest}
             onOpenModule={handleModuleChange}
             onNewRequest={handleStartNewServiceRequest}

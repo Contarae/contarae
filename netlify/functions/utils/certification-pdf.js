@@ -651,12 +651,13 @@ export function buildCertificationNarrative(record = {}) {
   const destination = getRequestedPurpose(formData);
   const recurringRows = buildRecurringIncomeRows(formData);
   const eventualRows = buildEventualIncomeRows(formData);
+  const certifiedMonths = resolveCertifiedPeriodMonths(formData);
   const totalMonthlyRecurring =
     parseCurrency(formData.total_ingresos) ||
     recurringRows.reduce((sum, row) => sum + row.numericValue, 0);
   const totalRecurringPeriod =
     parseCurrency(formData.total_ingresos_periodo) ||
-    totalMonthlyRecurring * resolveCertifiedPeriodMonths(formData);
+    totalMonthlyRecurring * certifiedMonths;
   const totalEventualPeriod =
     parseCurrency(formData.total_ingresos_eventuales) ||
     eventualRows.reduce((sum, row) => sum + row.numericValue, 0);
@@ -664,6 +665,7 @@ export function buildCertificationNarrative(record = {}) {
     parseCurrency(formData.total_ingresos_global_periodo) ||
     totalRecurringPeriod + totalEventualPeriod;
   const periodInMonths = buildCertifiedPeriodInMonths(formData);
+  const isSingleMonthPeriod = certifiedMonths === 1;
   const formattedCustomerDocument = buildCustomerIdentificationLabel(formData);
   const formattedAccountantDocument = formatDocumentNumber(profile.accountantDocumentNumber) || "POR CONFIGURAR";
   const formattedProfessionalCard = formatProfessionalCardNumber(profile.professionalCardNumber) || "POR CONFIGURAR";
@@ -714,13 +716,21 @@ export function buildCertificationNarrative(record = {}) {
 
   if (recurringRows.length === 1) {
     blocks.push(
-      paragraph([
-        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales ${buildSingleIncomePhrase(recurringRows[0])}, por valor de `,
-        highlightedAmount(recurringRows[0].numericValue),
-        `; en consecuencia, para el período certificado de ${periodInMonths}, el total correspondiente a dicho lapso asciende a `,
-        highlightedAmount(totalRecurringPeriod),
-        "."
-      ])
+      paragraph(
+        isSingleMonthPeriod
+          ? [
+              `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales ${buildSingleIncomePhrase(recurringRows[0])}, por valor de `,
+              highlightedAmount(recurringRows[0].numericValue),
+              "."
+            ]
+          : [
+              `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales ${buildSingleIncomePhrase(recurringRows[0])}, por valor de `,
+              highlightedAmount(recurringRows[0].numericValue),
+              `; en consecuencia, para el período certificado de ${periodInMonths}, el total correspondiente a dicho lapso asciende a `,
+              highlightedAmount(totalRecurringPeriod),
+              "."
+            ]
+      )
     );
   } else if (recurringRows.length === 2) {
     blocks.push(
@@ -733,9 +743,13 @@ export function buildCertificationNarrative(record = {}) {
         highlightedAmount(recurringRows[1].numericValue),
         "; en conjunto, dichos ingresos representan un total mensual de ",
         highlightedAmount(totalMonthlyRecurring),
-        ` y, para el período certificado de ${periodInMonths}, un total de `,
-        highlightedAmount(totalRecurringPeriod),
-        "."
+        ...(isSingleMonthPeriod
+          ? ["."]
+          : [
+              ` y, para el período certificado de ${periodInMonths}, un total de `,
+              highlightedAmount(totalRecurringPeriod),
+              "."
+            ])
       ])
     );
   } else if (recurringRows.length > 2) {
@@ -757,18 +771,26 @@ export function buildCertificationNarrative(record = {}) {
       paragraph([
         "En conjunto, los ingresos mensuales antes relacionados representan un total mensual de ",
         highlightedAmount(totalMonthlyRecurring),
-        ` y, para el período certificado de ${periodInMonths}, un total de `,
-        highlightedAmount(totalRecurringPeriod),
-        "."
+        ...(isSingleMonthPeriod
+          ? ["."]
+          : [
+              ` y, para el período certificado de ${periodInMonths}, un total de `,
+              highlightedAmount(totalRecurringPeriod),
+              "."
+            ])
       ])
     );
   } else {
     blocks.push(
-      paragraph([
-        `Como resultado de dicha validación, no se identificaron ingresos mensuales para ${customerReference}; en consecuencia, el total correspondiente al período certificado asciende a `,
-        highlightedAmount(totalRecurringPeriod),
-        "."
-      ])
+      paragraph(
+        isSingleMonthPeriod
+          ? `Como resultado de dicha validación, no se identificaron ingresos mensuales para ${customerReference} durante el período certificado.`
+          : [
+              `Como resultado de dicha validación, no se identificaron ingresos mensuales para ${customerReference}; en consecuencia, el total correspondiente al período certificado asciende a `,
+              highlightedAmount(totalRecurringPeriod),
+              "."
+            ]
+      )
     );
   }
 
@@ -814,7 +836,9 @@ export function buildCertificationNarrative(record = {}) {
 
     blocks.push(
       paragraph([
-        "En consecuencia, una vez incorporado al análisis el total de ingresos mensuales certificado para el período, por valor de ",
+        isSingleMonthPeriod
+          ? "En consecuencia, una vez incorporado al análisis el ingreso mensual certificado, por valor de "
+          : "En consecuencia, una vez incorporado al análisis el total de ingresos mensuales certificado para el período, por valor de ",
         highlightedAmount(totalRecurringPeriod),
         ", junto con ",
         eventualRows.length === 1 ? "el ingreso eventual identificado durante dicho lapso" : "los ingresos eventuales identificados durante dicho lapso",
