@@ -4,7 +4,7 @@ import { sanitizeFileName } from "./certification-supports.js";
 
 const A4_PORTRAIT = [595.28, 841.89];
 const A4_LANDSCAPE = [841.89, 595.28];
-const WATERMARK_COLOR = rgb(0.07, 0.16, 0.31);
+const WATERMARK_COLOR = rgb(0.05, 0.13, 0.28);
 const TEXT_SOFT = rgb(0.24, 0.3, 0.4);
 const ACCENT = rgb(0.12, 0.24, 0.45);
 const BORDER = rgb(0.82, 0.88, 0.95);
@@ -68,16 +68,16 @@ function drawWatermarkOnPage(page, font, boldFont, watermark, options = {}) {
   const secondary = truncateToWidth(watermark.secondary, font, secondarySize, maxTextWidth);
   const angle = degrees(34);
 
-  [0.24, 0.52, 0.8].forEach((ratio, index) => {
+  [0.16, 0.38, 0.6, 0.82].forEach((ratio, index) => {
     const y = height * ratio;
-    const x = width * 0.08 - index * 18;
+    const x = width * 0.06 - index * 16;
     page.drawText(primary, {
       x,
       y,
       size: primarySize,
       font: boldFont,
       color: WATERMARK_COLOR,
-      opacity: 0.075,
+      opacity: 0.095,
       rotate: angle
     });
     page.drawText(secondary, {
@@ -86,7 +86,7 @@ function drawWatermarkOnPage(page, font, boldFont, watermark, options = {}) {
       size: secondarySize,
       font,
       color: WATERMARK_COLOR,
-      opacity: 0.085,
+      opacity: 0.105,
       rotate: angle
     });
   });

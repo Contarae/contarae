@@ -402,8 +402,10 @@ function getServiceStateSummary(record = {}) {
 }
 
 function formatMoney(value) {
-  const amount = parseCurrency(value);
-  return amount > 0 ? `$ ${new Intl.NumberFormat("es-CO").format(amount)}` : "$ 0";
+  const amount = Math.round(parseCurrency(value));
+  return amount > 0
+    ? `$ ${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(amount)}`
+    : "$ 0";
 }
 
 function parsePercent(value) {
