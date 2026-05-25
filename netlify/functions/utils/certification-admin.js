@@ -78,6 +78,7 @@ const CERTIFICATE_EDITABLE_FIELDS = [
   "inversiones",
   "arriendos",
   "remesas",
+  "ingresos_independiente",
   "otros_ingresos",
   "otros_descripcion",
   "nota_aclaratoria_certificacion",
@@ -124,6 +125,7 @@ function computeCertificationTotals(formData = {}) {
     parseCurrency(formData.inversiones) +
     parseCurrency(formData.arriendos) +
     parseCurrency(formData.remesas) +
+    parseCurrency(formData.ingresos_independiente) +
     parseCurrency(formData.otros_ingresos);
   const certifiedMonths = resolveCertifiedMonths(formData);
   const recurringPeriodTotal = monthlyTotal * certifiedMonths;
@@ -241,6 +243,7 @@ function buildIncomeItems(formData = {}) {
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
+    ["Ingresos por actividad independiente", formData.ingresos_independiente],
     ["Otros ingresos mensuales recurrentes", formData.otros_ingresos]
   ]
     .filter(([, value]) => hasMeaningfulCurrencyValue(value))

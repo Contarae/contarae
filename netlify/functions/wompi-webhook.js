@@ -218,6 +218,7 @@ function buildIncomeRows(formData = {}) {
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
+    ["Ingresos por actividad independiente", formData.ingresos_independiente],
     ["Otros ingresos mensuales recurrentes", formData.otros_ingresos]
   ];
 

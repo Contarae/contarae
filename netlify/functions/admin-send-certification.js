@@ -342,7 +342,9 @@ export default async (req) => {
             result.detail.summary?.customerName ||
             "",
           reference,
-          consecutive: result.detail.summary?.consecutive || result.record?.consecutive || ""
+          consecutive: result.detail.summary?.consecutive || result.record?.consecutive || "",
+          verificationUrl: certificateVerificationUrl,
+          verificationCode: certificateVerificationCode
         }));
       }
     }

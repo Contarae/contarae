@@ -2409,7 +2409,7 @@ function PaymentsPortalPage(){
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
   const CT=CERTIFICATION_PRICE_TIERS.map(item=>({r:item.formRange,v:item.value,before:certReferenceValue(item.value)}));
-  const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",perMes:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iO:"",oD:"",ev:[createEmptyEventualIncome()],cm:""};
+  const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",perMes:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iInd:"",iO:"",oD:"",ev:[createEmptyEventualIncome()],cm:""};
   const PAYMENT_STORAGE_KEY="contarae-certification-reference";
   const PAYMENT_QUERY_PARAM="cert_ref";
   const FINAL_FAILED_STATUSES=new Set(["DECLINED","ERROR","VOIDED","FAILED","REJECTED","CANCELED","CANCELLED"]);
@@ -2451,7 +2451,7 @@ function CrtS(){
     trackCertStepOnce("cert_step_personal_complete",{service_name:"certificacion_ingresos"});
     moveStep(1);
   };
-  const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."]];
+  const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."],["Ingresos por actividad independiente","iInd","Honorarios, prestación de servicios, comisiones habituales o actividad económica propia."]];
   const recurrentMonthlyTotal=ings.reduce((s,[,k])=>s+pN(f[k]),0)+pN(f.iO);
   const certifiedMonths=getCertifiedMonths(f.per,f.perMes);
   const filledEventuals=getFilledEventualIncomeRows(f.ev);
@@ -2521,6 +2521,7 @@ function CrtS(){
     inversiones:f.iI,
     arriendos:f.iA,
     remesas:f.iR,
+    ingresos_independiente:f.iInd,
     otros_ingresos:f.iO,
     otros_descripcion:f.oD,
     ingresos_eventuales_json:JSON.stringify(filledEventuals),
@@ -3090,7 +3091,7 @@ export default function App(){
     </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
-    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/><input name="wompi_transaction_id"/>{MARKETING_FORM_FIELDS.map(name=><input key={name} name={name}/>)}</form>
+    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="ingresos_independiente"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/><input name="wompi_transaction_id"/>{MARKETING_FORM_FIELDS.map(name=><input key={name} name={name}/>)}</form>
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><FaqS/></div>

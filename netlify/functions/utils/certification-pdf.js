@@ -461,12 +461,58 @@ function buildCustomerIdentificationLabel(formData = {}) {
   return expeditionPlace ? `${documentLabel}, documento expedido en ${expeditionPlace}` : documentLabel;
 }
 
-function buildIncomeSourceLabel(row, otherIncomeDetail) {
-  if (!row) return "";
-  if (row.label === "Otros ingresos mensuales recurrentes" && otherIncomeDetail?.value) {
-    return `otros ingresos mensuales recurrentes correspondientes a ${otherIncomeDetail.value}`;
+function isIndependentConcept(value = "") {
+  const normalized = removeAccents(value).toLowerCase();
+  return /\bindependient/.test(normalized) || /\bfreelance\b/.test(normalized);
+}
+
+function buildIndependentSourceText(value = "") {
+  const normalized = removeAccents(value).toLowerCase();
+  if (normalized.includes("trabajadora independiente")) return "su actividad como trabajadora independiente";
+  if (normalized.includes("trabajador independiente")) return "su actividad como trabajador independiente";
+  if (normalized.includes("persona independiente")) return "su actividad como persona independiente";
+  return "su actividad independiente";
+}
+
+function resolveIncomeSource(label, otherIncomeDetail = "") {
+  const detail = String(otherIncomeDetail || "").replace(/\s+/g, " ").trim();
+
+  if (label === "Ingresos por actividad independiente") {
+    return {
+      sourceType: "independent",
+      displayLabel: buildIndependentSourceText(),
+      listLabel: "Actividad independiente"
+    };
   }
-  return row.label.toLowerCase();
+
+  if (label === "Otros ingresos mensuales recurrentes" && detail) {
+    if (isIndependentConcept(detail)) {
+      return {
+        sourceType: "independent",
+        displayLabel: buildIndependentSourceText(detail),
+        listLabel: "Actividad independiente"
+      };
+    }
+
+    return {
+      sourceType: "other",
+      displayLabel: detail,
+      listLabel: `Otros ingresos (${detail})`
+    };
+  }
+
+  return {
+    sourceType: "standard",
+    displayLabel: label.toLowerCase(),
+    listLabel: label
+  };
+}
+
+function buildSingleIncomePhrase(row = {}) {
+  if (row.sourceType === "independent") {
+    return `derivados de ${row.displayLabel}`;
+  }
+  return `por concepto de ${row.displayLabel}`;
 }
 
 function capitalizeText(value) {
@@ -519,7 +565,8 @@ function buildCertifiedPeriodInMonths(formData = {}) {
   if (!months) {
     return String(formData.periodo || "").trim() || "el período certificado indicado por el solicitante";
   }
-  return `${numberToSpanishWords(months).toLowerCase()} (${months}) ${months === 1 ? "mes" : "meses"}`;
+  const monthWords = months === 1 ? "un" : numberToSpanishWords(months).toLowerCase();
+  return `${monthWords} (${months}) ${months === 1 ? "mes" : "meses"}`;
 }
 
 function buildRecurringIncomeRows(formData = {}) {
@@ -532,16 +579,13 @@ function buildRecurringIncomeRows(formData = {}) {
     ["Inversiones", formData.inversiones],
     ["Arriendos", formData.arriendos],
     ["Remesas", formData.remesas],
+    ["Ingresos por actividad independiente", formData.ingresos_independiente],
     ["Otros ingresos mensuales recurrentes", formData.otros_ingresos]
   ]
     .filter(([, value]) => hasMeaningfulCurrencyValue(value))
     .map(([label, value]) => ({
+      ...resolveIncomeSource(label, otherIncomeDetail),
       label,
-      displayLabel: buildIncomeSourceLabel({ label }, { value: otherIncomeDetail }),
-      listLabel:
-        label === "Otros ingresos mensuales recurrentes" && otherIncomeDetail
-          ? `Otros ingresos mensuales recurrentes (${otherIncomeDetail})`
-          : label,
       value: String(value || "").trim(),
       numericValue: parseCurrency(value)
     }));
@@ -568,7 +612,9 @@ function buildEventualIncomeRows(formData = {}) {
 }
 
 function getRequestedPurpose(formData = {}) {
-  return [formData.destino, formData.entidad].filter(Boolean).join(" - ");
+  const entity = String(formData.entidad || "").trim();
+  if (entity) return entity;
+  return String(formData.destino || "").trim();
 }
 
 async function readAssetBytes(fileName) {
@@ -662,16 +708,16 @@ export function buildCertificationNarrative(record = {}) {
   };
   const blocks = [
     paragraph(
-      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument} y titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que, con fundamento en la información suministrada y en los documentos soporte puestos a mi disposición por ${customerReference}, identificado(a) con ${formattedCustomerDocument}, se realizó la validación documental de los ingresos reportados para el período correspondiente a ${periodInMonths}.`
+      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument} y titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que, con fundamento en la información suministrada y en los documentos soporte puestos a mi disposición por ${customerReference}, quien se identifica con ${formattedCustomerDocument}, se realizó la validación documental de los ingresos reportados para el período correspondiente a ${periodInMonths}.`
     )
   ];
 
   if (recurringRows.length === 1) {
     blocks.push(
       paragraph([
-        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales recurrentes por concepto de ${recurringRows[0].displayLabel}, por valor de `,
+        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales ${buildSingleIncomePhrase(recurringRows[0])}, por valor de `,
         highlightedAmount(recurringRows[0].numericValue),
-        `; en consecuencia, para el período objeto de certificación correspondiente a ${periodInMonths}, el total de ingresos correspondiente a dicho lapso asciende a `,
+        `; en consecuencia, para el período certificado de ${periodInMonths}, el total correspondiente a dicho lapso asciende a `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -679,7 +725,7 @@ export function buildCertificationNarrative(record = {}) {
   } else if (recurringRows.length === 2) {
     blocks.push(
       paragraph([
-        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales recurrentes provenientes de ${recurringRows[0].displayLabel} por valor de `,
+        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales provenientes de ${recurringRows[0].displayLabel} por valor de `,
         highlightedAmount(recurringRows[0].numericValue),
         " y de ",
         recurringRows[1].displayLabel,
@@ -687,7 +733,7 @@ export function buildCertificationNarrative(record = {}) {
         highlightedAmount(recurringRows[1].numericValue),
         "; en conjunto, dichos ingresos representan un total mensual de ",
         highlightedAmount(totalMonthlyRecurring),
-        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, un total de `,
+        ` y, para el período certificado de ${periodInMonths}, un total de `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -695,7 +741,7 @@ export function buildCertificationNarrative(record = {}) {
   } else if (recurringRows.length > 2) {
     blocks.push(
       paragraph(
-        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales recurrentes derivados de los siguientes conceptos:`
+        `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales derivados de los siguientes conceptos:`
       )
     );
     blocks.push({
@@ -709,9 +755,9 @@ export function buildCertificationNarrative(record = {}) {
     });
     blocks.push(
       paragraph([
-        "En conjunto, los ingresos mensuales recurrentes antes relacionados representan un total mensual de ",
+        "En conjunto, los ingresos mensuales antes relacionados representan un total mensual de ",
         highlightedAmount(totalMonthlyRecurring),
-        ` y, para el período objeto de certificación correspondiente a ${periodInMonths}, un total de `,
+        ` y, para el período certificado de ${periodInMonths}, un total de `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -719,7 +765,7 @@ export function buildCertificationNarrative(record = {}) {
   } else {
     blocks.push(
       paragraph([
-        `Como resultado de dicha validación, no se identificaron ingresos mensuales recurrentes para ${customerReference}; en consecuencia, el total correspondiente al período objeto de certificación asciende a `,
+        `Como resultado de dicha validación, no se identificaron ingresos mensuales para ${customerReference}; en consecuencia, el total correspondiente al período certificado asciende a `,
         highlightedAmount(totalRecurringPeriod),
         "."
       ])
@@ -732,7 +778,7 @@ export function buildCertificationNarrative(record = {}) {
         paragraph([
           `De manera adicional, durante el período objeto de certificación se identificó un ingreso eventual por concepto de ${eventualRows[0].concept}, por valor de `,
           highlightedAmount(eventualRows[0].numericValue),
-          ". Dicho ingreso corresponde a un hecho económico de carácter no ordinario, no fijo y no periódico; en consecuencia, no integra el ingreso mensual recurrente descrito, aunque sí se considera dentro del análisis del período por encontrarse soportado documentalmente."
+          ". Dicho ingreso corresponde a un hecho económico de carácter no ordinario, no fijo y no periódico; en consecuencia, no integra el ingreso mensual descrito, aunque sí se considera dentro del análisis del período por encontrarse soportado documentalmente."
         ])
       );
     } else if (eventualRows.length === 2) {
@@ -741,7 +787,7 @@ export function buildCertificationNarrative(record = {}) {
           ...buildInlineEventualSummarySegments(eventualRows),
           ". En conjunto, la sumatoria de dichos ingresos asciende a ",
           highlightedAmount(totalEventualPeriod),
-          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
+          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
         ])
       );
     } else {
@@ -761,14 +807,14 @@ export function buildCertificationNarrative(record = {}) {
         paragraph([
           "La sumatoria de los ingresos eventuales antes relacionados asciende a ",
           highlightedAmount(totalEventualPeriod),
-          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual recurrente descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
+          ". Tales ingresos corresponden a hechos económicos de carácter no ordinario, no fijo y no periódico; en consecuencia, no integran el ingreso mensual descrito, aunque sí se consideran dentro del análisis del período por encontrarse soportados documentalmente."
         ])
       );
     }
 
     blocks.push(
       paragraph([
-        "En consecuencia, una vez incorporado al análisis el total de ingresos recurrentes correspondiente al período, por valor de ",
+        "En consecuencia, una vez incorporado al análisis el total de ingresos mensuales certificado para el período, por valor de ",
         highlightedAmount(totalRecurringPeriod),
         ", junto con ",
         eventualRows.length === 1 ? "el ingreso eventual identificado durante dicho lapso" : "los ingresos eventuales identificados durante dicho lapso",

@@ -134,6 +134,7 @@ const CERTIFICATE_CURRENCY_FIELDS = [
   "inversiones",
   "arriendos",
   "remesas",
+  "ingresos_independiente",
   "otros_ingresos"
 ];
 
@@ -151,6 +152,7 @@ const CERTIFICATE_INCOME_LABELS = [
   ["inversiones", "Inversiones"],
   ["arriendos", "Arriendos"],
   ["remesas", "Remesas"],
+  ["ingresos_independiente", "Ingresos por actividad independiente"],
   ["otros_ingresos", "Otros ingresos mensuales recurrentes"]
 ];
 
@@ -970,6 +972,7 @@ function buildCertificateDraftState(source = {}) {
     inversiones: source?.inversiones || "",
     arriendos: source?.arriendos || "",
     remesas: source?.remesas || "",
+    ingresos_independiente: source?.ingresos_independiente || "",
     otros_ingresos: source?.otros_ingresos || "",
     otros_descripcion: source?.otros_descripcion || "",
     [CERTIFICATE_CLARIFICATION_FIELD]: source?.[CERTIFICATE_CLARIFICATION_FIELD] || "",

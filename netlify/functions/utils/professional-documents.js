@@ -31,13 +31,22 @@ export function getProfessionalStore() {
   return getStore("certification-requests");
 }
 
+function normalizeProfessionalText(value = "") {
+  return String(value || "")
+    .replace(/\bBogota\b/gi, "Bogotá")
+    .replace(/\bD\.?\s*C\.?\b/g, "D. C.")
+    .replace(/\bPublico\b/gi, "Público")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function getProfessionalProfile() {
   return {
-    accountantName: process.env.ACCOUNTANT_FULL_NAME || "Diego Ramirez",
+    accountantName: normalizeProfessionalText(process.env.ACCOUNTANT_FULL_NAME || "Diego Ramirez"),
     professionalCardNumber: process.env.ACCOUNTANT_PROFESSIONAL_CARD || "",
     accountantDocumentNumber: process.env.ACCOUNTANT_CC || "",
-    title: process.env.ACCOUNTANT_TITLE || "Contador Público",
-    city: process.env.ACCOUNTANT_CITY || "Bogotá D.C.",
+    title: normalizeProfessionalText(process.env.ACCOUNTANT_TITLE || "Contador Público"),
+    city: normalizeProfessionalText(process.env.ACCOUNTANT_CITY || "Bogotá D. C."),
     companyName: process.env.CERTIFICATION_COMPANY_NAME || "CONTARAE"
   };
 }
