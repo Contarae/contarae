@@ -370,6 +370,16 @@ function customerBalanceView(customer = {}) {
   };
 }
 
+function comparePendingBalanceDesc(left = {}, right = {}) {
+  const balanceDelta = Number(right.balance || 0) - Number(left.balance || 0);
+  if (balanceDelta) return balanceDelta;
+
+  const overdueDelta = Number(right.overdue || 0) - Number(left.overdue || 0);
+  if (overdueDelta) return overdueDelta;
+
+  return clean(left.name).localeCompare(clean(right.name), "es");
+}
+
 function emptyAging() {
   return AGING_BUCKETS.reduce((totals, [key]) => ({ ...totals, [key]: 0 }), {});
 }
@@ -408,7 +418,7 @@ function rebuildDashboardFromData(data = {}) {
   }, emptyAging());
   const topDebtors = [...summaries]
     .filter((customer) => Number(customer.balance || 0) > 0)
-    .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0))
+    .sort(comparePendingBalanceDesc)
     .slice(0, 20);
   const creditsToReview = [...summaries]
     .filter((customer) => Number(customer.unappliedCredit || 0) > 0 || Number(customer.balance || 0) < 0)
@@ -4243,7 +4253,7 @@ function Portfolio({ data, onExport, onSave }) {
     .sort((a, b) => Number(b.unappliedCredit || 0) - Number(a.unappliedCredit || 0));
   const pendingRows = [...rows]
     .filter((customer) => Number(customer.balance || 0) > 0)
-    .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
+    .sort(comparePendingBalanceDesc);
   const getFilteredRows = (sourceFilters = filters) => rows.filter((customer) => {
     const localRange = periodRange(sourceFilters.period || "all", sourceFilters.from, sourceFilters.to);
     const localPeriodActive = (sourceFilters.period || "all") !== "all";
