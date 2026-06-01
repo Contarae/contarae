@@ -3583,6 +3583,9 @@ function PromoCodeDetailModal({
 function PromoCodesModule({
   promoCodes = [],
   loading,
+  error,
+  warning,
+  storageAvailable = true,
   onCreate,
   onOpen,
   onExport
@@ -3606,11 +3609,23 @@ function PromoCodesModule({
           <button type="button" onClick={onExport} disabled={!promoCodes.length} style={{ padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: promoCodes.length ? "#1D4ED8" : "#94A3B8", fontFamily: F, fontWeight: 900, cursor: promoCodes.length ? "pointer" : "not-allowed" }}>
             Exportar listado
           </button>
-          <button type="button" onClick={onCreate} style={{ padding: "12px 16px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+          <button type="button" onClick={onCreate} disabled={storageAvailable === false} style={{ padding: "12px 16px", borderRadius: 14, border: "none", background: storageAvailable === false ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: storageAvailable === false ? "not-allowed" : "pointer" }}>
             Crear nuevo código
           </button>
         </div>
       </div>
+
+      {warning ? (
+        <div style={{ padding: 16, borderRadius: 18, background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.22)", color: "#92400E", fontFamily: F, fontSize: 13, fontWeight: 800, lineHeight: 1.6 }}>
+          {warning}
+        </div>
+      ) : null}
+
+      {error ? (
+        <div style={{ padding: 16, borderRadius: 18, background: "rgba(220,38,38,.08)", border: "1px solid rgba(220,38,38,.16)", color: "#991B1B", fontFamily: F, fontSize: 13, fontWeight: 800, lineHeight: 1.6 }}>
+          {error}
+        </div>
+      ) : null}
 
       <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
         <StatCard compact label="CÓDIGOS" value={loading ? "..." : promoCodes.length} note="Incluye códigos heredados aún en archivo." />
@@ -4043,6 +4058,8 @@ export default function AdminPanel() {
   const [promoCodes, setPromoCodes] = useState([]);
   const [promoCodesLoading, setPromoCodesLoading] = useState(false);
   const [promoCodesError, setPromoCodesError] = useState("");
+  const [promoCodeStorageAvailable, setPromoCodeStorageAvailable] = useState(true);
+  const [promoCodeStorageWarning, setPromoCodeStorageWarning] = useState("");
   const [promoCodeDraft, setPromoCodeDraft] = useState(EMPTY_PROMO_CODE_DRAFT);
   const [promoCodeSaving, setPromoCodeSaving] = useState(false);
   const [promoCodeFormOpen, setPromoCodeFormOpen] = useState(false);
@@ -4311,6 +4328,8 @@ export default function AdminPanel() {
       }
 
       setPromoCodes(data.promoCodes || []);
+      setPromoCodeStorageAvailable(data.storageAvailable !== false);
+      setPromoCodeStorageWarning(data.warning || "");
     } catch (error) {
       setPromoCodesError(error.message);
     } finally {
@@ -4493,6 +4512,8 @@ export default function AdminPanel() {
     setPortalUsers([]);
     setPromoCodes([]);
     setPromoCodesError("");
+    setPromoCodeStorageAvailable(true);
+    setPromoCodeStorageWarning("");
     setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
     setPromoCodeFormOpen(false);
     setSelectedPromoCode(null);
@@ -5445,6 +5466,10 @@ export default function AdminPanel() {
   };
 
   const handleCreatePromoCode = () => {
+    if (promoCodeStorageAvailable === false) {
+      setPromoCodesError(promoCodeStorageWarning || "El almacenamiento de códigos promocionales no está disponible. No es posible crear códigos nuevos en este momento.");
+      return;
+    }
     setPromoCodeDraft(EMPTY_PROMO_CODE_DRAFT);
     setPromoCodesError("");
     setPromoCodeFormOpen(true);
@@ -5458,6 +5483,12 @@ export default function AdminPanel() {
   };
 
   const handleEditPromoCode = (record) => {
+    if (promoCodeStorageAvailable === false) {
+      const message = promoCodeStorageWarning || "El almacenamiento de códigos promocionales no está disponible. No es posible editar códigos en este momento.";
+      setPromoCodesError(message);
+      setPromoCodeReportError(message);
+      return;
+    }
     setPromoCodeDraft(buildPromoCodeDraft(record));
     setPromoCodesError("");
     setPromoCodeFormOpen(true);
@@ -5478,6 +5509,10 @@ export default function AdminPanel() {
   };
 
   const handleSavePromoCode = async () => {
+    if (promoCodeStorageAvailable === false) {
+      setPromoCodesError(promoCodeStorageWarning || "El almacenamiento de códigos promocionales no está disponible. No es posible guardar cambios en este momento.");
+      return;
+    }
     setPromoCodeSaving(true);
     setPromoCodesError("");
 
@@ -5527,6 +5562,12 @@ export default function AdminPanel() {
 
   const handleTogglePromoCode = async (record) => {
     if (!record?.code) return;
+    if (promoCodeStorageAvailable === false) {
+      const message = promoCodeStorageWarning || "El almacenamiento de códigos promocionales no está disponible. No es posible cambiar estados en este momento.";
+      setPromoCodesError(message);
+      setPromoCodeReportError(message);
+      return;
+    }
     setPromoCodeSaving(true);
     setPromoCodesError("");
 
@@ -6160,6 +6201,9 @@ export default function AdminPanel() {
           <PromoCodesModule
             promoCodes={promoCodes}
             loading={promoCodesLoading}
+            error={promoCodesError}
+            warning={promoCodeStorageWarning}
+            storageAvailable={promoCodeStorageAvailable}
             onCreate={handleCreatePromoCode}
             onOpen={handleOpenPromoCode}
             onExport={handleExportPromoCodes}

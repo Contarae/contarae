@@ -38,13 +38,14 @@ export default async (req) => {
 
   try {
     const serviceSummaries = await listAllServiceRequests();
-    const [serviceRequests, servicePayments, clientLeads, certifications, promoCodes] = await Promise.all([
+    const [serviceRequests, servicePayments, clientLeads, certifications, promoCodeResult] = await Promise.all([
       Promise.all(serviceSummaries.map((record) => getServiceRequestByReference(record.reference))),
       listServicePayments(),
       listClientLeads(),
       listAllCertifications(),
       listPromoCodes()
     ]);
+    const promoCodes = Array.isArray(promoCodeResult) ? promoCodeResult : promoCodeResult.records || [];
 
     const generatedAt = new Date().toISOString();
     const payload = {
@@ -55,7 +56,8 @@ export default async (req) => {
       servicePayments,
       clientLeads,
       certifications,
-      promoCodes
+      promoCodes,
+      promoCodeStorageAvailable: promoCodeResult.storageAvailable !== false
     };
 
     return new Response(JSON.stringify(payload, null, 2), {

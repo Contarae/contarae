@@ -51,10 +51,11 @@ export default async (req) => {
     return new Response(
       JSON.stringify({
         error: "No fue posible cambiar el estado del código.",
-        detail: error.message
+        detail: error.message,
+        code: error.code || ""
       }),
       {
-        status: 400,
+        status: error.code === "PROMO_STORAGE_UNAVAILABLE" ? 503 : 400,
         headers
       }
     );

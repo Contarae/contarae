@@ -3,6 +3,7 @@ import promoUtils from "./promo-codes.cjs";
 
 const {
   formatMoneyValue,
+  isMissingBlobsEnvironmentError,
   normalizePromoCode,
   parseMoneyValue
 } = promoUtils;
@@ -118,11 +119,17 @@ function buildPeriods(sales = []) {
 
 export async function listWompiConfirmedPromoSales(code = "") {
   const normalizedCode = normalizePromoCode(code);
-  const store = getStore("certification-requests");
-  const list = await store.list({ prefix: "paid:" });
-  const records = await Promise.all(
-    (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
-  );
+  let records = [];
+
+  try {
+    const store = getStore("certification-requests");
+    const list = await store.list({ prefix: "paid:" });
+    records = await Promise.all(
+      (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
+    );
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+  }
 
   return records
     .filter(Boolean)

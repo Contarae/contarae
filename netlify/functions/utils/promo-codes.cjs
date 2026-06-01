@@ -59,6 +59,20 @@ function promoStore() {
   return getStore(PROMO_CODE_STORE_NAME);
 }
 
+function isMissingBlobsEnvironmentError(error) {
+  return String(error?.name || "") === "MissingBlobsEnvironmentError" ||
+    String(error?.message || "").includes("environment has not been configured to use Netlify Blobs");
+}
+
+function createPromoStorageUnavailableError(error) {
+  const storageError = new Error(
+    "El almacenamiento de códigos promocionales no está disponible. Revisa la configuración de Netlify Blobs del sitio antes de crear o editar códigos."
+  );
+  storageError.code = "PROMO_STORAGE_UNAVAILABLE";
+  storageError.cause = error;
+  return storageError;
+}
+
 function getPromoCodeKey(code) {
   return `${PROMO_CODE_PREFIX}${encodeURIComponent(normalizePromoCode(code))}`;
 }
@@ -183,6 +197,14 @@ function normalizeLegacyPromoCode(item = {}) {
   };
 }
 
+function findLegacyPromoCode(code) {
+  const normalized = normalizePromoCode(code);
+  if (!normalized) return null;
+  return STRATEGIC_ALLY_PROMO_CODES
+    .map(normalizeLegacyPromoCode)
+    .find((record) => normalizePromoCode(record.code) === normalized) || null;
+}
+
 function hydratePromoRecord(record = {}) {
   const discountRate = normalizeRate(record.discountRate, 0.15);
   const commissionRate = normalizeRate(record.commissionRate, 0.1);
@@ -207,22 +229,33 @@ function hydratePromoRecord(record = {}) {
 }
 
 async function listStoredPromoCodes() {
-  const store = promoStore();
-  const list = await store.list({ prefix: PROMO_CODE_PREFIX });
-  const records = await Promise.all(
-    (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
-  );
+  let records = [];
+  let storageAvailable = true;
 
-  return records
-    .filter(Boolean)
-    .map(hydratePromoRecord);
+  try {
+    const store = promoStore();
+    const list = await store.list({ prefix: PROMO_CODE_PREFIX });
+    records = await Promise.all(
+      (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
+    );
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+    storageAvailable = false;
+  }
+
+  return {
+    records: records
+      .filter(Boolean)
+      .map(hydratePromoRecord),
+    storageAvailable
+  };
 }
 
 async function listPromoCodes({ includeLegacy = true } = {}) {
   const entries = new Map();
   const stored = await listStoredPromoCodes();
 
-  stored.forEach((record) => {
+  stored.records.forEach((record) => {
     entries.set(normalizePromoCode(record.code), record);
   });
 
@@ -237,25 +270,32 @@ async function listPromoCodes({ includeLegacy = true } = {}) {
       });
   }
 
-  return Array.from(entries.values()).sort((left, right) => {
-    if (left.active !== right.active) return left.active ? -1 : 1;
-    return normalizePromoCode(left.code).localeCompare(normalizePromoCode(right.code));
-  });
+  return {
+    records: Array.from(entries.values()).sort((left, right) => {
+      if (left.active !== right.active) return left.active ? -1 : 1;
+      return normalizePromoCode(left.code).localeCompare(normalizePromoCode(right.code));
+    }),
+    storageAvailable: stored.storageAvailable
+  };
 }
 
 async function getPromoCodeByCode(code, { includeLegacy = true } = {}) {
   const normalized = normalizePromoCode(code);
   if (!normalized) return null;
 
-  const store = promoStore();
-  const stored = await store.get(getPromoCodeKey(normalized), { type: "json" });
+  let stored = null;
+
+  try {
+    const store = promoStore();
+    stored = await store.get(getPromoCodeKey(normalized), { type: "json" });
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+  }
+
   if (stored) return hydratePromoRecord(stored);
 
   if (!includeLegacy) return null;
-  const legacy = STRATEGIC_ALLY_PROMO_CODES
-    .map(normalizeLegacyPromoCode)
-    .find((record) => normalizePromoCode(record.code) === normalized);
-  return legacy || null;
+  return findLegacyPromoCode(normalized);
 }
 
 function parseMoneyValue(value) {
@@ -387,15 +427,35 @@ async function calculateCertificationPricingAsync({ monthlyIncome, promoCode } =
 }
 
 async function upsertPromoCode(input = {}, actor = "admin") {
-  const store = promoStore();
   const originalCode = normalizePromoCode(input.originalCode || input.previousCode || input.code);
   const nextCode = normalizePromoCode(input.code);
-  const existingByOriginal = originalCode
-    ? await store.get(getPromoCodeKey(originalCode), { type: "json" })
-    : null;
-  const existingByNext = nextCode
-    ? await store.get(getPromoCodeKey(nextCode), { type: "json" })
-    : null;
+  let store;
+  let existingByOriginal = null;
+  let existingByNext = null;
+
+  try {
+    store = promoStore();
+    existingByOriginal = originalCode
+      ? await store.get(getPromoCodeKey(originalCode), { type: "json" })
+      : null;
+    existingByNext = nextCode
+      ? await store.get(getPromoCodeKey(nextCode), { type: "json" })
+      : null;
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+    throw createPromoStorageUnavailableError(error);
+  }
+
+  const legacyByOriginal = findLegacyPromoCode(originalCode);
+  const legacyByNext = findLegacyPromoCode(nextCode);
+
+  if (legacyByOriginal && originalCode !== nextCode) {
+    throw new Error("Los códigos promocionales heredados solo pueden editarse conservando el mismo código.");
+  }
+
+  if (legacyByNext && !legacyByOriginal) {
+    throw new Error("Ya existe un código promocional con ese nombre.");
+  }
 
   if (
     existingByNext &&
@@ -412,19 +472,35 @@ async function upsertPromoCode(input = {}, actor = "admin") {
   }
 
   const promo = normalizeStoredPromoCode(input, existingByOriginal || existingByNext || {}, actor);
-  await store.setJSON(getPromoCodeKey(promo.code), promo);
+  try {
+    await store.setJSON(getPromoCodeKey(promo.code), promo);
 
-  if (originalCode && originalCode !== promo.code) {
-    await store.delete(getPromoCodeKey(originalCode));
+    if (originalCode && originalCode !== promo.code) {
+      await store.delete(getPromoCodeKey(originalCode));
+    }
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+    throw createPromoStorageUnavailableError(error);
   }
 
   return promo;
 }
 
 async function updatePromoCodeStatus(code, active, actor = "admin") {
-  const existing = await getPromoCodeByCode(code, { includeLegacy: false });
+  const normalized = normalizePromoCode(code);
+  let existing = null;
+
+  try {
+    const store = promoStore();
+    existing = normalized ? await store.get(getPromoCodeKey(normalized), { type: "json" }) : null;
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+    throw createPromoStorageUnavailableError(error);
+  }
+
   if (!existing) throw new Error("El código promocional no existe en el administrador.");
-  return upsertPromoCode({ ...existing, originalCode: existing.code, active }, actor);
+  const hydrated = hydratePromoRecord(existing);
+  return upsertPromoCode({ ...hydrated, originalCode: hydrated.code, active }, actor);
 }
 
 async function registerPromoCodeUse(code, { reference = "", actor = "system" } = {}) {
@@ -453,8 +529,13 @@ async function registerPromoCodeUse(code, { reference = "", actor = "system" } =
     ]
   };
 
-  const store = promoStore();
-  await store.setJSON(getPromoCodeKey(nextRecord.code), nextRecord);
+  try {
+    const store = promoStore();
+    await store.setJSON(getPromoCodeKey(nextRecord.code), nextRecord);
+  } catch (error) {
+    if (!isMissingBlobsEnvironmentError(error)) throw error;
+    return existing;
+  }
   return nextRecord;
 }
 
@@ -495,5 +576,6 @@ module.exports = {
   upsertPromoCode,
   updatePromoCodeStatus,
   registerPromoCodeUse,
+  isMissingBlobsEnvironmentError,
   buildReferralSnapshot
 };

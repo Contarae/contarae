@@ -35,10 +35,11 @@ export default async (req) => {
   }
 
   try {
-    const [promoCodes, salesIndex] = await Promise.all([
+    const [promoCodeResult, salesIndex] = await Promise.all([
       listPromoCodes(),
       buildPromoCodeSalesIndex()
     ]);
+    const promoCodes = Array.isArray(promoCodeResult) ? promoCodeResult : promoCodeResult.records || [];
     const enrichedPromoCodes = promoCodes.map((promoCode) => ({
       ...promoCode,
       wompiSummary: salesIndex[normalizePromoCode(promoCode.code)] || {
@@ -57,7 +58,11 @@ export default async (req) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        promoCodes: enrichedPromoCodes
+        promoCodes: enrichedPromoCodes,
+        storageAvailable: promoCodeResult.storageAvailable !== false,
+        warning: promoCodeResult.storageAvailable === false
+          ? "El almacenamiento administrable de códigos no está disponible. Solo se muestran códigos heredados."
+          : ""
       }),
       {
         status: 200,
