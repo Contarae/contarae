@@ -617,6 +617,21 @@ function getRequestedPurpose(formData = {}) {
   return String(formData.destino || "").trim();
 }
 
+function isOpenRecipientPurpose(value = "") {
+  const normalized = removeAccents(value).toLowerCase().replace(/\s+/g, " ").trim();
+  return normalized === "a quien interese";
+}
+
+function buildPurposeParagraph(destination = "") {
+  if (isOpenRecipientPurpose(destination)) {
+    return "La presente certificación se expide a solicitud de la parte interesada, para los fines que estime pertinentes y para su presentación ante quien corresponda, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada.";
+  }
+
+  return destination
+    ? `La presente certificación se expide a solicitud de la parte interesada para ser presentada ante ${destination}, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada.`
+    : "La presente certificación se expide a solicitud de la parte interesada, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada.";
+}
+
 async function readAssetBytes(fileName) {
   const candidatePaths = [
     path.resolve(process.cwd(), "netlify/functions/assets", fileName),
@@ -856,11 +871,7 @@ export function buildCertificationNarrative(record = {}) {
   }
 
   blocks.push(
-    paragraph(
-      destination
-        ? `La presente certificación se expide a solicitud de la parte interesada para ser presentada ante ${destination}, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada.`
-        : "La presente certificación se expide a solicitud de la parte interesada, con base exclusiva en los documentos y soportes suministrados para su análisis. En tal sentido, no constituye auditoría integral, aseguramiento, revisoría fiscal ni dictamen sobre estados financieros, sino una certificación profesional emitida dentro del alcance documental de la validación efectuada."
-    )
+    paragraph(buildPurposeParagraph(destination))
   );
   blocks.push(
     paragraph(
