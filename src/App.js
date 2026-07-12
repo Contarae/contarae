@@ -257,6 +257,68 @@ const CERTIFICATION_SUPPORT_ROUTES=[
   }
 ];
 const normPath=p=>{if(!p)return"/";const c=p.replace(/\/+$/,"");return c||"/";};
+const RENTA_CAMPAIGN_ID="renta-2026";
+const RENTA_TAX_YEAR="2025";
+const RENTA_FILING_YEAR="2026";
+const RENTA_DUE_WINDOWS=[
+  [[1,2],"2026-08-12","12 de agosto de 2026"],
+  [[3,4],"2026-08-13","13 de agosto de 2026"],
+  [[5,6],"2026-08-14","14 de agosto de 2026"],
+  [[7,8],"2026-08-18","18 de agosto de 2026"],
+  [[9,10],"2026-08-19","19 de agosto de 2026"],
+  [[11,12],"2026-08-20","20 de agosto de 2026"],
+  [[13,14],"2026-08-21","21 de agosto de 2026"],
+  [[15,16],"2026-08-24","24 de agosto de 2026"],
+  [[17,18],"2026-08-25","25 de agosto de 2026"],
+  [[19,20],"2026-08-26","26 de agosto de 2026"],
+  [[21,22],"2026-08-27","27 de agosto de 2026"],
+  [[23,24],"2026-08-28","28 de agosto de 2026"],
+  [[25,26],"2026-08-31","31 de agosto de 2026"],
+  [[27,28],"2026-09-01","1 de septiembre de 2026"],
+  [[29,30],"2026-09-02","2 de septiembre de 2026"],
+  [[31,32],"2026-09-03","3 de septiembre de 2026"],
+  [[33,34],"2026-09-04","4 de septiembre de 2026"],
+  [[35,36],"2026-09-07","7 de septiembre de 2026"],
+  [[37,38],"2026-09-08","8 de septiembre de 2026"],
+  [[39,40],"2026-09-09","9 de septiembre de 2026"],
+  [[41,42],"2026-09-10","10 de septiembre de 2026"],
+  [[43,44],"2026-09-11","11 de septiembre de 2026"],
+  [[45,46],"2026-09-14","14 de septiembre de 2026"],
+  [[47,48],"2026-09-15","15 de septiembre de 2026"],
+  [[49,50],"2026-09-16","16 de septiembre de 2026"],
+  [[51,52],"2026-09-17","17 de septiembre de 2026"],
+  [[53,54],"2026-09-18","18 de septiembre de 2026"],
+  [[55,56],"2026-09-21","21 de septiembre de 2026"],
+  [[57,58],"2026-09-22","22 de septiembre de 2026"],
+  [[59,60],"2026-09-23","23 de septiembre de 2026"],
+  [[61,62],"2026-09-24","24 de septiembre de 2026"],
+  [[63,64],"2026-09-25","25 de septiembre de 2026"],
+  [[65,66],"2026-09-28","28 de septiembre de 2026"],
+  [[67,68],"2026-10-01","1 de octubre de 2026"],
+  [[69,70],"2026-10-02","2 de octubre de 2026"],
+  [[71,72],"2026-10-05","5 de octubre de 2026"],
+  [[73,74],"2026-10-06","6 de octubre de 2026"],
+  [[75,76],"2026-10-07","7 de octubre de 2026"],
+  [[77,78],"2026-10-08","8 de octubre de 2026"],
+  [[79,80],"2026-10-09","9 de octubre de 2026"],
+  [[81,82],"2026-10-13","13 de octubre de 2026"],
+  [[83,84],"2026-10-14","14 de octubre de 2026"],
+  [[85,86],"2026-10-15","15 de octubre de 2026"],
+  [[87,88],"2026-10-16","16 de octubre de 2026"],
+  [[89,90],"2026-10-19","19 de octubre de 2026"],
+  [[91,92],"2026-10-20","20 de octubre de 2026"],
+  [[93,94],"2026-10-21","21 de octubre de 2026"],
+  [[95,96],"2026-10-22","22 de octubre de 2026"],
+  [[97,98],"2026-10-23","23 de octubre de 2026"],
+  [[99,0],"2026-10-26","26 de octubre de 2026"]
+];
+const getRentaDueInfo=value=>{
+  const digits=onlyDigits(value).slice(-2);
+  if(digits.length!==2)return null;
+  const num=parseInt(digits,10);
+  const found=RENTA_DUE_WINDOWS.find(([[start,end]])=>start===99?digits==="99"||digits==="00":num>=start&&num<=end);
+  return found?{lastTwoDigits:digits,estimatedDueDate:found[1],label:found[2]}:null;
+};
 const TOOL_ROUTES=[
   {
     path:"/debo-declarar-renta",
@@ -504,13 +566,13 @@ const SERVICE_SEO_ROUTES=[
     metaTitle:"Declaración de renta personas naturales | CONTARAE",
     metaDescription:"Preparación y revisión de declaración de renta para personas naturales en Colombia, con análisis de soportes, topes, deducciones y presentación ante la DIAN.",
     badge:"RENTA PERSONAS NATURALES",
-    title:"Declaración de renta para personas naturales con revisión profesional",
-    intro:"La declaración de renta requiere revisar ingresos, patrimonio, consumos, movimientos bancarios, deducciones, rentas exentas y soportes antes de presentar.",
-    intent:"CONTARAE acompaña a asalariados, independientes, rentistas y personas naturales que necesitan determinar obligación, preparar información y presentar ante la DIAN.",
+    title:"Declaración de renta para personas naturales con confirmación inicial sin costo",
+    intro:"Antes de avanzar con una declaración, CONTARAE le ayuda a confirmar sin costo si podría estar obligado a declarar renta y cuál sería su fecha estimada de vencimiento.",
+    intent:"Déjenos sus datos principales o escríbanos por WhatsApp. La revisión inicial se gestiona de forma sencilla y, si aplica, luego orientamos documentos, alcance y preparación ante la DIAN.",
     serviceType:"Declaración de renta personas naturales",
-    ctaLabel:"Consultar declaración de renta",
-    whatsapp:"Hola CONTARAE, necesito ayuda con mi declaración de renta.",
-    highlights:[["Revisión","Topes, patrimonio, ingresos, deducciones y soportes"],["Proceso","Preparación y presentación ante la DIAN"],["Complemento","Herramienta orientativa disponible en la web"]],
+    ctaLabel:"Confirmar si debo declarar",
+    whatsapp:"Hola CONTARAE, quiero confirmar sin costo si estoy obligado a declarar renta.",
+    highlights:[["Sin costo inicial","Confirmación orientativa de obligación y vencimiento"],["Gestión","Atención por WhatsApp con datos principales"],["Siguiente paso","Si aplica, revisión de soportes y preparación profesional"]],
     cards:[
       ["Análisis previo","Validación de obligación de declarar, documentos necesarios, topes y situación fiscal del contribuyente."],
       ["Preparación de declaración","Depuración de información, revisión de soportes, cálculo del impuesto o saldo y preparación para presentación."],
@@ -1964,8 +2026,126 @@ function CertificationSupportPage({config}){
   );
 }
 
+function RentaLeadCapture(){
+  const initial={name:"",phone:"",email:"",documentInput:"",treatmentConsent:false,marketingConsent:true};
+  const[form,setForm]=useState(initial);
+  const[busy,setBusy]=useState(false);
+  const[message,setMessage]=useState("");
+  const[error,setError]=useState("");
+  const dueInfo=getRentaDueInfo(form.documentInput);
+  const update=(field,value)=>setForm(current=>({
+    ...current,
+    [field]:field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):field==="documentInput"?onlyDigits(value).slice(0,12):value
+  }));
+  const whatsappConsultation=wm("Hola CONTARAE, quiero confirmar sin costo si estoy obligado a declarar renta.");
+  const submit=async event=>{
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    const normalized={
+      ...form,
+      name:formatProperName(form.name),
+      phone:normalizeColombianMobileNumber(form.phone).slice(0,10),
+      email:normalizeEmail(form.email),
+      documentInput:onlyDigits(form.documentInput),
+      lastTwoDigits:onlyDigits(form.documentInput).slice(-2)
+    };
+    setForm(normalized);
+    const currentDue=getRentaDueInfo(normalized.lastTwoDigits);
+    if(!normalized.name||!normalized.phone||!normalized.email||normalized.documentInput.length<2){
+      setError("Complete nombre, WhatsApp, correo y documento o últimos dos dígitos.");
+      return;
+    }
+    if(!isValidEmail(normalized.email)){
+      setError("Ingrese un correo electrónico válido.");
+      return;
+    }
+    if(!isValidColombianMobileNumber(normalized.phone)){
+      setError("Ingrese un WhatsApp colombiano válido.");
+      return;
+    }
+    setBusy(true);
+    try{
+      const comment=[
+        "Solicita confirmación sin costo sobre obligación de declarar renta.",
+        currentDue?`Últimos dos dígitos: ${currentDue.lastTwoDigits}. Fecha estimada de vencimiento: ${currentDue.label}.`:"Fecha pendiente por confirmar.",
+        "La gestión de consulta se realizará principalmente por WhatsApp."
+      ].join(" ");
+      const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        name:normalized.name,
+        phone:normalized.phone,
+        email:normalized.email,
+        documentNumber:normalized.documentInput,
+        serviceInterest:"Declaración de renta",
+        comment,
+        treatmentConsent:normalized.treatmentConsent,
+        marketingConsent:normalized.marketingConsent,
+        sourcePath:window.location.pathname,
+        sourceLabel:"Formulario corto renta",
+        campaign:RENTA_CAMPAIGN_ID,
+        taxCampaign:RENTA_CAMPAIGN_ID,
+        taxYear:RENTA_TAX_YEAR,
+        filingYear:RENTA_FILING_YEAR,
+        taxLastTwoDigits:normalized.lastTwoDigits,
+        estimatedDueDate:currentDue?.estimatedDueDate||"",
+        dueDateLabel:currentDue?.label||"",
+        taxLeadType:"confirmacion_gratuita",
+        marketingAttribution:getMarketingAttribution(),
+        ...getMarketingFormFields()
+      })});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
+      trackMarketingEvent("lead_submit",{service_interest:"Declaración de renta",source_label:"Formulario corto renta",campaign:RENTA_CAMPAIGN_ID});
+      setMessage("Datos recibidos. Te contactaremos por WhatsApp para confirmar sin costo si estás obligado a declarar renta.");
+      setForm(initial);
+    }catch(err){
+      setError(err.message);
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  return(
+    <form onSubmit={submit} style={{padding:22,borderRadius:24,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 22px 50px rgba(15,23,42,.10)",display:"grid",gap:12}}>
+      <div>
+        <div style={{fontSize:11,letterSpacing:"1.4px",fontWeight:900,color:"#1D4ED8",fontFamily:F,marginBottom:8}}>CONFIRMACIÓN SIN COSTO</div>
+        <h2 style={{fontFamily:FH,fontSize:25,lineHeight:1.12,color:"#0B1D3A",margin:"0 0 8px"}}>Confirma si estás obligado a declarar renta sin ningún costo</h2>
+        <p style={{fontFamily:F,fontSize:14,color:"#52647F",lineHeight:1.7,margin:0}}>Déjanos tus datos principales y un asesor te contactará por WhatsApp para orientar la revisión inicial sin costo.</p>
+      </div>
+      <input required value={form.name} onChange={e=>update("name",e.target.value)} onBlur={e=>update("name",formatProperName(e.target.value))} placeholder="Nombre completo" autoComplete="name" style={IS}/>
+      <input required {...numericInputProps} value={form.phone} onChange={e=>update("phone",e.target.value)} placeholder="WhatsApp" autoComplete="tel" style={IS}/>
+      <input required type="email" inputMode="email" value={form.email} onChange={e=>update("email",e.target.value)} onBlur={e=>update("email",normalizeEmail(e.target.value))} placeholder="Correo electrónico" autoComplete="email" style={IS}/>
+      <div>
+        <label style={{display:"block",fontSize:13,fontWeight:800,color:"#1B3A5C",fontFamily:F,marginBottom:6}}>Documento o últimos dos dígitos</label>
+        <input required {...numericInputProps} value={form.documentInput} onChange={e=>update("documentInput",e.target.value)} placeholder="Ej. 10203045 o 45" maxLength="12" autoComplete="off" style={{...IS,fontSize:18,fontWeight:900,textAlign:"center",letterSpacing:"1px"}}/>
+        <div style={{fontFamily:F,fontSize:12,color:"#64748B",lineHeight:1.6,marginTop:6}}>
+          {dueInfo?<>Fecha estimada de vencimiento: <strong>{dueInfo.label}</strong>.</>:"Con este dato calculamos el vencimiento estimado para recordarte a tiempo."}
+        </div>
+      </div>
+      <label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}>
+        <input required type="checkbox" checked={form.treatmentConsent} onChange={e=>update("treatmentConsent",e.target.checked)}/>
+        Autorizo el tratamiento de mis datos personales para gestionar esta solicitud.
+      </label>
+      <label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}>
+        <input type="checkbox" checked={form.marketingConsent} onChange={e=>update("marketingConsent",e.target.checked)}/>
+        Autorizo recibir recordatorios e información relacionada por WhatsApp y/o correo.
+      </label>
+      {message?<div style={{padding:12,borderRadius:13,background:"rgba(34,197,94,.12)",color:"#15803D",fontFamily:F,fontWeight:800,lineHeight:1.6}}>{message}</div>:null}
+      {error?<div style={{padding:12,borderRadius:13,background:"rgba(220,38,38,.10)",color:"#991B1B",fontFamily:F,fontWeight:800,lineHeight:1.6}}>{error}</div>:null}
+      <button type="submit" disabled={busy} style={{padding:"13px 18px",borderRadius:14,border:"none",background:busy?"#94A3B8":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:900,cursor:busy?"not-allowed":"pointer"}}>
+        {busy?"Registrando...":"Solicitar confirmación gratis"}
+      </button>
+      <a href={whatsappConsultation} target="_blank" rel="noopener noreferrer" onClick={()=>trackMarketingEvent("renta_whatsapp_click",{source_label:"Formulario corto renta"})} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"12px 16px",borderRadius:14,background:"#25D366",color:"#fff",fontFamily:F,fontWeight:900,textDecoration:"none"}}>
+        Prefiero consultar por WhatsApp
+      </a>
+      <div style={{fontFamily:F,fontSize:11,color:"#64748B",lineHeight:1.6}}>La revisión inicial se orienta por WhatsApp; si luego decides avanzar, el alcance se confirma caso por caso.</div>
+    </form>
+  );
+}
+
 function ServiceSeoPage({config}){
   const related=SERVICE_SEO_ROUTES.filter(item=>item.path!==config.path).slice(0,4);
+  const isRentaPage=config.path==="/declaracion-de-renta-personas-naturales";
   return(
     <>
       <section id={config.sectionId} style={{padding:"154px 24px 58px",background:"linear-gradient(135deg,#F4F8FF 0%,#EAF7FF 52%,#F8FBFF 100%)",overflow:"hidden"}}>
@@ -1977,11 +2157,12 @@ function ServiceSeoPage({config}){
             <p style={{fontFamily:F,fontSize:17,color:"#3F5A7A",lineHeight:1.85,margin:"0 0 14px",maxWidth:780}}>{config.intro}</p>
             <p style={{fontFamily:F,fontSize:15,color:"#52647F",lineHeight:1.82,margin:"0 0 24px",maxWidth:780}}>{config.intent}</p>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}} className="cert-hero-actions">
+              {isRentaPage?<a href="#confirmar-renta" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>Confirmar obligación sin costo</a>:null}
               <a href="#detalle-servicio" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 24px",borderRadius:14,background:"#fff",color:"#1D4ED8",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,border:"1px solid rgba(37,99,235,.14)"}}>Ver detalles</a>
-              <a href={wm(config.whatsapp)} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>{config.ctaLabel}</a>
+              {!isRentaPage?<a href={wm(config.whatsapp)} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#2563EB,#38BDF8)",color:"#fff",fontSize:15,fontWeight:800,textDecoration:"none",fontFamily:F,boxShadow:"0 16px 30px rgba(37,99,235,.18)"}}>{config.ctaLabel}</a>:null}
             </div>
           </div>
-          <div style={{padding:22,borderRadius:24,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:12}}>
+          {isRentaPage?<div id="confirmar-renta"><RentaLeadCapture/></div>:<div style={{padding:22,borderRadius:24,background:"linear-gradient(160deg,#0B1D3A,#14345B)",color:"#fff",border:"1px solid rgba(125,211,252,.14)",boxShadow:"0 22px 50px rgba(15,23,42,.12)",display:"grid",gap:12}}>
             <div style={{fontSize:11,letterSpacing:"1.6px",fontWeight:900,color:"#93C5FD",fontFamily:F}}>RESUMEN DEL SERVICIO</div>
             {config.highlights.map(([label,text],index)=>(
               <div key={index} style={{padding:"14px 14px",borderRadius:18,background:"rgba(255,255,255,.06)",border:"1px solid rgba(125,211,252,.12)"}}>
@@ -1989,7 +2170,7 @@ function ServiceSeoPage({config}){
                 <div style={{fontSize:14,color:"rgba(240,249,255,.92)",lineHeight:1.65,fontFamily:F,fontWeight:650}}>{text}</div>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
       </section>
 

@@ -99,6 +99,16 @@ const SERVICE_PAYMENT_META = {
   no_requiere: { label: "No requiere pago", tone: "#475569", bg: "rgba(100,116,139,.10)" }
 };
 
+const LEAD_STATUS_META = {
+  nuevo: { label: "Nuevo", tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" },
+  contactado: { label: "Contactado", tone: "#0F766E", bg: "rgba(13,148,136,.10)" },
+  interesado: { label: "Interesado", tone: "#15803D", bg: "rgba(34,197,94,.12)" },
+  no_respondio: { label: "No respondió", tone: "#B45309", bg: "rgba(245,158,11,.14)" },
+  convertido: { label: "Convertido", tone: "#7C3AED", bg: "rgba(124,58,237,.10)" }
+};
+
+const LEAD_STATUS_OPTIONS = Object.keys(LEAD_STATUS_META);
+
 const EMPTY_MANUAL_PAYMENT_DRAFT = {
   amount: "",
   method: "Nequi",
@@ -359,6 +369,10 @@ function getServiceStatusMeta(status) {
 
 function getServicePaymentMeta(status) {
   return SERVICE_PAYMENT_META[status] || SERVICE_PAYMENT_META.pendiente;
+}
+
+function getLeadStatusMeta(status) {
+  return LEAD_STATUS_META[status] || LEAD_STATUS_META.nuevo;
 }
 
 function isVoidedServicePayment(payment = {}) {
@@ -698,6 +712,59 @@ function buildLeadWhatsappLink(lead, message = "") {
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
+function isRentaLead(lead = {}) {
+  const text = `${lead.serviceInterest || ""} ${lead.taxCampaign || ""} ${lead.campaign || ""} ${lead.sourceLabel || ""}`.toLowerCase();
+  return text.includes("renta");
+}
+
+function getLeadDueDateValue(lead = {}) {
+  const raw = lead.estimatedDueDate || lead.taxDueDate || "";
+  if (!raw) return null;
+  const date = new Date(`${String(raw).slice(0, 10)}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getLeadDueLabel(lead = {}) {
+  return lead.dueDateLabel || formatDateOnly(lead.estimatedDueDate);
+}
+
+function getLeadDueMeta(lead = {}) {
+  if (!isRentaLead(lead)) return null;
+  const dueDate = getLeadDueDateValue(lead);
+  if (!dueDate) return { label: "Renta sin vencimiento", tone: "#64748B", bg: "rgba(100,116,139,.10)" };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
+  if (diffDays < 0) return { label: `Venció ${getLeadDueLabel(lead)}`, tone: "#991B1B", bg: "rgba(220,38,38,.10)" };
+  if (diffDays <= 7) return { label: `Vence ${getLeadDueLabel(lead)}`, tone: "#B91C1C", bg: "rgba(220,38,38,.10)" };
+  if (diffDays <= 15) return { label: `Próximo: ${getLeadDueLabel(lead)}`, tone: "#C2410C", bg: "rgba(249,115,22,.12)" };
+  if (diffDays <= 30) return { label: `Vence ${getLeadDueLabel(lead)}`, tone: "#B45309", bg: "rgba(245,158,11,.14)" };
+  return { label: `Renta: ${getLeadDueLabel(lead)}`, tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" };
+}
+
+function buildRentaReminderMessage(lead = {}) {
+  const name = formatProperName(lead.name) || "";
+  const dueLabel = getLeadDueLabel(lead);
+  const dueText = dueLabel && dueLabel !== "Sin vencimiento"
+    ? `Según los últimos dígitos registrados, tu fecha estimada para presentar declaración de renta es ${dueLabel}.`
+    : "Queremos confirmar contigo la fecha estimada de vencimiento de tu declaración de renta.";
+  return `Hola ${name}, te saludamos de CONTARAE. ${dueText} Podemos ayudarte a confirmar sin costo si estás obligado a declarar y orientarte por WhatsApp sobre los documentos necesarios.`;
+}
+
+function buildLeadReminderWhatsappLink(lead = {}) {
+  return buildLeadWhatsappLink(lead, buildRentaReminderMessage(lead));
+}
+
+function buildLeadReminderMailtoHref(lead = {}) {
+  const email = String(lead.email || "").trim();
+  if (!email) return "";
+  return buildMailtoHref({
+    to: email,
+    subject: "CONTARAE - Recordatorio declaración de renta",
+    body: buildRentaReminderMessage(lead)
+  });
+}
+
 function buildLeadMailtoLink(leads = [], subject = "CONTARAE - Información de tu solicitud", body = "") {
   const emails = leads.map((lead) => String(lead.email || "").trim()).filter(Boolean);
   if (!emails.length) return "";
@@ -713,7 +780,7 @@ function buildClientWhatsappLink(client, message = "") {
 }
 
 function buildLeadsCsv(leads = []) {
-  const headers = ["id", "fecha", "nombre", "documento", "whatsapp", "correo", "servicio", "comentario", "autoriza_tratamiento", "autoriza_comunicaciones", "origen"];
+  const headers = ["id", "fecha", "nombre", "documento", "whatsapp", "correo", "servicio", "comentario", "autoriza_tratamiento", "autoriza_comunicaciones", "origen", "campana", "ultimos_digitos", "vencimiento_estimado"];
   const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const rows = leads.map((lead) => [
     lead.id,
@@ -726,7 +793,10 @@ function buildLeadsCsv(leads = []) {
     lead.comment,
     lead.treatmentConsent ? "SI" : "NO",
     lead.marketingConsent ? "SI" : "NO",
-    lead.sourcePath || lead.sourceLabel
+    lead.sourcePath || lead.sourceLabel,
+    lead.taxCampaign || lead.campaign,
+    lead.taxLastTwoDigits,
+    lead.dueDateLabel || lead.estimatedDueDate
   ].map(escape).join(","));
   return [headers.join(","), ...rows].join("\n");
 }
@@ -2660,12 +2730,19 @@ function PotentialClientsModule({
   onOpenLeadDetail,
   onExportLeads,
   onCopyLeadPhones,
-  onOpenBulkEmail
+  onOpenBulkEmail,
+  onUpdateLeadStatus
 }) {
   const leadRows = useMemo(() => buildLeadRows(leads), [leads]);
   const authorizedLeads = leadRows.filter((lead) => lead.marketingConsent);
   const selectedAuthorizedLeads = leadRows.filter((lead) => (lead.leadIds || [lead.id]).some((id) => selectedLeadIds.has(id)) && lead.marketingConsent);
   const allAuthorizedSelected = authorizedLeads.length > 0 && authorizedLeads.every((lead) => (lead.leadIds || [lead.id]).some((id) => selectedLeadIds.has(id)));
+  const rentaLeads = leadRows.filter(isRentaLead);
+  const upcomingRentaLeads = rentaLeads
+    .map((lead) => ({ lead, dueDate: getLeadDueDateValue(lead) }))
+    .filter((item) => item.dueDate)
+    .sort((left, right) => left.dueDate - right.dueDate)
+    .slice(0, 8);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -2674,6 +2751,39 @@ function PotentialClientsModule({
           Cada registro representa una solicitud de contacto independiente. Un mismo documento puede aparecer varias veces si el cliente diligenció distintos formularios o herramientas.
         </div>
       </section>
+
+      {upcomingRentaLeads.length ? (
+        <section style={{ padding: 22, borderRadius: 28, background: "linear-gradient(135deg,#0B1D3A,#17345D)", border: "1px solid rgba(125,211,252,.16)", boxShadow: "0 20px 48px rgba(15,23,42,.12)", color: "#fff" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 12, letterSpacing: "1.5px", fontWeight: 900, color: "#93C5FD", fontFamily: F, marginBottom: 5 }}>DECLARACIÓN DE RENTA</div>
+              <h2 style={{ margin: 0, fontFamily: FH, fontSize: 28, color: "#fff" }}>Próximos vencimientos</h2>
+            </div>
+            <div style={{ fontFamily: F, color: "rgba(226,232,240,.78)", fontSize: 13, lineHeight: 1.6, maxWidth: 360 }}>
+              Gestiona uno por uno con el mensaje ya preparado según la fecha estimada de cada cliente potencial.
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {upcomingRentaLeads.map(({ lead }) => (
+              <div key={`renta-due-${lead.key || lead.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 13, borderRadius: 18, background: "rgba(255,255,255,.08)", border: "1px solid rgba(191,219,254,.16)" }}>
+                <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}>
+                    <span style={{ fontFamily: F, fontSize: 15, fontWeight: 900, color: "#fff" }}>{formatProperName(lead.name)}</span>
+                    <span style={{ fontFamily: F, fontSize: 11, fontWeight: 900, color: "#BFDBFE", border: "1px solid rgba(191,219,254,.22)", borderRadius: 999, padding: "4px 9px" }}>{getLeadDueLabel(lead)}</span>
+                  </div>
+                  <div style={{ fontFamily: F, fontSize: 12, color: "rgba(226,232,240,.76)", lineHeight: 1.6 }}>
+                    {lead.phone || "Sin WhatsApp"} · últimos dígitos {lead.taxLastTwoDigits || lead.documentNumber || "pendiente"}
+                  </div>
+                </button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {buildLeadReminderWhatsappLink(lead) ? <a href={buildLeadReminderWhatsappLink(lead)} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 12px", borderRadius: 12, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none", fontSize: 12 }}>WhatsApp</a> : null}
+                  {buildLeadReminderMailtoHref(lead) ? <a href={buildLeadReminderMailtoHref(lead)} style={{ padding: "9px 12px", borderRadius: 12, background: "rgba(255,255,255,.10)", color: "#BFDBFE", border: "1px solid rgba(191,219,254,.18)", fontFamily: F, fontWeight: 900, textDecoration: "none", fontSize: 12 }}>Correo</a> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section style={{ padding: 22, borderRadius: 28, background: "rgba(255,255,255,.94)", border: "1px solid rgba(37,99,235,.10)", boxShadow: "0 20px 48px rgba(15,23,42,.07)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
@@ -2705,6 +2815,8 @@ function PotentialClientsModule({
             {leadRows.map((lead) => {
               const leadIds = lead.leadIds || [lead.id];
               const selected = leadIds.some((id) => selectedLeadIds.has(id));
+              const dueMeta = getLeadDueMeta(lead);
+              const statusMeta = getLeadStatusMeta(lead.status);
               return (
                 <div key={lead.key || lead.id} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
                   <input
@@ -2726,14 +2838,22 @@ function PotentialClientsModule({
                       <Badge meta={lead.marketingConsent ? { tone: "#15803D", bg: "rgba(34,197,94,.12)" } : { tone: "#B45309", bg: "rgba(245,158,11,.14)" }}>
                         {lead.marketingConsent ? "Autoriza" : "Gestión"}
                       </Badge>
+                      <Badge meta={statusMeta}>{statusMeta.label}</Badge>
+                      {dueMeta ? <Badge meta={dueMeta}>{dueMeta.label}</Badge> : null}
                     </div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {lead.serviceInterest || "Servicio pendiente"} · {lead.documentNumber || "Sin documento"} · {formatDate(lead.createdAt)}
                     </div>
                   </button>
-                  <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
-                    Ver
-                  </button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <select value={lead.status || "nuevo"} onChange={(event) => onUpdateLeadStatus(lead.id, event.target.value)} style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                      {LEAD_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{getLeadStatusMeta(status).label}</option>)}
+                    </select>
+                    {dueMeta && buildLeadReminderWhatsappLink(lead) ? <a href={buildLeadReminderWhatsappLink(lead)} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(21,128,61,.20)", background: "#fff", color: "#15803D", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>Recordar</a> : null}
+                    <button type="button" onClick={() => onOpenLeadDetail(lead)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
+                      Ver
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -3075,6 +3195,7 @@ function ClientDetailDialog({
   onClose,
   onOpenRequest,
   onCreateRequest,
+  onUpdateLeadStatus,
   onDeleteLead,
   onDeleteServiceRequest
 }) {
@@ -3178,6 +3299,10 @@ function ClientDetailDialog({
       ].filter(Boolean))
       .filter((item) => item.date)
       .sort((left, right) => new Date(right.date || 0) - new Date(left.date || 0));
+  const leadDueMeta = isLead ? getLeadDueMeta(lead) : null;
+  const leadWhatsappLink = isLead ? buildLeadReminderWhatsappLink(lead) || buildLeadWhatsappLink(lead) : "";
+  const leadEmailLink = isLead ? buildLeadReminderMailtoHref(lead) || buildMailtoHref({ to: email }) : "";
+  const leadStatusMeta = isLead ? getLeadStatusMeta(lead.status) : null;
 
   return createPortal(
     <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
@@ -3218,6 +3343,21 @@ function ClientDetailDialog({
                   <InfoTile label="Fecha de registro" value={formatDate(lead.createdAt)} />
                   <InfoTile label="Origen" value={lead.sourceLabel || lead.sourcePath || "Formulario web"} />
                 </div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(180px,.42fr)", gap: 10, alignItems: "center", marginBottom: 16 }}>
+                  <div style={{ padding: 14, borderRadius: 16, background: leadStatusMeta.bg, color: leadStatusMeta.tone, fontFamily: F, fontWeight: 900 }}>
+                    Estado actual: {leadStatusMeta.label}
+                  </div>
+                  <select value={lead.status || "nuevo"} onChange={(event) => onUpdateLeadStatus(lead.id, event.target.value)} style={inputStyle}>
+                    {LEAD_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{getLeadStatusMeta(status).label}</option>)}
+                  </select>
+                </div>
+                {leadDueMeta ? (
+                  <div className="admin-info-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
+                    <InfoTile label="Campaña" value={lead.taxCampaign || lead.campaign || "Renta"} />
+                    <InfoTile label="Últimos dígitos" value={lead.taxLastTwoDigits || lead.documentNumber || "Pendiente"} />
+                    <InfoTile label="Vencimiento estimado" value={getLeadDueLabel(lead)} />
+                  </div>
+                ) : null}
                 <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F, color: "#334155", lineHeight: 1.7, marginBottom: 16 }}>
                   {lead.comment || "Sin comentario registrado."}
                 </div>
@@ -3248,6 +3388,11 @@ function ClientDetailDialog({
               <InfoTile label="Comunicaciones comerciales" value={lead.marketingConsent ? "Autorizadas" : "No autorizadas"} />
               <InfoTile label="Canal recomendado" value={lead.phone ? "WhatsApp" : lead.email ? "Correo" : "Sin canal registrado"} />
             </div>
+            {leadDueMeta ? (
+              <div style={{ marginTop: 14, padding: 14, borderRadius: 16, background: "#fff", border: "1px solid rgba(37,99,235,.10)", fontFamily: F, color: "#334155", lineHeight: 1.7 }}>
+                <strong>Mensaje sugerido:</strong> {buildRentaReminderMessage(lead)}
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -3319,8 +3464,10 @@ function ClientDetailDialog({
             <button type="button" onClick={() => onCreateRequest(isLead ? { type: "lead", lead } : { type: "client", client })} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
               Crear solicitud
             </button>
-            {whatsappLink ? <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "11px 14px", borderRadius: 14, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>WhatsApp</a> : null}
-            {email ? <a href={buildMailtoHref({ to: email })} style={{ padding: "11px 14px", borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>Correo</a> : null}
+            {isLead && leadWhatsappLink ? <a href={leadWhatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "11px 14px", borderRadius: 14, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>{leadDueMeta ? "Recordar por WhatsApp" : "WhatsApp"}</a> : null}
+            {!isLead && whatsappLink ? <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={{ padding: "11px 14px", borderRadius: 14, background: "#25D366", color: "#fff", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>WhatsApp</a> : null}
+            {isLead && leadEmailLink ? <a href={leadEmailLink} style={{ padding: "11px 14px", borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>{leadDueMeta ? "Recordar por correo" : "Correo"}</a> : null}
+            {!isLead && email ? <a href={buildMailtoHref({ to: email })} style={{ padding: "11px 14px", borderRadius: 14, background: "rgba(37,99,235,.08)", color: "#1D4ED8", fontFamily: F, fontWeight: 900, textDecoration: "none" }}>Correo</a> : null}
           </div>
         </div>
       </div>
@@ -5176,6 +5323,7 @@ export default function AdminPanel() {
       ? [
           sourceClient.createdAt ? `Cliente captado desde la web el ${formatDate(sourceClient.createdAt)}.` : "Cliente captado desde la web.",
           serviceInterest ? `Servicio de interés: ${serviceInterest}.` : "",
+          sourceClient.estimatedDueDate ? `Vencimiento estimado declaración de renta: ${getLeadDueLabel(sourceClient)}.` : "",
           sourceClient.comment ? `Comentario inicial: ${sourceClient.comment}` : ""
         ].filter(Boolean).join("\n")
       : "Solicitud creada desde el expediente del cliente.";
@@ -5190,6 +5338,7 @@ export default function AdminPanel() {
         ? `Solicitud - ${serviceInterest || "Asesoría contable"}`
         : `Nueva solicitud - ${sourceClient.name || "Cliente"}`,
       serviceType: inferServiceTypeFromText(serviceInterest || sourceClient.comment || ""),
+      dueDate: isLeadSource && isRentaLead(sourceClient) ? String(sourceClient.estimatedDueDate || "").slice(0, 10) : "",
       comments,
       client: {
         name: formatProperName(sourceClient.name || ""),
@@ -5413,6 +5562,35 @@ export default function AdminPanel() {
   const handleOpenBulkEmail = (leads = []) => {
     if (leads.length) {
       setNotice(`Correo masivo preparado para ${leads.length} cliente(s) autorizado(s).`);
+    }
+  };
+
+  const handleUpdateLeadStatus = async (leadId, status) => {
+    if (!leadId) return;
+    const previousLeads = clientLeads;
+    setClientLeads((current) => current.map((lead) => lead.id === leadId ? { ...lead, status, contactStatus: status } : lead));
+    setClientDetailDialog((current) => current?.type === "lead" && current.lead?.id === leadId
+      ? { ...current, lead: { ...current.lead, status, contactStatus: status } }
+      : current
+    );
+
+    try {
+      const response = await fetch("/api/admin-update-client-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: leadId, status })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || payload.error || "No fue posible actualizar el estado.");
+      setClientLeads((current) => current.map((lead) => lead.id === leadId ? payload.lead : lead));
+      setClientDetailDialog((current) => current?.type === "lead" && current.lead?.id === leadId
+        ? { ...current, lead: payload.lead }
+        : current
+      );
+      setNotice("Estado del cliente potencial actualizado.");
+    } catch (error) {
+      setClientLeads(previousLeads);
+      setNotice(error.message);
     }
   };
 
@@ -6180,6 +6358,7 @@ export default function AdminPanel() {
             onExportLeads={handleExportClientLeads}
             onCopyLeadPhones={handleCopyLeadPhones}
             onOpenBulkEmail={handleOpenBulkEmail}
+            onUpdateLeadStatus={handleUpdateLeadStatus}
           />
         ) : null}
 
@@ -7189,6 +7368,7 @@ export default function AdminPanel() {
           handleSelectServiceRequest(reference);
         }}
         onCreateRequest={handleCreateRequestFromClient}
+        onUpdateLeadStatus={handleUpdateLeadStatus}
         onDeleteLead={handleRequestLeadDelete}
         onDeleteServiceRequest={handleRequestServiceDelete}
       />

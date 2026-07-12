@@ -3,6 +3,7 @@ import { getStore } from "@netlify/blobs";
 
 const CLIENT_LEADS_STORE = "client-leads";
 const CLIENT_LEAD_PREFIX = "lead:";
+const ALLOWED_LEAD_STATUSES = new Set(["nuevo", "contactado", "interesado", "no_respondio", "convertido"]);
 
 function cleanText(value = "") {
   return String(value || "").trim();
@@ -29,6 +30,18 @@ function normalizeEmail(value = "") {
 
 function normalizePhone(value = "") {
   return String(value || "").replace(/[^\d+]/g, "").trim();
+}
+
+function cleanDigits(value = "") {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function normalizeTaxDate(value = "") {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw.slice(0, 40);
+  return date.toISOString().slice(0, 10);
 }
 
 function parseMarketingAttribution(input = {}) {
@@ -100,6 +113,7 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
   const now = new Date().toISOString();
   const name = formatProperName(input.name);
   const documentNumber = cleanText(input.documentNumber).replace(/[^\dA-Za-z.-]/g, "");
+  const taxLastTwoDigits = cleanDigits(input.taxLastTwoDigits || input.lastTwoDigits || input.documentLastDigits || documentNumber.slice(-2)).slice(-2);
   const phone = normalizePhone(input.phone);
   const email = normalizeEmail(input.email);
   const treatmentConsent = input.treatmentConsent === true || input.treatmentConsent === "true";
@@ -107,7 +121,7 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
   const marketingAttribution = parseMarketingAttribution(input);
 
   if (!name) throw new Error("Ingresa tu nombre.");
-  if (!documentNumber) throw new Error("Ingresa tu número de documento.");
+  if (!documentNumber && !taxLastTwoDigits) throw new Error("Ingresa tu número de documento o los dos últimos dígitos.");
   if (!phone) throw new Error("Ingresa un WhatsApp de contacto.");
   if (!email) throw new Error("Ingresa un correo de contacto.");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Ingresa un correo válido.");
@@ -116,16 +130,26 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
   return {
     id: createLeadId(),
     name,
-    documentNumber,
+    documentNumber: documentNumber || taxLastTwoDigits,
     phone,
     email,
     serviceInterest: cleanText(input.serviceInterest) || "Asesoría contable",
     comment: cleanText(input.comment).slice(0, 1200),
     status: "nuevo",
+    contactStatus: "nuevo",
     treatmentConsent,
     marketingConsent,
     sourcePath: cleanText(input.sourcePath || metadata.sourcePath),
     sourceLabel: cleanText(input.sourceLabel || metadata.sourceLabel) || "Formulario web",
+    campaign: cleanText(input.campaign || input.taxCampaign).slice(0, 80),
+    taxCampaign: cleanText(input.taxCampaign || input.campaign).slice(0, 80),
+    taxYear: cleanText(input.taxYear).slice(0, 20),
+    filingYear: cleanText(input.filingYear).slice(0, 20),
+    taxLastTwoDigits,
+    estimatedDueDate: normalizeTaxDate(input.estimatedDueDate),
+    dueDateLabel: cleanText(input.dueDateLabel).slice(0, 120),
+    taxLeadType: cleanText(input.taxLeadType).slice(0, 80),
+    taxProfile: cleanText(input.taxProfile).slice(0, 80),
     marketingAttribution,
     landingPage: marketingAttribution.landing_page || "",
     initialReferrer: marketingAttribution.initial_referrer || "",
@@ -176,4 +200,30 @@ export async function deleteClientLead(id = "") {
 
   await store.delete(key);
   return existing;
+}
+
+export async function updateClientLead(id = "", updates = {}, metadata = {}) {
+  const leadId = cleanText(id);
+  if (!leadId) throw new Error("Falta el identificador del cliente captado.");
+
+  const store = getClientLeadsStore();
+  const key = `${CLIENT_LEAD_PREFIX}${leadId}`;
+  const existing = await store.get(key, { type: "json" });
+  if (!existing) throw new Error("El cliente captado no existe.");
+
+  const nextStatus = cleanText(updates.status || existing.status || "nuevo");
+  if (!ALLOWED_LEAD_STATUSES.has(nextStatus)) {
+    throw new Error("Estado de contacto no válido.");
+  }
+
+  const updated = {
+    ...existing,
+    status: nextStatus,
+    contactStatus: nextStatus,
+    updatedAt: new Date().toISOString(),
+    updatedBy: cleanText(metadata.username || existing.updatedBy)
+  };
+
+  await store.setJSON(key, updated);
+  return updated;
 }
