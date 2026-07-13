@@ -44,6 +44,11 @@ function normalizeTaxDate(value = "") {
   return date.toISOString().slice(0, 10);
 }
 
+function normalizeTextList(value = []) {
+  const list = Array.isArray(value) ? value : String(value || "").split(",");
+  return list.map((item) => cleanText(item).slice(0, 80)).filter(Boolean).slice(0, 20);
+}
+
 function parseMarketingAttribution(input = {}) {
   const rawAttribution =
     input.marketingAttribution ||
@@ -150,6 +155,7 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
     dueDateLabel: cleanText(input.dueDateLabel).slice(0, 120),
     taxLeadType: cleanText(input.taxLeadType).slice(0, 80),
     taxProfile: cleanText(input.taxProfile).slice(0, 80),
+    taxConditions: normalizeTextList(input.taxConditions),
     marketingAttribution,
     landingPage: marketingAttribution.landing_page || "",
     initialReferrer: marketingAttribution.initial_referrer || "",

@@ -325,23 +325,23 @@ const TOOL_ROUTES=[
     aliases:["/debo-declarar-renta","/declarar-renta"],
     toolId:"tool-renta",
     sectionId:"tool-renta",
-    metaTitle:"¿Debo declarar renta? | CONTARAE",
-    metaDescription:"Verifique si podría estar obligado a declarar renta en Colombia con una herramienta orientativa basada en ingresos, patrimonio, compras, consumos y consignaciones.",
+    metaTitle:"Consulta fecha y condiciones para declarar renta | CONTARAE",
+    metaDescription:"Revise topes en UVT y pesos, consulte su fecha estimada de vencimiento y solicite orientación inicial para declaración de renta personas naturales.",
     heroBadge:"ANÁLISIS TRIBUTARIO",
-    heroKicker:"VERIFIQUE TOPES Y OBLIGACIÓN POTENCIAL",
-    heroTitle:"Revise si podría estar obligado a declarar renta",
-    heroDesc:"Herramienta orientativa para validar topes tributarios de personas naturales en Colombia. Útil para campañas, consultas rápidas y una primera revisión antes de pasar a una asesoría formal.",
-    proof:["Topes clave","Orientación inicial","Resultado inmediato","Enfoque 2025 y 2026"],
-    highlights:[["Evalúa","Ingresos, patrimonio, compras, consumos y consignaciones"],["Ideal para","Personas naturales con ingresos variables, asalariados o independientes"],["Resultado","Una alerta clara para saber si conviene revisar su caso con mayor profundidad"]], 
+    heroKicker:"TOPES, CONDICIONES Y FECHA DE VENCIMIENTO",
+    heroTitle:"Consulta las condiciones para declarar renta y tu fecha estimada",
+    heroDesc:"Guía interactiva para revisar topes tributarios en UVT y pesos colombianos, entender cada condición y ubicar la fecha estimada de presentación según los últimos dígitos del documento.",
+    proof:["Topes en UVT y COP","Fecha estimada","Orientación inicial","Enfoque año gravable 2025"],
+    highlights:[["Incluye","Condiciones por ingresos, patrimonio, compras, tarjetas, movimientos e IVA"],["Ideal para","Personas naturales que quieren revisar con calma antes del vencimiento"],["Resultado","Una guía para saber si conviene confirmar el caso con acompañamiento profesional"]], 
     audiences:["Asalariados","Independientes","Rentistas","Declarantes potenciales"],
-    steps:["Ingrese sus valores básicos del año gravable","Revise la lectura orientativa de topes","Si lo necesita, continúe con una revisión profesional"],
-    infoTitle:"¿Qué revisa esta herramienta?",
+    steps:["Revise las condiciones y topes vigentes","Marque las situaciones que podrían aplicar","Consulte su fecha estimada y solicite confirmación inicial"],
+    infoTitle:"¿Qué orienta esta guía?",
     infoSub:"USO ORIENTATIVO",
-    infoCards:[["Topes tributarios frecuentes","Le ayuda a revisar si sus cifras podrían ubicarlo en escenario de obligación de declarar renta."],["Consulta rápida","Ideal para campañas, formularios de contacto y validaciones preliminares antes de una asesoría tributaria."],["Importante","El resultado es orientativo. La obligación real depende también de la situación fiscal, patrimonial y normativa del contribuyente."]],
+    infoCards:[["Topes tributarios frecuentes","Presenta las condiciones principales en UVT y pesos colombianos para el año gravable 2025."],["Fecha estimada","Permite ubicar el vencimiento aproximado según los dos últimos dígitos del documento o NIT."],["Importante","Declarar renta no siempre significa pagar impuesto. La obligación real depende de soportes, residencia fiscal, responsabilidades y normativa aplicable."]],
     stageKicker:"ANÁLISIS TRIBUTARIO",
-    stageTitle:"Herramienta para validar obligación de declarar renta",
-    stageDesc:"Ingrese sus cifras y obtenga una lectura inicial sobre topes tributarios. Si el resultado le genera dudas, podemos revisar su caso con enfoque técnico y soporte documental.",
-    supportText:"Si el resultado sugiere obligación o genera dudas, CONTARAE puede revisar su caso con soportes, topes y contexto tributario real."
+    stageTitle:"Guía para revisar condiciones y vencimiento de renta",
+    stageDesc:"Revise los topes en UVT y pesos, entienda qué puede sumar en cada condición y consulte su fecha estimada de presentación.",
+    supportText:"Si identifica una condición o no está seguro, CONTARAE puede confirmar su caso con soportes, topes y contexto tributario real."
   },
   {
     path:"/retencion-en-la-fuente",
@@ -2967,7 +2967,7 @@ function CrtS(){
 }
 /* ══════ TOOLS (ALL VISIBLE) ══════ */
 const TOOL_META=[
-  {id:"tool-renta",badge:"Verifique",title:"¿Debo declarar renta?",desc:"Revise de forma rápida si podría estar obligado a declarar renta según topes tributarios.",cta:"Ir a la herramienta"},
+  {id:"tool-renta",badge:"Consulte",title:"Fecha y condiciones de renta",desc:"Revise topes en UVT y pesos, condiciones frecuentes y fecha estimada de vencimiento.",cta:"Consultar renta"},
   {id:"tool-retencion",badge:"Optimice",title:"Retención en la fuente",desc:"Estime la retención mensual con deducciones, rentas exentas y años gravables 2025 y 2026.",cta:"Calcular retención"},
   {id:"tool-planilla",badge:"Simule",title:"Planilla independientes",desc:"Calcule salud, pensión y ARL para contratistas e independientes según su nivel de riesgo.",cta:"Liquidar planilla"},
   {id:"tool-nomina",badge:"Gestione",title:"Liquidador de nómina",desc:"Obtenga devengado, deducciones, prestaciones y costo total del trabajador de forma clara.",cta:"Abrir liquidador"},
@@ -3059,7 +3059,7 @@ return(<Sec id="herramientas" title="Herramientas CONTARAE" sub="HERRAMIENTAS" b
   </div>
 
   <div style={{display:"grid",gap:26}}>
-    <ToolStage id="tool-renta" tone={0} kicker="ANÁLISIS TRIBUTARIO" title="¿Debo declarar renta?" desc="Verifique si podría estar obligado a declarar renta a partir de ingresos, patrimonio, compras, consumos y consignaciones. Ideal para campañas informativas, captación de leads y orientación inicial."><ToolRenta uv={uv25}/></ToolStage>
+    <ToolStage id="tool-renta" tone={0} kicker="ANÁLISIS TRIBUTARIO" title="Condiciones y fecha para declarar renta" desc="Revise topes en UVT y pesos, entienda qué puede sumar en cada condición y consulte la fecha estimada de presentación según los últimos dígitos."><ToolRenta uv={uv25}/></ToolStage>
     <ToolStage id="tool-retencion" tone={1} kicker="CÁLCULO MENSUAL" title="Retención en la fuente" desc="Estime la retención aplicable con deducciones y rentas exentas, y compare fácilmente los años 2025 y 2026 para tomar mejores decisiones tributarias."><ToolRet uv25={uv25} uv26={uv26}/></ToolStage>
     <ToolStage id="tool-planilla" tone={2} kicker="SEGURIDAD SOCIAL" title="Planilla independientes" desc="Simule el valor de salud, pensión y ARL para contratistas e independientes con una vista clara del IBC y del total mensual a pagar."><ToolPlan/></ToolStage>
     <ToolStage id="tool-nomina" tone={0} kicker="GESTIÓN LABORAL" title="Liquidador de nómina" desc="Calcule devengado, deducciones, prestaciones, parafiscales y costo total del trabajador en una herramienta diseñada para empleadores y responsables de talento humano."><ToolNom/></ToolStage>
@@ -3078,61 +3078,67 @@ function ToolCTA({text,msg}){return(
 )}
 
 function ToolRenta({uv}){
-  const initialLead={name:"",documentNumber:"",phone:"",email:"",treatmentConsent:false,marketingConsent:false};
-  const[rF,sRF]=useState({i:"",p:"",c:"",tc:"",b:"",nit:"",residente:"si",ivaResp:false});
-  const[rR,sRR]=useState(null);
+  const initialLead={name:"",documentNumber:"",phone:"",email:"",treatmentConsent:false,marketingConsent:true};
+  const[active,sActive]=useState("ingresos");
+  const[selected,sSelected]=useState([]);
+  const[dueInput,sDueInput]=useState("");
   const[lead,setLead]=useState(initialLead);
   const[leadBusy,setLeadBusy]=useState(false);
   const[leadMsg,setLeadMsg]=useState("");
   const[leadErr,setLeadErr]=useState("");
-  const t14=1400*uv,t45=4500*uv;
-  const getNitDate=(n)=>{const d=onlyDigits(n).slice(-2);if(d.length!==2)return null;const map=[[[1,2],"12 de agosto"],[[3,4],"13 de agosto"],[[5,6],"14 de agosto"],[[7,8],"18 de agosto"],[[9,10],"19 de agosto"],[[11,12],"20 de agosto"],[[13,14],"21 de agosto"],[[15,16],"24 de agosto"],[[17,18],"25 de agosto"],[[19,20],"26 de agosto"],[[21,22],"27 de agosto"],[[23,24],"28 de agosto"],[[25,26],"31 de agosto"],[[27,28],"1 de septiembre"],[[29,30],"2 de septiembre"],[[31,32],"3 de septiembre"],[[33,34],"4 de septiembre"],[[35,36],"7 de septiembre"],[[37,38],"8 de septiembre"],[[39,40],"9 de septiembre"],[[41,42],"10 de septiembre"],[[43,44],"11 de septiembre"],[[45,46],"14 de septiembre"],[[47,48],"15 de septiembre"],[[49,50],"16 de septiembre"],[[51,52],"17 de septiembre"],[[53,54],"18 de septiembre"],[[55,56],"21 de septiembre"],[[57,58],"22 de septiembre"],[[59,60],"23 de septiembre"],[[61,62],"24 de septiembre"],[[63,64],"25 de septiembre"],[[65,66],"28 de septiembre"],[[67,68],"1 de octubre"],[[69,70],"2 de octubre"],[[71,72],"5 de octubre"],[[73,74],"6 de octubre"],[[75,76],"7 de octubre"],[[77,78],"8 de octubre"],[[79,80],"9 de octubre"],[[81,82],"13 de octubre"],[[83,84],"14 de octubre"],[[85,86],"15 de octubre"],[[87,88],"16 de octubre"],[[89,90],"19 de octubre"],[[91,92],"20 de octubre"],[[93,94],"21 de octubre"],[[95,96],"22 de octubre"],[[97,98],"23 de octubre"],[[99,0],"26 de octubre"]];const num=parseInt(d,10);for(const [[a,b],f] of map){if(num>=a&&num<=b)return f;if(a===99&&d==="00")return f;}return null;};
-  const fields=[["Ingresos brutos anuales","i",t14,"Incluye salarios, honorarios, rentas, comisiones y otros ingresos recibidos en el año."],["Patrimonio bruto a 31 de diciembre","p",t45,"Suma bienes, cuentas, inversiones, vehículos e inmuebles antes de restar deudas."],["Compras y consumos","c",t14,"Compras con cualquier medio de pago durante el año."],["Consumos con tarjeta de crédito","tc",t14,"Total de consumos hechos con tarjeta de crédito."],["Consignaciones y movimientos bancarios","b",t14,"Entradas y movimientos bancarios acumulados durante el año."]];
-  const chk=()=>{
-    const items=fields.map(([label,key,limit,help])=>{const value=pN(rF[key]);const pct=limit>0?Math.round((value/limit)*100):0;return{label,key,limit,help,value,pct,exceeds:value>=limit,near:value>=limit*.8&&value<limit};});
-    const exceeded=items.filter(item=>item.exceeds);
-    const near=items.filter(item=>item.near);
-    const ob=exceeded.length>0||rF.ivaResp;
-    const nitSource=rF.nit||lead.documentNumber;
-    sRR({
-      ob,
-      near,
-      items,
-      nitDate:getNitDate(nitSource),
-      level:ob?"Podría estar obligado":near.length?"Caso cercano al tope":"Sin señales por topes",
-      note:rF.ivaResp?"Informó responsabilidad de IVA durante el año gravable; este factor puede obligar a presentar declaración aun si no supera los topes numéricos evaluados.":ob?"Hay al menos un criterio que alcanza o supera el tope legal de referencia. Conviene preparar la declaración con soporte profesional.":near.length?"No se supera el tope, pero uno o más rubros están cerca. Es recomendable revisar soportes antes de descartar la obligación.":"Con los valores informados no se superan los topes evaluados. El resultado sigue siendo orientativo."
-    });
-  };
+  const t14=1400*uv,t45=4500*uv,sancionUvt=10,sancionCop=10*52374;
+  const dueInfo=getRentaDueInfo(dueInput||lead.documentNumber);
+  const conditions=[
+    {id:"ingresos",icon:"💼",title:"Ingresos brutos",uvt:"1.400 UVT",cop:t14,summary:"Si sus ingresos del año alcanzan o superan este tope.",detail:"Incluye salarios, honorarios, comisiones, arriendos, pensiones, ingresos como independiente, ventas y demás pagos recibidos durante el año gravable. No se revisa solo el saldo final: se analiza el ingreso acumulado."},
+    {id:"patrimonio",icon:"🏠",title:"Patrimonio bruto",uvt:"4.500 UVT",cop:t45,summary:"Bienes y derechos al 31 de diciembre, antes de restar deudas.",detail:"Sume inmuebles, vehículos, cuentas bancarias, inversiones, aportes, derechos fiduciarios y otros activos a 31 de diciembre. El patrimonio bruto se mira antes de descontar créditos o deudas."},
+    {id:"tarjeta",icon:"💳",title:"Consumos con tarjeta",uvt:"1.400 UVT",cop:t14,summary:"Total de consumos hechos con tarjetas de crédito.",detail:"Se tienen en cuenta los consumos acumulados con tarjeta de crédito durante el año, incluso si después se pagaron las cuotas o se difirieron las compras."},
+    {id:"compras",icon:"🧾",title:"Compras y consumos",uvt:"1.400 UVT",cop:t14,summary:"Compras acumuladas con cualquier medio de pago.",detail:"Incluye compras en efectivo, tarjeta, transferencias, pagos digitales y consumos relevantes hechos durante el año. Es un criterio distinto al de ingresos."},
+    {id:"movimientos",icon:"🏦",title:"Movimientos bancarios",uvt:"1.400 UVT",cop:t14,summary:"Consignaciones, depósitos e inversiones financieras acumuladas.",detail:"Deben revisarse los movimientos de ingreso en cada banco, cuenta de ahorro, cuenta corriente, depósito, inversión y billetera digital. También pueden sumar transferencias, consignaciones, desembolsos de créditos, movimientos entre entidades y otros depósitos que aumenten el acumulado anual, aunque no todos representen utilidad real."},
+    {id:"iva",icon:"📌",title:"Responsable de IVA",uvt:"Condición especial",cop:null,summary:"Haber sido responsable de IVA durante el año gravable.",detail:"Si fue responsable de IVA durante el año, esta condición puede obligar a declarar renta aunque otros topes no parezcan superados. Conviene revisar RUT, responsabilidades y actividad económica."}
+  ];
+  const activeCondition=conditions.find(item=>item.id===active)||conditions[0];
+  const selectedConditions=conditions.filter(item=>selected.includes(item.id));
+  const toggle=id=>sSelected(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id]);
   const updateLead=(field,value)=>setLead(current=>({
     ...current,
-    [field]:field==="documentNumber"?onlyDigits(value):field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):value
+    [field]:field==="documentNumber"?onlyDigits(value).slice(0,12):field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):value
   }));
   const submitLead=async event=>{
     event.preventDefault();
-    if(!rR)return;
     setLeadMsg("");setLeadErr("");
-    const normalized={...lead,name:formatProperName(lead.name),documentNumber:onlyDigits(lead.documentNumber),phone:normalizeColombianMobileNumber(lead.phone).slice(0,10),email:normalizeEmail(lead.email)};
+    const normalized={...lead,name:formatProperName(lead.name),documentNumber:onlyDigits(lead.documentNumber||dueInput),phone:normalizeColombianMobileNumber(lead.phone).slice(0,10),email:normalizeEmail(lead.email)};
     setLead(normalized);
-    if(!normalized.name||!normalized.documentNumber||!normalized.phone||!normalized.email){setLeadErr("Complete todos los datos de contacto.");return;}
+    const currentDue=getRentaDueInfo(normalized.documentNumber||dueInput);
+    if(!normalized.name||normalized.documentNumber.length<2||!normalized.phone||!normalized.email){setLeadErr("Complete nombre, documento o últimos dígitos, WhatsApp y correo.");return;}
     if(!isValidEmail(normalized.email)){setLeadErr("Ingrese un correo electrónico válido.");return;}
+    if(!isValidColombianMobileNumber(normalized.phone)){setLeadErr("Ingrese un WhatsApp colombiano válido.");return;}
     setLeadBusy(true);
     try{
-      const selectedDue=getNitDate(normalized.documentNumber||rF.nit);
-      const due=selectedDue?`Fecha estimada de vencimiento: ${selectedDue} de 2026.`:"Fecha estimada pendiente por confirmar con los últimos dos dígitos del documento.";
-      const reasons=[...rR.items.filter(item=>item.exceeds||item.near).map(item=>`${item.label}: ${cop(item.value)} frente a tope ${cop(item.limit)} (${item.pct}%).`),rF.ivaResp?"Marcó responsabilidad de IVA durante el año gravable.":"",rF.residente!=="si"?"Indicó que no es residente fiscal o no está seguro.":""].filter(Boolean).join(" ");
+      const marked=selectedConditions.map(item=>item.title).join(", ")||"No marcó condiciones; solicita confirmación preventiva.";
+      const due=currentDue?`Fecha estimada de vencimiento: ${currentDue.label}.`:"Fecha estimada pendiente por confirmar.";
       const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         ...normalized,
         serviceInterest:"Declaración de renta",
-        comment:`Resultado herramienta renta: ${rR.level}. ${due} ${reasons || "No se superan topes, pero solicita revisión profesional."}`,
+        comment:`Guía interactiva renta. Condiciones marcadas: ${marked}. ${due}`,
         sourcePath:window.location.pathname,
-        sourceLabel:"Herramienta debo declarar renta",
+        sourceLabel:"Guía condiciones renta",
+        campaign:RENTA_CAMPAIGN_ID,
+        taxCampaign:RENTA_CAMPAIGN_ID,
+        taxYear:RENTA_TAX_YEAR,
+        filingYear:RENTA_FILING_YEAR,
+        taxLastTwoDigits:onlyDigits(normalized.documentNumber).slice(-2),
+        estimatedDueDate:currentDue?.estimatedDueDate||"",
+        dueDateLabel:currentDue?.label||"",
+        taxLeadType:"guia_condiciones_renta",
+        taxProfile:selectedConditions.length?"condiciones_marcadas":"consulta_preventiva",
+        taxConditions:selectedConditions.map(item=>item.id),
         marketingAttribution:getMarketingAttribution(),
         ...getMarketingFormFields()
       })});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.detail||payload.error||"No fue posible registrar tus datos.");
-      trackMarketingEvent("lead_submit",{service_interest:"Declaración de renta",source_label:"Herramienta debo declarar renta"});
-      setLeadMsg("Datos registrados correctamente. Te contactaremos para revisar tu declaración de renta.");
+      trackMarketingEvent("lead_submit",{service_interest:"Declaración de renta",source_label:"Guía condiciones renta",campaign:RENTA_CAMPAIGN_ID});
+      setLeadMsg("Datos recibidos. Te contactaremos por WhatsApp para confirmar tu caso y orientarte antes del vencimiento.");
       setLead(initialLead);
     }catch(err){
       setLeadErr(err.message);
@@ -3142,17 +3148,77 @@ function ToolRenta({uv}){
   };
   return(
     <div style={PANEL}>
-      <h3 style={{fontSize:20,fontWeight:700,color:"#0B1D3A",marginBottom:8,fontFamily:F}}>¿Debe declarar renta?</h3>
-      <div style={{...NOTE_BOX,marginBottom:16}}>Año gravable 2025. UVT usada: {cop(uv)}. La herramienta hace un diagnóstico por topes, nivel de cercanía y fecha estimada de vencimiento para orientar el siguiente paso.</div>
-      <div style={{display:"grid",gap:12}}>
-        <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Residencia fiscal en Colombia</label><select style={{...IS,cursor:"pointer"}} value={rF.residente} onChange={e=>sRF(p=>({...p,residente:e.target.value}))}><option value="si">Sí, residente fiscal</option><option value="no">No residente fiscal</option><option value="ns">No estoy seguro</option></select><div style={{fontSize:12,color:"#64748B",marginTop:6,fontFamily:F}}>La residencia fiscal puede cambiar el análisis de obligación y el formulario aplicable.</div></div>
-        <label style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}><input type="checkbox" checked={rF.ivaResp} onChange={e=>sRF(p=>({...p,ivaResp:e.target.checked}))} style={{accentColor:"#2563EB",width:18,height:18,marginTop:2}}/><span>Fui responsable de IVA durante el año gravable <span style={{display:"block",fontSize:12,color:"#64748B",fontWeight:400,lineHeight:1.6,marginTop:3}}>Este criterio puede incidir en la obligación de declarar renta.</span></span></label>
-        {fields.map(([label,key,limit,help])=><div key={key}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>{label}</label><div style={{fontSize:12,color:"#64748B",margin:"3px 0 6px",fontFamily:F}}>Tope de referencia: {cop(limit)}. {help}</div><input {...currencyInputProps} style={IS} value={rF[key]} onChange={e=>sRF(p=>({...p,[key]:fmtI(e.target.value)}))} placeholder="COP $ 0"/></div>)}
-        <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Dos últimos dígitos del documento o NIT</label><div style={{fontSize:12,color:"#64748B",margin:"3px 0 6px",fontFamily:F}}>Con este dato se estima la fecha de vencimiento para declarar renta.</div><input {...numericInputProps} style={{...IS,maxWidth:180,textAlign:"center",fontSize:18,fontWeight:700}} value={rF.nit} onChange={e=>sRF(p=>({...p,nit:onlyDigits(e.target.value).slice(0,2)}))} placeholder="00" maxLength="2"/></div>
-        <button type="button" onClick={chk} style={{padding:"12px 20px",borderRadius:12,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:700,border:"none",cursor:"pointer",fontFamily:F}}>Analizar mi caso</button>
+      <div style={{display:"grid",gap:18}}>
+        <div>
+          <h3 style={{fontSize:24,fontWeight:900,color:"#0B1D3A",marginBottom:8,fontFamily:F}}>Guía de declaración de renta personas naturales</h3>
+          <div style={{...NOTE_BOX,marginBottom:0}}>Año gravable 2025 · UVT usada para topes: <strong>{cop(uv)}</strong>. Revise las condiciones, consulte su fecha estimada y solicite confirmación inicial sin costo.</div>
+        </div>
+
+        <div style={{padding:18,borderRadius:20,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",color:"#fff",border:"1px solid rgba(125,211,252,.16)",boxShadow:"0 18px 42px rgba(15,23,42,.12)"}}>
+          <div style={{fontFamily:FH,fontSize:25,lineHeight:1.15,marginBottom:8}}>Declarar renta no siempre significa pagar impuesto</div>
+          <p style={{fontFamily:F,fontSize:14,lineHeight:1.75,color:"rgba(240,249,255,.86)",margin:"0 0 12px"}}>En muchos casos la declaración queda sin valor a pagar o con saldos controlados por retenciones, deducciones y rentas exentas. Presentarla a tiempo evita sanciones, intereses y requerimientos.</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:10}}>
+            <div style={{padding:13,borderRadius:16,background:"rgba(255,255,255,.08)",border:"1px solid rgba(191,219,254,.16)"}}><div style={{fontSize:11,letterSpacing:"1.1px",fontWeight:900,color:"#BFDBFE",fontFamily:F}}>SANCIÓN MÍNIMA</div><strong style={{display:"block",fontSize:20,fontFamily:FH,marginTop:4}}>{sancionUvt} UVT</strong><span style={{fontFamily:F,fontSize:13,color:"rgba(226,232,240,.82)"}}>{cop(sancionCop)} en 2026</span></div>
+            <div style={{padding:13,borderRadius:16,background:"rgba(255,255,255,.08)",border:"1px solid rgba(191,219,254,.16)",fontFamily:F,fontSize:13,lineHeight:1.65,color:"rgba(226,232,240,.86)"}}>Si no se declara cuando corresponde, la sanción puede ser mayor según ingresos, consignaciones, impuesto a cargo, emplazamientos o requerimientos.</div>
+          </div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12}} className="tool-grid">
+          {conditions.map(item=>{
+            const checked=selected.includes(item.id),open=active===item.id;
+            return(
+              <div key={item.id} onClick={()=>sActive(item.id)} style={{padding:16,borderRadius:18,background:open?"#F8FBFF":"#fff",border:`1px solid ${checked?"rgba(21,128,61,.35)":open?"rgba(37,99,235,.28)":"rgba(37,99,235,.10)"}`,boxShadow:open?"0 16px 34px rgba(37,99,235,.08)":"0 10px 24px rgba(15,23,42,.04)",cursor:"pointer"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:10}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <span style={{width:36,height:36,borderRadius:14,background:"rgba(37,99,235,.08)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{item.icon}</span>
+                    <div>
+                      <div style={{fontFamily:F,fontSize:15,fontWeight:900,color:"#0F172A",lineHeight:1.3}}>{item.title}</div>
+                      <div style={{fontFamily:F,fontSize:12,color:"#64748B",marginTop:2}}>{item.uvt}{item.cop?` · ${cop(item.cop)}`:""}</div>
+                    </div>
+                  </div>
+                  <button type="button" onClick={event=>{event.stopPropagation();toggle(item.id);}} style={{padding:"7px 10px",borderRadius:999,border:"1px solid rgba(37,99,235,.14)",background:checked?"#15803D":"#fff",color:checked?"#fff":"#1D4ED8",fontFamily:F,fontSize:11,fontWeight:900,cursor:"pointer"}}>{checked?"Aplica":"Marcar"}</button>
+                </div>
+                <p style={{fontFamily:F,fontSize:13,color:"#52647F",lineHeight:1.65,margin:0}}>{item.summary}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.05)"}}>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}><span style={{fontSize:23}}>{activeCondition.icon}</span><h4 style={{fontFamily:FH,fontSize:24,lineHeight:1.2,color:"#0B1D3A",margin:0}}>{activeCondition.title}</h4></div>
+          <div style={{display:"inline-flex",padding:"6px 10px",borderRadius:999,background:"rgba(37,99,235,.08)",color:"#1D4ED8",fontFamily:F,fontSize:12,fontWeight:900,marginBottom:10}}>{activeCondition.uvt}{activeCondition.cop?` · ${cop(activeCondition.cop)}`:""}</div>
+          <p style={{fontFamily:F,fontSize:14,color:"#334155",lineHeight:1.75,margin:0}}>{activeCondition.detail}</p>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(260px,.45fr)",gap:14,alignItems:"stretch"}} className="cert-hero-grid">
+          <div style={{padding:18,borderRadius:20,background:"linear-gradient(135deg,rgba(37,99,235,.08),rgba(56,189,248,.10))",border:"1px solid rgba(37,99,235,.12)"}}>
+            <h4 style={{fontFamily:FH,fontSize:25,lineHeight:1.15,color:"#0B1D3A",margin:"0 0 8px"}}>Consulta tu fecha estimada de vencimiento</h4>
+            <p style={{fontFamily:F,fontSize:14,color:"#52647F",lineHeight:1.7,margin:"0 0 12px"}}>Ingresa el documento completo o solo los dos últimos dígitos para ubicar la fecha estimada de presentación.</p>
+            <input {...numericInputProps} style={{...IS,maxWidth:260,textAlign:"center",fontSize:20,fontWeight:900,letterSpacing:"1px"}} value={dueInput} onChange={e=>sDueInput(onlyDigits(e.target.value).slice(0,12))} placeholder="Ej. 10203045 o 45"/>
+          </div>
+          <div style={{padding:18,borderRadius:20,background:dueInfo?"#0B1D3A":"#fff",border:"1px solid rgba(37,99,235,.12)",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+            <div style={{fontFamily:F,fontSize:11,letterSpacing:"1.2px",fontWeight:900,color:dueInfo?"#93C5FD":"#1D4ED8",marginBottom:8}}>FECHA ESTIMADA</div>
+            <div style={{fontFamily:FH,fontSize:dueInfo?30:22,lineHeight:1.1,color:dueInfo?"#fff":"#0B1D3A"}}>{dueInfo?dueInfo.label:"Pendiente por consultar"}</div>
+            <p style={{fontFamily:F,fontSize:12,color:dueInfo?"rgba(226,232,240,.78)":"#64748B",lineHeight:1.6,margin:"8px 0 0"}}>{dueInfo?`Últimos dígitos: ${dueInfo.lastTwoDigits}`:"La fecha no confirma por sí sola la obligación; solo indica el vencimiento si debes declarar."}</p>
+          </div>
+        </div>
+
+        <div style={{padding:18,borderRadius:20,background:selectedConditions.length?"rgba(245,158,11,.10)":"rgba(37,99,235,.07)",border:`1px solid ${selectedConditions.length?"rgba(245,158,11,.20)":"rgba(37,99,235,.12)"}`}}>
+          <div style={{fontFamily:F,fontSize:17,fontWeight:900,color:selectedConditions.length?"#B45309":"#1D4ED8",marginBottom:6}}>{selectedConditions.length?"Tu caso merece revisión":"Podemos confirmar tu caso sin costo"}</div>
+          <p style={{fontFamily:F,fontSize:14,color:"#475569",lineHeight:1.7,margin:0}}>{selectedConditions.length?`Marcaste ${selectedConditions.length} condición(es) que pueden requerir declaración. Revisa documentos y topes antes del vencimiento para evitar sanciones.`:"Aunque no marques condiciones, si no estás seguro conviene revisar antes de descartar la obligación."}</p>
+        </div>
+
+        <form onSubmit={submitLead} style={{display:"grid",gap:10,padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.05)"}}>
+          <div><div style={{fontSize:12,letterSpacing:"1.3px",fontWeight:900,color:"#1D4ED8",fontFamily:F}}>CONFIRMACIÓN SIN COSTO</div><h4 style={{fontFamily:FH,fontSize:24,lineHeight:1.15,color:"#0B1D3A",margin:"6px 0 0"}}>Déjanos tus datos y revisamos tu caso por WhatsApp</h4></div>
+          <div className="renta-lead-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}><input required style={IS} value={lead.name} onChange={e=>updateLead("name",e.target.value)} onBlur={e=>updateLead("name",formatProperName(e.target.value))} placeholder="Nombre completo" autoComplete="name"/><input required style={IS} value={lead.documentNumber} onChange={e=>updateLead("documentNumber",e.target.value)} placeholder="Documento o últimos dígitos"/><input required style={IS} value={lead.phone} onChange={e=>updateLead("phone",e.target.value)} placeholder="WhatsApp" autoComplete="tel"/><input required type="email" style={IS} value={lead.email} onChange={e=>updateLead("email",e.target.value)} onBlur={e=>updateLead("email",normalizeEmail(e.target.value))} placeholder="Correo electrónico" autoComplete="email"/></div>
+          <label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input required type="checkbox" checked={lead.treatmentConsent} onChange={e=>updateLead("treatmentConsent",e.target.checked)}/>Autorizo el tratamiento de mis datos para gestionar esta solicitud.</label>
+          <label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input type="checkbox" checked={lead.marketingConsent} onChange={e=>updateLead("marketingConsent",e.target.checked)}/>Autorizo recibir recordatorios e información relacionada por WhatsApp y/o correo.</label>
+          {leadMsg?<div style={{padding:10,borderRadius:12,background:"rgba(34,197,94,.12)",color:"#15803D",fontFamily:F,fontWeight:800}}>{leadMsg}</div>:null}{leadErr?<div style={{padding:10,borderRadius:12,background:"rgba(220,38,38,.10)",color:"#991B1B",fontFamily:F,fontWeight:800}}>{leadErr}</div>:null}
+          <button type="submit" disabled={leadBusy} style={{padding:"12px 18px",borderRadius:12,border:"none",background:leadBusy?"#94A3B8":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:900,cursor:leadBusy?"not-allowed":"pointer"}}>{leadBusy?"Registrando...":"Confirmar mi caso sin costo"}</button>
+        </form>
+
+        <div style={{fontSize:11,color:"#64748B",lineHeight:1.65,fontFamily:F}}>Información orientativa. La obligación real puede depender de residencia fiscal, naturaleza de ingresos, soportes, responsabilidades en RUT, topes especiales y normativa vigente aplicable.</div>
       </div>
-      {rR&&<div style={{marginTop:16,padding:18,borderRadius:14,background:rR.ob?"rgba(220,38,38,.06)":rR.near.length?"rgba(245,158,11,.08)":"rgba(22,163,74,.06)",border:`1px solid ${rR.ob?"rgba(220,38,38,.14)":rR.near.length?"rgba(245,158,11,.18)":"rgba(22,163,74,.16)"}`}}><div style={{fontSize:17,fontWeight:700,color:rR.ob?"#DC2626":rR.near.length?"#B45309":"#15803D",marginBottom:8,fontFamily:F}}>{rR.level}</div><div style={{fontSize:14,color:"#475569",lineHeight:1.7,fontFamily:F,marginBottom:12}}>{rR.note}</div><div style={{display:"grid",gap:8}}>{rR.items.map(item=><div key={item.key} style={{padding:12,borderRadius:12,background:"#fff",border:"1px solid rgba(37,99,235,.08)",fontFamily:F}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",fontSize:13,color:"#0F172A",fontWeight:800}}><span>{item.label}</span><span>{item.pct}% del tope</span></div><div style={{height:8,borderRadius:999,background:"#E2E8F0",overflow:"hidden",marginTop:8}}><div style={{height:"100%",width:`${Math.min(item.pct,100)}%`,background:item.exceeds?"#DC2626":item.near?"#F59E0B":"#22C55E"}}/></div><div style={{fontSize:12,color:"#64748B",marginTop:6}}>{cop(item.value)} / {cop(item.limit)}</div></div>)}</div>{rR.nitDate&&<div style={{marginTop:14,padding:14,borderRadius:12,background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.12)",fontSize:14,color:"#0F172A",fontFamily:F}}>Fecha estimada de presentación: <strong>{rR.nitDate} de 2026</strong>.</div>}{(rR.ob||rR.near.length>0)&&<form onSubmit={submitLead} style={{marginTop:14,display:"grid",gap:10,padding:16,borderRadius:14,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}><div style={{fontSize:14,fontWeight:800,color:"#1D4ED8",fontFamily:F}}>Solicita que revisemos tu caso</div><div className="renta-lead-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}><input required style={IS} value={lead.name} onChange={e=>updateLead("name",e.target.value)} placeholder="Nombre completo"/><input required style={IS} value={lead.documentNumber} onChange={e=>updateLead("documentNumber",e.target.value)} placeholder="Documento o NIT"/><input required style={IS} value={lead.phone} onChange={e=>updateLead("phone",e.target.value)} placeholder="WhatsApp"/><input required type="email" style={IS} value={lead.email} onChange={e=>updateLead("email",e.target.value)} placeholder="Correo electrónico"/></div><label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input required type="checkbox" checked={lead.treatmentConsent} onChange={e=>updateLead("treatmentConsent",e.target.checked)}/>Autorizo el tratamiento de mis datos para gestionar esta solicitud.</label><label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input type="checkbox" checked={lead.marketingConsent} onChange={e=>updateLead("marketingConsent",e.target.checked)}/>Autorizo recibir información por WhatsApp y/o correo.</label>{leadMsg?<div style={{padding:10,borderRadius:12,background:"rgba(34,197,94,.12)",color:"#15803D",fontFamily:F,fontWeight:800}}>{leadMsg}</div>:null}{leadErr?<div style={{padding:10,borderRadius:12,background:"rgba(220,38,38,.10)",color:"#991B1B",fontFamily:F,fontWeight:800}}>{leadErr}</div>:null}<button type="submit" disabled={leadBusy} style={{padding:"12px 18px",borderRadius:12,border:"none",background:leadBusy?"#94A3B8":"linear-gradient(135deg,#0B1D3A,#2563EB)",color:"#fff",fontFamily:F,fontWeight:800,cursor:leadBusy?"not-allowed":"pointer"}}>{leadBusy?"Registrando...":"Enviar solicitud de contacto"}</button></form>}<div style={{marginTop:10,fontSize:12,color:"#64748B",fontFamily:F,lineHeight:1.7}}>Resultado orientativo. La obligación real puede depender de residencia fiscal, tipo de ingresos, retenciones, soportes, topes especiales y otras condiciones normativas.</div></div>}
-      <ToolCTA text="Un error en la interpretación de los topes puede salir costoso. Revise su caso con tiempo y evite sanciones o declaraciones innecesarias." msg="Hola CONTARAE, quiero que revisen si estoy obligado a declarar renta y me asesoren en el proceso."/>
     </div>
   )
 }
