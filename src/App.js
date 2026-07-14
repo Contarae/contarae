@@ -3079,7 +3079,7 @@ function ToolCTA({text,msg}){return(
 
 function ToolRenta({uv}){
   const initialLead={name:"",documentNumber:"",phone:"",email:"",treatmentConsent:false,marketingConsent:true};
-  const[active,sActive]=useState("ingresos");
+  const[active,sActive]=useState("ingresos_patrimonio");
   const[topStatus,sTopStatus]=useState("");
   const[dueInput,sDueInput]=useState("");
   const[lead,setLead]=useState(initialLead);
@@ -3108,15 +3108,22 @@ function ToolRenta({uv}){
   const supportChecklist=topStatus==="no_supera"
     ? ["Documento de identidad o RUT","Últimos dos dígitos del documento","Resumen de ingresos del año","Extractos o certificados principales si tienes dudas"]
     : ["Certificado de ingresos y retenciones","Extractos bancarios y billeteras digitales","Certificados de créditos, intereses y retenciones","Predial, vehículo, inversiones y otros activos","Soportes de dependientes, medicina prepagada, AFC o pensiones voluntarias","Costos y gastos soportados si eres independiente"];
-  const conditions=[
-    {id:"ingresos",icon:"💼",title:"Ingresos brutos",uvt:"1.400 UVT",cop:t14,summary:"Si sus ingresos del año alcanzan o superan este tope.",detail:"Incluye salarios, honorarios, comisiones, arriendos, pensiones, ingresos como independiente, ventas y demás pagos recibidos durante el año gravable. No se revisa solo el saldo final: se analiza el ingreso acumulado."},
-    {id:"patrimonio",icon:"🏠",title:"Patrimonio bruto",uvt:"4.500 UVT",cop:t45,summary:"Bienes y derechos al 31 de diciembre, antes de restar deudas.",detail:"Sume inmuebles, vehículos, cuentas bancarias, inversiones, aportes, derechos fiduciarios y otros activos a 31 de diciembre. El patrimonio bruto se mira antes de descontar créditos o deudas."},
-    {id:"tarjeta",icon:"💳",title:"Consumos con tarjeta",uvt:"1.400 UVT",cop:t14,summary:"Total de consumos hechos con tarjetas de crédito.",detail:"Se tienen en cuenta los consumos acumulados con tarjeta de crédito durante el año, incluso si después se pagaron las cuotas o se difirieron las compras."},
-    {id:"compras",icon:"🧾",title:"Compras y consumos",uvt:"1.400 UVT",cop:t14,summary:"Compras acumuladas con cualquier medio de pago.",detail:"Incluye compras en efectivo, tarjeta, transferencias, pagos digitales y consumos relevantes hechos durante el año. Es un criterio distinto al de ingresos."},
-    {id:"movimientos",icon:"🏦",title:"Movimientos bancarios",uvt:"1.400 UVT",cop:t14,summary:"Consignaciones, depósitos e inversiones financieras acumuladas.",detail:"Deben revisarse los movimientos de ingreso en cada banco, cuenta de ahorro, cuenta corriente, depósito, inversión y billetera digital. También pueden sumar transferencias, consignaciones, desembolsos de créditos, movimientos entre entidades y otros depósitos que aumenten el acumulado anual, aunque no todos representen utilidad real."},
-    {id:"iva",icon:"📌",title:"Responsable de IVA",uvt:"Condición especial",cop:null,summary:"Haber sido responsable de IVA durante el año gravable.",detail:"Si fue responsable de IVA durante el año, esta condición puede obligar a declarar renta aunque otros topes no parezcan superados. Conviene revisar RUT, responsabilidades y actividad económica."}
+  const conditionGroups=[
+    {id:"ingresos_patrimonio",icon:"💼",title:"Ingresos y patrimonio",summary:"Revise ingresos acumulados del año y activos a 31 de diciembre.",items:[
+      {label:"Ingresos brutos",uvt:"1.400 UVT",cop:t14,detail:"Incluye salarios, honorarios, comisiones, arriendos, pensiones, ingresos como independiente, ventas y demás pagos recibidos durante el año gravable. No se revisa solo el saldo final: se analiza el ingreso acumulado."},
+      {label:"Patrimonio bruto",uvt:"4.500 UVT",cop:t45,detail:"Sume inmuebles, vehículos, cuentas bancarias, inversiones, aportes, derechos fiduciarios y otros activos a 31 de diciembre. El patrimonio bruto se mira antes de descontar créditos o deudas."}
+    ]},
+    {id:"consumos_compras",icon:"💳",title:"Consumos, compras y tarjetas",summary:"Agrupa compras del año y consumos hechos con tarjeta de crédito.",items:[
+      {label:"Compras y consumos",uvt:"1.400 UVT",cop:t14,detail:"Incluye compras en efectivo, tarjeta, transferencias, pagos digitales y consumos relevantes hechos durante el año. Es un criterio distinto al de ingresos."},
+      {label:"Consumos con tarjeta de crédito",uvt:"1.400 UVT",cop:t14,detail:"Se tienen en cuenta los consumos acumulados con tarjeta de crédito durante el año, incluso si después se pagaron las cuotas o se difirieron las compras."}
+    ]},
+    {id:"movimientos_financieros",icon:"🏦",title:"Movimientos financieros",summary:"Bancos, depósitos, transferencias, inversiones y billeteras digitales.",items:[
+      {label:"Movimientos bancarios",uvt:"1.400 UVT",cop:t14,detail:"Deben revisarse los movimientos de ingreso en cada banco, cuenta de ahorro, cuenta corriente, depósito, inversión y billetera digital. También pueden sumar transferencias, consignaciones, desembolsos de créditos, movimientos entre entidades y otros depósitos que aumenten el acumulado anual, aunque no todos representen utilidad real."}
+    ]},
+    {id:"responsabilidades",icon:"📌",title:"Responsabilidades especiales",summary:"Responsabilidad de IVA y revisión del RUT durante el año gravable.",items:[
+      {label:"Responsable de IVA",uvt:"Condición especial",cop:null,detail:"Si fue responsable de IVA durante el año, esta condición puede obligar a declarar renta aunque otros topes no parezcan superados. Conviene revisar RUT, responsabilidades y actividad económica."}
+    ]}
   ];
-  const activeCondition=conditions.find(item=>item.id===active)||conditions[0];
   const updateLead=(field,value)=>setLead(current=>({
     ...current,
     [field]:field==="documentNumber"?onlyDigits(value).slice(0,12):field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):value
@@ -3186,30 +3193,39 @@ function ToolRenta({uv}){
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12}} className="tool-grid">
-          {conditions.map(item=>{
-            const open=active===item.id;
+          {conditionGroups.map(group=>{
+            const open=active===group.id;
             return(
-              <div key={item.id} style={{padding:16,borderRadius:18,background:open?"#F8FBFF":"#fff",border:`1px solid ${open?"rgba(37,99,235,.28)":"rgba(37,99,235,.10)"}`,boxShadow:open?"0 16px 34px rgba(37,99,235,.08)":"0 10px 24px rgba(15,23,42,.04)"}}>
+              <div key={group.id} style={{padding:16,borderRadius:18,background:open?"#F8FBFF":"#fff",border:`1px solid ${open?"rgba(37,99,235,.28)":"rgba(37,99,235,.10)"}`,boxShadow:open?"0 16px 34px rgba(37,99,235,.08)":"0 10px 24px rgba(15,23,42,.04)"}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:10}}>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <span style={{width:36,height:36,borderRadius:14,background:"rgba(37,99,235,.08)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{item.icon}</span>
+                    <span style={{width:36,height:36,borderRadius:14,background:"rgba(37,99,235,.08)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{group.icon}</span>
                     <div>
-                      <div style={{fontFamily:F,fontSize:15,fontWeight:900,color:"#0F172A",lineHeight:1.3}}>{item.title}</div>
-                      <div style={{fontFamily:F,fontSize:12,color:"#64748B",marginTop:2}}>{item.uvt}{item.cop?` · ${cop(item.cop)}`:""}</div>
+                      <div style={{fontFamily:F,fontSize:15,fontWeight:900,color:"#0F172A",lineHeight:1.3}}>{group.title}</div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:5}}>
+                        {group.items.map(item=><span key={item.label} style={{fontFamily:F,fontSize:11,color:"#1D4ED8",background:"rgba(37,99,235,.08)",borderRadius:999,padding:"4px 7px",fontWeight:900}}>{item.uvt}{item.cop?` · ${cop(item.cop)}`:""}</span>)}
+                      </div>
                     </div>
                   </div>
-                  <button type="button" onClick={()=>sActive(item.id)} style={{padding:"7px 10px",borderRadius:999,border:"1px solid rgba(37,99,235,.14)",background:open?"#1D4ED8":"#fff",color:open?"#fff":"#1D4ED8",fontFamily:F,fontSize:11,fontWeight:900,cursor:"pointer"}}>{open?"Viendo":"Ver detalle"}</button>
+                  <button type="button" onClick={()=>sActive(open?"":group.id)} style={{padding:"7px 10px",borderRadius:999,border:"1px solid rgba(37,99,235,.14)",background:open?"#1D4ED8":"#fff",color:open?"#fff":"#1D4ED8",fontFamily:F,fontSize:11,fontWeight:900,cursor:"pointer",whiteSpace:"nowrap"}}>{open?"Ocultar":"Ver detalle"}</button>
                 </div>
-                <p style={{fontFamily:F,fontSize:13,color:"#52647F",lineHeight:1.65,margin:0}}>{item.summary}</p>
+                <p style={{fontFamily:F,fontSize:13,color:"#52647F",lineHeight:1.65,margin:0}}>{group.summary}</p>
+                {open?(
+                  <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(37,99,235,.10)",display:"grid",gap:10}}>
+                    {group.items.map(item=>(
+                      <div key={item.label} style={{padding:12,borderRadius:14,background:"#fff",border:"1px solid rgba(37,99,235,.10)"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap",marginBottom:6}}>
+                          <strong style={{fontFamily:F,fontSize:13,color:"#0F172A"}}>{item.label}</strong>
+                          <span style={{fontFamily:F,fontSize:11,color:"#1D4ED8",fontWeight:900,background:"rgba(37,99,235,.08)",borderRadius:999,padding:"4px 7px"}}>{item.uvt}{item.cop?` · ${cop(item.cop)}`:""}</span>
+                        </div>
+                        <p style={{fontFamily:F,fontSize:13,color:"#475569",lineHeight:1.65,margin:0}}>{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                ):null}
               </div>
             );
           })}
-        </div>
-
-        <div style={{padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.05)"}}>
-          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}><span style={{fontSize:23}}>{activeCondition.icon}</span><h4 style={{fontFamily:FH,fontSize:24,lineHeight:1.2,color:"#0B1D3A",margin:0}}>{activeCondition.title}</h4></div>
-          <div style={{display:"inline-flex",padding:"6px 10px",borderRadius:999,background:"rgba(37,99,235,.08)",color:"#1D4ED8",fontFamily:F,fontSize:12,fontWeight:900,marginBottom:10}}>{activeCondition.uvt}{activeCondition.cop?` · ${cop(activeCondition.cop)}`:""}</div>
-          <p style={{fontFamily:F,fontSize:14,color:"#334155",lineHeight:1.75,margin:0}}>{activeCondition.detail}</p>
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(260px,.45fr)",gap:14,alignItems:"stretch"}} className="cert-hero-grid">
