@@ -871,7 +871,7 @@ const CITIES=["Bogotá D.C.","Medellín","Cali","Barranquilla","Cartagena","Cúc
 
 function LogoNav(){
   return(
-    <div style={{display:"flex",alignItems:"center",gap:10}}>
+    <div className="nav-logo-root" style={{display:"flex",alignItems:"center",gap:10,minWidth:280}}>
       <div style={{position:"relative"}}>
         <div style={{
           position:"absolute",
@@ -887,11 +887,11 @@ function LogoNav(){
         </svg>
       </div>
       <div>
-        <div style={{display:"flex"}}>
+        <div className="nav-brand-text" style={{display:"flex"}}>
           <span style={{fontFamily:FH,fontSize:21,fontWeight:700,color:"#F8FBFF",letterSpacing:"1.5px"}}>CONTA</span>
           <span style={{fontFamily:FH,fontSize:21,fontWeight:700,color:"#7DD3FC",letterSpacing:"1.5px"}}>RAE</span>
         </div>
-        <div style={{fontSize:8.5,color:"rgba(226,232,240,.82)",letterSpacing:"2.2px",fontFamily:F,marginTop:1}}>
+        <div className="nav-logo-tag" style={{fontSize:8.5,color:"rgba(226,232,240,.82)",letterSpacing:"2.2px",fontFamily:F,marginTop:1,whiteSpace:"nowrap"}}>
           SERVICIOS CONTABLES, TRIBUTARIOS Y FINANCIEROS
         </div>
       </div>
@@ -952,14 +952,12 @@ function Nav({path}){
 
   const menu=[
     {l:"Inicio",id:"inicio"},
-    {l:"Servicios",id:"servicios",sub:[{l:"Servicios generales",id:"servicios"},{l:"Planes contables",id:"planes"},{l:"Escenarios frecuentes",id:"escenarios"},{l:"Trámites contables",id:"tramites"}]},
-    {l:"Certificación",id:"certificacion"},
+    {l:"Servicios",id:"servicios",sub:[{l:"Servicios generales",id:"servicios"},{l:"Certificación de ingresos",id:"certificacion"},{l:"Planes contables",id:"planes"},{l:"Escenarios frecuentes",id:"escenarios"},{l:"Trámites contables",id:"tramites"}]},
     {l:"Herramientas",id:"herramientas",sub:[{l:"Introducción herramientas",id:"herramientas"},{l:"¿Debo declarar renta?",id:"tool-renta"},{l:"Retención en la fuente",id:"tool-retencion"},{l:"Planilla independientes",id:"tool-planilla"},{l:"Liquidador de nómina",id:"tool-nomina"},{l:"Liquidador de IVA",id:"tool-iva"},{l:"Precio antes de IVA",id:"tool-precio"},{l:"Calendario tributario",id:"calendario"}]},
     {l:"Recursos",id:"blog",sub:[{l:"Blog",id:"blog"},{l:"Descargas",id:"descargas"},{l:"Preguntas frecuentes",id:"faq"},{l:"Alertas tributarias",id:"alertas"}]},
     {l:"Nosotros",id:"whyus",sub:[{l:"¿Por qué elegirnos?",id:"whyus"},{l:"Sobre CONTARAE",id:"nosotros"}]},
-    {l:"Portal clientes",id:"portal-clientes",href:CLIENT_PORTAL_ROUTE},
-    {l:"Portal de pagos",id:"portal-pagos",href:PAYMENTS_PORTAL_ROUTE},
-    {l:"Contacto",id:"contacto",sub:[{l:"Contacto",id:"contacto"}]}
+    {l:"Portales",id:"portales",sub:[{l:"Portal clientes",id:"portal-clientes",href:CLIENT_PORTAL_ROUTE},{l:"Portal pagos",id:"portal-pagos",href:PAYMENTS_PORTAL_ROUTE}]},
+    {l:"Contacto",id:"contacto"}
   ];
 
   useEffect(()=>{
@@ -991,7 +989,8 @@ function Nav({path}){
     transition:"all .22s ease",
     display:"inline-flex",
     alignItems:"center",
-    gap:6
+    gap:6,
+    whiteSpace:"nowrap"
   };
 
   const goTo=id=>e=>{
@@ -1045,13 +1044,28 @@ function Nav({path}){
           .dk{display:none!important;}
           .hm{display:block!important;}
         }
+        @media(min-width:1181px) and (max-width:1360px){
+          .nav-logo-root{min-width:230px!important;gap:8px!important;}
+          .nav-logo-root svg{width:28px;height:35px;}
+          .nav-brand-text span{font-size:18px!important;letter-spacing:1px!important;}
+          .nav-logo-tag{font-size:7px!important;letter-spacing:1.3px!important;}
+          .desktop-menu{gap:2px!important;}
+          .desktop-menu a{font-size:12.5px!important;padding-left:10px!important;padding-right:10px!important;}
+        }
+        @media(max-width:620px){
+          .nav-logo-root{min-width:0!important;}
+          .nav-brand-text span{font-size:18px!important;letter-spacing:1px!important;}
+          .nav-logo-tag{display:none!important;}
+        }
       `}</style>
 
       <div style={{position:"absolute",inset:0,pointerEvents:"none",background:"linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,0) 18%, rgba(125,211,252,.04) 45%, rgba(255,255,255,0) 72%, rgba(255,255,255,.02))"}}/>
       <LogoNav/>
 
-      <div style={{display:"flex",gap:5,alignItems:"center",position:"relative"}} className="dk">
-        {menu.map((m,i)=>
+      <div style={{display:"flex",gap:5,alignItems:"center",position:"relative",justifyContent:"flex-end",flex:"1 1 auto"}} className="dk desktop-menu">
+        {menu.map((m,i)=>{
+          const active=m.id===act||m.sub?.some(s=>s.id===act);
+          return(
           <div
             key={i}
             style={{position:"relative",paddingBottom:9,marginBottom:-9}}
@@ -1063,21 +1077,21 @@ function Nav({path}){
               onClick={goToMenuItem(m)}
               style={{
                 ...navBase,
-                color:act===m.id?"#F8FBFF":"rgba(226,232,240,.84)",
-                fontWeight:act===m.id?700:500,
-                background:act===m.id?"linear-gradient(135deg, rgba(37,99,235,.42), rgba(14,165,233,.28))":"transparent",
-                border:act===m.id?"1px solid rgba(125,211,252,.30)":"1px solid transparent",
-                boxShadow:act===m.id?"0 8px 20px rgba(37,99,235,.18)":"none"
+                color:active?"#F8FBFF":"rgba(226,232,240,.84)",
+                fontWeight:active?700:500,
+                background:active?"linear-gradient(135deg, rgba(37,99,235,.42), rgba(14,165,233,.28))":"transparent",
+                border:active?"1px solid rgba(125,211,252,.30)":"1px solid transparent",
+                boxShadow:active?"0 8px 20px rgba(37,99,235,.18)":"none"
               }}
               onMouseEnter={e=>{
-                if(act!==m.id){
+                if(!active){
                   e.currentTarget.style.background="rgba(255,255,255,.05)";
                   e.currentTarget.style.color="#F8FBFF";
                   e.currentTarget.style.border="1px solid rgba(125,211,252,.18)";
                 }
               }}
               onMouseLeave={e=>{
-                if(act!==m.id){
+                if(!active){
                   e.currentTarget.style.background="transparent";
                   e.currentTarget.style.color="rgba(226,232,240,.84)";
                   e.currentTarget.style.border="1px solid transparent";
@@ -1106,8 +1120,8 @@ function Nav({path}){
                 {m.sub.map((s,j)=>
                   <a
                     key={j}
-                    href={getSectionHref(s.id,path)}
-                    onClick={goTo(s.id)}
+                    href={getMenuHref(s)}
+                    onClick={goToMenuItem(s)}
                     style={{
                       display:"block",
                       padding:"11px 18px",
@@ -1115,6 +1129,7 @@ function Nav({path}){
                       fontSize:13,
                       fontFamily:F,
                       textDecoration:"none",
+                      whiteSpace:"nowrap",
                       transition:"background .2s,color .2s,padding-left .2s"
                     }}
                     onMouseEnter={e=>{
@@ -1134,7 +1149,7 @@ function Nav({path}){
               </div>
             }
           </div>
-        )}
+        )})}
 
         <a
           href={wm("Hola CONTARAE, me gustaría recibir asesoría sobre sus servicios contables.")}
@@ -1203,8 +1218,8 @@ function Nav({path}){
               {m.sub&&m.sub.map((s,j)=>
                 <a
                   key={j}
-                  href={getSectionHref(s.id,path)}
-                  onClick={goTo(s.id)}
+                  href={getMenuHref(s)}
+                  onClick={goToMenuItem(s)}
                   style={{
                     display:"block",
                     padding:"10px 0 10px 20px",
