@@ -742,6 +742,16 @@ function getLeadDueMeta(lead = {}) {
   return { label: `Renta: ${getLeadDueLabel(lead)}`, tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" };
 }
 
+function getLeadPriorityMeta(lead = {}) {
+  const raw = String(lead.leadPriority || "").toLowerCase();
+  if (raw === "alta") return { label: "Prioridad alta", tone: "#B91C1C", bg: "rgba(220,38,38,.10)" };
+  if (raw === "media") return { label: "Prioridad media", tone: "#B45309", bg: "rgba(245,158,11,.14)" };
+  if (raw === "baja") return { label: "Prioridad baja", tone: "#15803D", bg: "rgba(34,197,94,.12)" };
+  if (isRentaLead(lead) && lead.taxProfile === "supera_topes") return { label: "Prioridad alta", tone: "#B91C1C", bg: "rgba(220,38,38,.10)" };
+  if (isRentaLead(lead) && lead.taxProfile === "no_seguro") return { label: "Prioridad media", tone: "#B45309", bg: "rgba(245,158,11,.14)" };
+  return null;
+}
+
 function buildRentaReminderMessage(lead = {}) {
   const name = formatProperName(lead.name) || "";
   const dueLabel = getLeadDueLabel(lead);
@@ -780,7 +790,7 @@ function buildClientWhatsappLink(client, message = "") {
 }
 
 function buildLeadsCsv(leads = []) {
-  const headers = ["id", "fecha", "nombre", "documento", "whatsapp", "correo", "servicio", "comentario", "autoriza_tratamiento", "autoriza_comunicaciones", "origen", "campana", "ultimos_digitos", "vencimiento_estimado"];
+  const headers = ["id", "fecha", "nombre", "documento", "whatsapp", "correo", "servicio", "comentario", "autoriza_tratamiento", "autoriza_comunicaciones", "origen", "campana", "ultimos_digitos", "vencimiento_estimado", "perfil_renta", "prioridad", "checklist_soportes"];
   const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const rows = leads.map((lead) => [
     lead.id,
@@ -796,7 +806,10 @@ function buildLeadsCsv(leads = []) {
     lead.sourcePath || lead.sourceLabel,
     lead.taxCampaign || lead.campaign,
     lead.taxLastTwoDigits,
-    lead.dueDateLabel || lead.estimatedDueDate
+    lead.dueDateLabel || lead.estimatedDueDate,
+    lead.taxProfile,
+    lead.leadPriority,
+    Array.isArray(lead.supportChecklist) ? lead.supportChecklist.join(" | ") : ""
   ].map(escape).join(","));
   return [headers.join(","), ...rows].join("\n");
 }
@@ -2817,6 +2830,7 @@ function PotentialClientsModule({
               const selected = leadIds.some((id) => selectedLeadIds.has(id));
               const dueMeta = getLeadDueMeta(lead);
               const statusMeta = getLeadStatusMeta(lead.status);
+              const priorityMeta = getLeadPriorityMeta(lead);
               return (
                 <div key={lead.key || lead.id} className="admin-client-row" style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: 14, borderRadius: 18, border: selected ? "1px solid rgba(37,99,235,.28)" : "1px solid rgba(37,99,235,.10)", background: selected ? "rgba(37,99,235,.06)" : "#fff" }}>
                   <input
@@ -2839,6 +2853,7 @@ function PotentialClientsModule({
                         {lead.marketingConsent ? "Autoriza" : "Gestión"}
                       </Badge>
                       <Badge meta={statusMeta}>{statusMeta.label}</Badge>
+                      {priorityMeta ? <Badge meta={priorityMeta}>{priorityMeta.label}</Badge> : null}
                       {dueMeta ? <Badge meta={dueMeta}>{dueMeta.label}</Badge> : null}
                     </div>
                     <div style={{ fontFamily: F, fontSize: 12, color: "#64748B", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -3303,6 +3318,8 @@ function ClientDetailDialog({
   const leadWhatsappLink = isLead ? buildLeadReminderWhatsappLink(lead) || buildLeadWhatsappLink(lead) : "";
   const leadEmailLink = isLead ? buildLeadReminderMailtoHref(lead) || buildMailtoHref({ to: email }) : "";
   const leadStatusMeta = isLead ? getLeadStatusMeta(lead.status) : null;
+  const leadPriorityMeta = isLead ? getLeadPriorityMeta(lead) : null;
+  const leadSupportChecklist = Array.isArray(lead.supportChecklist) ? lead.supportChecklist.filter(Boolean) : [];
 
   return createPortal(
     <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.62)", zIndex: 15000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
@@ -3356,6 +3373,22 @@ function ClientDetailDialog({
                     <InfoTile label="Campaña" value={lead.taxCampaign || lead.campaign || "Renta"} />
                     <InfoTile label="Últimos dígitos" value={lead.taxLastTwoDigits || lead.documentNumber || "Pendiente"} />
                     <InfoTile label="Vencimiento estimado" value={getLeadDueLabel(lead)} />
+                  </div>
+                ) : null}
+                {leadPriorityMeta || lead.taxProfile || leadSupportChecklist.length ? (
+                  <div style={{ padding: 16, borderRadius: 18, background: "rgba(37,99,235,.05)", border: "1px solid rgba(37,99,235,.10)", marginBottom: 16 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: leadSupportChecklist.length ? 12 : 0 }}>
+                      {leadPriorityMeta ? <Badge meta={leadPriorityMeta}>{leadPriorityMeta.label}</Badge> : null}
+                      {lead.taxProfile ? <Badge meta={{ tone: "#1D4ED8", bg: "rgba(37,99,235,.10)" }}>Perfil: {lead.taxProfile.replace(/_/g, " ")}</Badge> : null}
+                    </div>
+                    {leadSupportChecklist.length ? (
+                      <div style={{ display: "grid", gap: 7 }}>
+                        <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.1px", fontWeight: 900, color: "#0B1D3A" }}>CHECKLIST SUGERIDO</div>
+                        {leadSupportChecklist.map((item) => (
+                          <div key={item} style={{ fontFamily: F, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>• {item}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <div style={{ padding: 16, borderRadius: 18, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)", fontFamily: F, color: "#334155", lineHeight: 1.7, marginBottom: 16 }}>

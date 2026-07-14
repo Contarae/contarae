@@ -3080,7 +3080,7 @@ function ToolCTA({text,msg}){return(
 function ToolRenta({uv}){
   const initialLead={name:"",documentNumber:"",phone:"",email:"",treatmentConsent:false,marketingConsent:true};
   const[active,sActive]=useState("ingresos");
-  const[selected,sSelected]=useState([]);
+  const[topStatus,sTopStatus]=useState("");
   const[dueInput,sDueInput]=useState("");
   const[lead,setLead]=useState(initialLead);
   const[leadBusy,setLeadBusy]=useState(false);
@@ -3088,6 +3088,26 @@ function ToolRenta({uv}){
   const[leadErr,setLeadErr]=useState("");
   const t14=1400*uv,t45=4500*uv,sancionUvt=10,sancionCop=10*52374;
   const dueInfo=getRentaDueInfo(dueInput||lead.documentNumber);
+  const getUrgencyMeta=()=>{
+    if(!dueInfo)return{label:"Consulta tu vencimiento",tone:"#1D4ED8",bg:"rgba(37,99,235,.08)",note:"La fecha permite priorizar la preparación si finalmente debes declarar."};
+    const dueDate=new Date(`${dueInfo.estimatedDueDate}T12:00:00`);
+    const today=new Date();today.setHours(0,0,0,0);
+    const diffDays=Math.ceil((dueDate.getTime()-today.getTime())/86400000);
+    if(diffDays<0)return{label:"Vencimiento superado",tone:"#991B1B",bg:"rgba(220,38,38,.10)",note:"Conviene revisar el caso cuanto antes para evitar que aumenten sanciones o intereses."};
+    if(diffDays<=10)return{label:"Prioridad alta",tone:"#B91C1C",bg:"rgba(220,38,38,.10)",note:"La fecha está cerca. Lo ideal es validar obligación y soportes de inmediato."};
+    if(diffDays<=30)return{label:"Vence pronto",tone:"#B45309",bg:"rgba(245,158,11,.14)",note:"Aún hay margen, pero ya conviene organizar documentos y confirmar si debes declarar."};
+    return{label:"Preparación oportuna",tone:"#15803D",bg:"rgba(34,197,94,.12)",note:"Buen momento para revisar soportes con calma y evitar correr al final."};
+  };
+  const urgencyMeta=getUrgencyMeta();
+  const topStatusMeta={
+    supera:{label:"Sí, supero uno o más topes",title:"Tu caso requiere revisión prioritaria",tone:"#B45309",bg:"rgba(245,158,11,.12)",priority:"alta",profile:"supera_topes",offer:"Podemos confirmar tu obligación sin costo, revisar soportes y acompañarte en la preparación de la declaración antes del vencimiento."},
+    duda:{label:"No estoy seguro",title:"Tu caso merece confirmación profesional",tone:"#1D4ED8",bg:"rgba(37,99,235,.08)",priority:"media",profile:"no_seguro",offer:"Podemos ayudarte a validar topes, movimientos y fecha de vencimiento para que tomes una decisión con tranquilidad."},
+    no_supera:{label:"No supero topes",title:"Podemos hacer una revisión preventiva",tone:"#15803D",bg:"rgba(34,197,94,.10)",priority:"baja",profile:"no_supera_topes",offer:"Si quieres estar seguro, hacemos una confirmación inicial sin costo antes de descartar la obligación."}
+  };
+  const currentTopMeta=topStatusMeta[topStatus]||{label:"Sin respuesta",title:"Confirma si superas topes",tone:"#1D4ED8",bg:"rgba(37,99,235,.07)",priority:"media",profile:"pendiente_calificacion",offer:"Responde la pregunta final para orientar mejor la revisión inicial."};
+  const supportChecklist=topStatus==="no_supera"
+    ? ["Documento de identidad o RUT","Últimos dos dígitos del documento","Resumen de ingresos del año","Extractos o certificados principales si tienes dudas"]
+    : ["Certificado de ingresos y retenciones","Extractos bancarios y billeteras digitales","Certificados de créditos, intereses y retenciones","Predial, vehículo, inversiones y otros activos","Soportes de dependientes, medicina prepagada, AFC o pensiones voluntarias","Costos y gastos soportados si eres independiente"];
   const conditions=[
     {id:"ingresos",icon:"💼",title:"Ingresos brutos",uvt:"1.400 UVT",cop:t14,summary:"Si sus ingresos del año alcanzan o superan este tope.",detail:"Incluye salarios, honorarios, comisiones, arriendos, pensiones, ingresos como independiente, ventas y demás pagos recibidos durante el año gravable. No se revisa solo el saldo final: se analiza el ingreso acumulado."},
     {id:"patrimonio",icon:"🏠",title:"Patrimonio bruto",uvt:"4.500 UVT",cop:t45,summary:"Bienes y derechos al 31 de diciembre, antes de restar deudas.",detail:"Sume inmuebles, vehículos, cuentas bancarias, inversiones, aportes, derechos fiduciarios y otros activos a 31 de diciembre. El patrimonio bruto se mira antes de descontar créditos o deudas."},
@@ -3097,8 +3117,6 @@ function ToolRenta({uv}){
     {id:"iva",icon:"📌",title:"Responsable de IVA",uvt:"Condición especial",cop:null,summary:"Haber sido responsable de IVA durante el año gravable.",detail:"Si fue responsable de IVA durante el año, esta condición puede obligar a declarar renta aunque otros topes no parezcan superados. Conviene revisar RUT, responsabilidades y actividad económica."}
   ];
   const activeCondition=conditions.find(item=>item.id===active)||conditions[0];
-  const selectedConditions=conditions.filter(item=>selected.includes(item.id));
-  const toggle=id=>sSelected(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id]);
   const updateLead=(field,value)=>setLead(current=>({
     ...current,
     [field]:field==="documentNumber"?onlyDigits(value).slice(0,12):field==="phone"?normalizeColombianMobileNumber(value).slice(0,10):value
@@ -3112,14 +3130,15 @@ function ToolRenta({uv}){
     if(!normalized.name||normalized.documentNumber.length<2||!normalized.phone||!normalized.email){setLeadErr("Complete nombre, documento o últimos dígitos, WhatsApp y correo.");return;}
     if(!isValidEmail(normalized.email)){setLeadErr("Ingrese un correo electrónico válido.");return;}
     if(!isValidColombianMobileNumber(normalized.phone)){setLeadErr("Ingrese un WhatsApp colombiano válido.");return;}
+    if(!topStatus){setLeadErr("Seleccione si supera topes, no está seguro o quiere una revisión preventiva.");return;}
     setLeadBusy(true);
     try{
-      const marked=selectedConditions.map(item=>item.title).join(", ")||"No marcó condiciones; solicita confirmación preventiva.";
+      const answer=currentTopMeta.label||"Sin respuesta";
       const due=currentDue?`Fecha estimada de vencimiento: ${currentDue.label}.`:"Fecha estimada pendiente por confirmar.";
       const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         ...normalized,
         serviceInterest:"Declaración de renta",
-        comment:`Guía interactiva renta. Condiciones marcadas: ${marked}. ${due}`,
+        comment:`Guía interactiva renta. Respuesta topes: ${answer}. Prioridad sugerida: ${currentTopMeta.priority}. ${due} Checklist sugerido: ${supportChecklist.join("; ")}.`,
         sourcePath:window.location.pathname,
         sourceLabel:"Guía condiciones renta",
         campaign:RENTA_CAMPAIGN_ID,
@@ -3130,8 +3149,10 @@ function ToolRenta({uv}){
         estimatedDueDate:currentDue?.estimatedDueDate||"",
         dueDateLabel:currentDue?.label||"",
         taxLeadType:"guia_condiciones_renta",
-        taxProfile:selectedConditions.length?"condiciones_marcadas":"consulta_preventiva",
-        taxConditions:selectedConditions.map(item=>item.id),
+        taxProfile:currentTopMeta.profile,
+        taxConditions:topStatus?[topStatus]:[],
+        leadPriority:currentTopMeta.priority,
+        supportChecklist,
         marketingAttribution:getMarketingAttribution(),
         ...getMarketingFormFields()
       })});
@@ -3140,6 +3161,7 @@ function ToolRenta({uv}){
       trackMarketingEvent("lead_submit",{service_interest:"Declaración de renta",source_label:"Guía condiciones renta",campaign:RENTA_CAMPAIGN_ID});
       setLeadMsg("Datos recibidos. Te contactaremos por WhatsApp para confirmar tu caso y orientarte antes del vencimiento.");
       setLead(initialLead);
+      sTopStatus("");
     }catch(err){
       setLeadErr(err.message);
     }finally{
@@ -3165,9 +3187,9 @@ function ToolRenta({uv}){
 
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12}} className="tool-grid">
           {conditions.map(item=>{
-            const checked=selected.includes(item.id),open=active===item.id;
+            const open=active===item.id;
             return(
-              <div key={item.id} onClick={()=>sActive(item.id)} style={{padding:16,borderRadius:18,background:open?"#F8FBFF":"#fff",border:`1px solid ${checked?"rgba(21,128,61,.35)":open?"rgba(37,99,235,.28)":"rgba(37,99,235,.10)"}`,boxShadow:open?"0 16px 34px rgba(37,99,235,.08)":"0 10px 24px rgba(15,23,42,.04)",cursor:"pointer"}}>
+              <div key={item.id} style={{padding:16,borderRadius:18,background:open?"#F8FBFF":"#fff",border:`1px solid ${open?"rgba(37,99,235,.28)":"rgba(37,99,235,.10)"}`,boxShadow:open?"0 16px 34px rgba(37,99,235,.08)":"0 10px 24px rgba(15,23,42,.04)"}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:10}}>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <span style={{width:36,height:36,borderRadius:14,background:"rgba(37,99,235,.08)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{item.icon}</span>
@@ -3176,7 +3198,7 @@ function ToolRenta({uv}){
                       <div style={{fontFamily:F,fontSize:12,color:"#64748B",marginTop:2}}>{item.uvt}{item.cop?` · ${cop(item.cop)}`:""}</div>
                     </div>
                   </div>
-                  <button type="button" onClick={event=>{event.stopPropagation();toggle(item.id);}} style={{padding:"7px 10px",borderRadius:999,border:"1px solid rgba(37,99,235,.14)",background:checked?"#15803D":"#fff",color:checked?"#fff":"#1D4ED8",fontFamily:F,fontSize:11,fontWeight:900,cursor:"pointer"}}>{checked?"Aplica":"Marcar"}</button>
+                  <button type="button" onClick={()=>sActive(item.id)} style={{padding:"7px 10px",borderRadius:999,border:"1px solid rgba(37,99,235,.14)",background:open?"#1D4ED8":"#fff",color:open?"#fff":"#1D4ED8",fontFamily:F,fontSize:11,fontWeight:900,cursor:"pointer"}}>{open?"Viendo":"Ver detalle"}</button>
                 </div>
                 <p style={{fontFamily:F,fontSize:13,color:"#52647F",lineHeight:1.65,margin:0}}>{item.summary}</p>
               </div>
@@ -3200,12 +3222,41 @@ function ToolRenta({uv}){
             <div style={{fontFamily:F,fontSize:11,letterSpacing:"1.2px",fontWeight:900,color:dueInfo?"#93C5FD":"#1D4ED8",marginBottom:8}}>FECHA ESTIMADA</div>
             <div style={{fontFamily:FH,fontSize:dueInfo?30:22,lineHeight:1.1,color:dueInfo?"#fff":"#0B1D3A"}}>{dueInfo?dueInfo.label:"Pendiente por consultar"}</div>
             <p style={{fontFamily:F,fontSize:12,color:dueInfo?"rgba(226,232,240,.78)":"#64748B",lineHeight:1.6,margin:"8px 0 0"}}>{dueInfo?`Últimos dígitos: ${dueInfo.lastTwoDigits}`:"La fecha no confirma por sí sola la obligación; solo indica el vencimiento si debes declarar."}</p>
+            <div style={{marginTop:12,padding:"8px 10px",borderRadius:999,background:urgencyMeta.bg,color:urgencyMeta.tone,fontFamily:F,fontSize:12,fontWeight:900,alignSelf:"flex-start"}}>{urgencyMeta.label}</div>
           </div>
         </div>
 
-        <div style={{padding:18,borderRadius:20,background:selectedConditions.length?"rgba(245,158,11,.10)":"rgba(37,99,235,.07)",border:`1px solid ${selectedConditions.length?"rgba(245,158,11,.20)":"rgba(37,99,235,.12)"}`}}>
-          <div style={{fontFamily:F,fontSize:17,fontWeight:900,color:selectedConditions.length?"#B45309":"#1D4ED8",marginBottom:6}}>{selectedConditions.length?"Tu caso merece revisión":"Podemos confirmar tu caso sin costo"}</div>
-          <p style={{fontFamily:F,fontSize:14,color:"#475569",lineHeight:1.7,margin:0}}>{selectedConditions.length?`Marcaste ${selectedConditions.length} condición(es) que pueden requerir declaración. Revisa documentos y topes antes del vencimiento para evitar sanciones.`:"Aunque no marques condiciones, si no estás seguro conviene revisar antes de descartar la obligación."}</p>
+        <div style={{padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.05)"}}>
+          <div style={{display:"grid",gap:14}}>
+            <div>
+              <div style={{fontSize:12,letterSpacing:"1.3px",fontWeight:900,color:"#1D4ED8",fontFamily:F}}>DIAGNÓSTICO INICIAL</div>
+              <h4 style={{fontFamily:FH,fontSize:24,lineHeight:1.15,color:"#0B1D3A",margin:"6px 0 6px"}}>¿Superas uno o más topes o tienes dudas sobre tu caso?</h4>
+              <p style={{fontFamily:F,fontSize:14,color:"#52647F",lineHeight:1.7,margin:0}}>No buscamos que declares por declarar. Primero confirmamos si realmente estás obligado y qué tan conveniente es preparar tu caso.</p>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10}} className="tool-grid">
+              {Object.entries(topStatusMeta).map(([key,meta])=>(
+                <button key={key} type="button" onClick={()=>sTopStatus(key)} style={{padding:14,borderRadius:16,border:`1px solid ${topStatus===key?meta.tone:"rgba(37,99,235,.12)"}`,background:topStatus===key?meta.bg:"#F8FBFF",textAlign:"left",cursor:"pointer",fontFamily:F,color:"#0F172A"}}>
+                  <strong style={{display:"block",fontSize:14,lineHeight:1.35,color:topStatus===key?meta.tone:"#0F172A"}}>{meta.label}</strong>
+                  <span style={{display:"block",fontSize:12,color:"#64748B",lineHeight:1.55,marginTop:5}}>{key==="supera"?"Quiero acompañamiento para preparar mi declaración.":key==="duda"?"Necesito validar movimientos, ingresos o patrimonio.":"Quiero confirmar antes de descartarlo."}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{padding:16,borderRadius:18,background:currentTopMeta.bg,border:"1px solid rgba(37,99,235,.10)"}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
+                <span style={{fontFamily:F,fontSize:11,fontWeight:900,letterSpacing:"1px",color:currentTopMeta.tone}}>PRIORIDAD {currentTopMeta.priority.toUpperCase()}</span>
+                <span style={{fontFamily:F,fontSize:11,fontWeight:900,color:urgencyMeta.tone,background:urgencyMeta.bg,borderRadius:999,padding:"4px 8px"}}>{urgencyMeta.label}</span>
+              </div>
+              <div style={{fontFamily:F,fontSize:17,fontWeight:900,color:currentTopMeta.tone,marginBottom:6}}>{currentTopMeta.title}</div>
+              <p style={{fontFamily:F,fontSize:14,color:"#475569",lineHeight:1.7,margin:"0 0 6px"}}>{currentTopMeta.offer}</p>
+              <p style={{fontFamily:F,fontSize:13,color:"#64748B",lineHeight:1.65,margin:0}}>{urgencyMeta.note}</p>
+            </div>
+            <div style={{padding:16,borderRadius:18,background:"rgba(15,23,42,.03)",border:"1px solid rgba(37,99,235,.10)"}}>
+              <div style={{fontFamily:F,fontSize:13,fontWeight:900,color:"#0B1D3A",marginBottom:10}}>Soportes que normalmente revisamos</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
+                {supportChecklist.map(item=><div key={item} style={{display:"flex",gap:8,alignItems:"flex-start",fontFamily:F,fontSize:13,color:"#475569",lineHeight:1.55}}><span style={{width:18,height:18,borderRadius:999,background:"rgba(37,99,235,.10)",color:"#1D4ED8",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,flex:"0 0 auto"}}>✓</span><span>{item}</span></div>)}
+              </div>
+            </div>
+          </div>
         </div>
 
         <form onSubmit={submitLead} style={{display:"grid",gap:10,padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.05)"}}>

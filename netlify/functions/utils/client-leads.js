@@ -156,6 +156,8 @@ function sanitizeLeadInput(input = {}, metadata = {}) {
     taxLeadType: cleanText(input.taxLeadType).slice(0, 80),
     taxProfile: cleanText(input.taxProfile).slice(0, 80),
     taxConditions: normalizeTextList(input.taxConditions),
+    leadPriority: cleanText(input.leadPriority).slice(0, 40),
+    supportChecklist: normalizeTextList(input.supportChecklist),
     marketingAttribution,
     landingPage: marketingAttribution.landing_page || "",
     initialReferrer: marketingAttribution.initial_referrer || "",
