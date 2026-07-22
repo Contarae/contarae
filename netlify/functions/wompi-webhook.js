@@ -2,11 +2,13 @@ import crypto from "crypto";
 import { getStore } from "@netlify/blobs";
 import { processServicePaymentEvent } from "./utils/service-requests.js";
 import promoUtils from "./utils/promo-codes.cjs";
+import corsUtils from "./utils/cors.cjs";
 
 const {
   parseMoneyValue,
   registerPromoCodeUse
 } = promoUtils;
+const { buildCorsHeaders } = corsUtils;
 
 function getValueByPath(obj, path) {
   return path.split(".").reduce((acc, key) => acc?.[key], obj);
@@ -256,15 +258,44 @@ function buildSupportItems(paidRecord = {}) {
     ]);
 }
 
-function buildBusinessSummaryRows(paidRecord, reference) {
+function formatCurrencyFromCents(value) {
+  const cents = Number(value || 0);
+  if (!Number.isFinite(cents) || cents <= 0) return "";
+  return `$${new Intl.NumberFormat("es-CO").format(Math.round(cents / 100))}`;
+}
+
+function formatBusinessDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("es-CO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/Bogota"
+  }).format(date);
+}
+
+function buildBusinessPaymentRows(paidRecord, reference) {
   const formData = paidRecord.formData || {};
-  const supportFiles = Array.isArray(paidRecord.supportFiles) ? paidRecord.supportFiles : [];
 
   return [
     ["Estado", "APROBADO"],
     ["Solicitud", paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "Sin consecutivo"],
     ["Referencia Wompi", reference],
     ["Transacción Wompi", paidRecord.wompiTransaction?.id || ""],
+    ["Estado Wompi", paidRecord.wompiTransaction?.status || ""],
+    ["Método de pago", paidRecord.wompiTransaction?.payment_method_type || ""],
+    ["Moneda", paidRecord.wompiTransaction?.currency || ""],
+    ["Valor confirmado por Wompi", formatCurrencyFromCents(paidRecord.wompiTransaction?.amount_in_cents)],
+    ["Valor pagado en formulario", formData.tarifa_pagada],
+    ["Fecha de aprobación", formatBusinessDateTime(paidRecord.approvedAt)]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
+function buildBusinessApplicantRows(paidRecord) {
+  const formData = paidRecord.formData || {};
+
+  return [
     ["Nombre", formData.nombre],
     ["Correo", formData.correo || formData.email || paidRecord.wompiTransaction?.customer_email || ""],
     ["Teléfono", formData.telefono],
@@ -272,27 +303,81 @@ function buildBusinessSummaryRows(paidRecord, reference) {
       "Documento",
       joinValues([formData.tipo_documento, formData.numero_documento])
     ],
-    ["Lugar de expedición", formData.lugar_expedicion],
-    ["Destino / entidad", joinValues([formData.destino, formData.entidad])],
+    ["Lugar de expedición", formData.lugar_expedicion]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
+function buildBusinessCertificationRows(paidRecord) {
+  const formData = paidRecord.formData || {};
+
+  return [
+    ["Destino", formData.destino],
+    ["Entidad", formData.entidad],
     ["Período", formData.periodo],
     ["Tipo de período", formData.periodo_tipo],
+    ["Meses certificados", formData.periodo_meses],
     ["Vigencia", formData.periodo_vigencia],
     ["Fecha inicial del período", formData.periodo_fecha_inicio],
     ["Fecha final del período", formData.periodo_fecha_fin],
-    ["Total mensual recurrente", formData.total_ingresos],
-    ["Total recurrente del período", formData.total_ingresos_periodo],
-    ["Total eventuales del período", formData.total_ingresos_eventuales],
-    ["Total global del período", formData.total_ingresos_global_periodo],
-    ["Tarifa base", formData.tarifa_base],
-    ["Código promocional", formData.codigo_promocional],
-    ["Aliado estratégico", formData.aliado_estrategico],
-    ["Descuento promocional", formData.descuento_promocional],
-    ["Tarifa pagada", formData.tarifa_pagada],
-    ["Comisión aliado estimada", formData.comision_aliado_estimada],
-    ["Soportes adjuntos", supportFiles.length ? `${supportFiles.length} archivo(s)` : "Sin adjuntos"],
     ["Comentarios", formData.comentarios],
     ["Declaración juramentada", formData.declaracion_juramentada]
   ].filter(([, value]) => String(value || "").trim());
+}
+
+function buildBusinessTotalsRows(paidRecord) {
+  const formData = paidRecord.formData || {};
+
+  return [
+    ["Total mensual recurrente", formData.total_ingresos],
+    ["Total recurrente del período", formData.total_ingresos_periodo],
+    ["Total eventuales del período", formData.total_ingresos_eventuales],
+    ["Total global del período", formData.total_ingresos_global_periodo]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
+function buildBusinessPricingRows(paidRecord) {
+  const formData = paidRecord.formData || {};
+  const referral = paidRecord.promoReferral || {};
+
+  return [
+    ["Tarifa base", formData.tarifa_base],
+    ["Código promocional", formData.codigo_promocional],
+    ["Aliado estratégico", formData.aliado_estrategico],
+    ["Correo aliado", referral.allyEmail],
+    ["Porcentaje de descuento", formData.porcentaje_descuento_promocional || referral.discountRateLabel],
+    ["Descuento promocional", formData.descuento_promocional],
+    ["Tarifa pagada", formData.tarifa_pagada],
+    ["Porcentaje comisión aliado", formData.porcentaje_comision_aliado || referral.commissionRateLabel],
+    ["Comisión aliado estimada", formData.comision_aliado_estimada || referral.commissionAmountLabel]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
+function buildBusinessAttributionRows(paidRecord) {
+  const attribution = getMarketingAttributionFromFormData(paidRecord.formData || {});
+  const labels = {
+    landing_page: "Página inicial",
+    initial_referrer: "Referidor inicial",
+    latest_page: "Última página",
+    latest_referrer: "Último referidor",
+    utm_source: "UTM source",
+    utm_medium: "UTM medium",
+    utm_campaign: "UTM campaign",
+    utm_term: "UTM term",
+    utm_content: "UTM content",
+    utm_id: "UTM id",
+    gclid: "GCLID",
+    gbraid: "GBRAID",
+    wbraid: "WBRAID",
+    ga_client_id: "GA client id",
+    attribution_captured_at: "Atribución capturada",
+    attribution_updated_at: "Atribución actualizada",
+    campaign_landing_page: "Landing campaña",
+    campaign_captured_at: "Campaña capturada"
+  };
+
+  return Object.entries(labels)
+    .map(([key, label]) => [label, attribution[key]])
+    .filter(([, value]) => String(value || "").trim());
 }
 
 function buildRowsHtml(rows) {
@@ -314,22 +399,35 @@ function buildRowsText(rows) {
 
 function buildBusinessEmailHtml(paidRecord, reference, supportEmail) {
   const formData = paidRecord.formData || {};
-  const summaryRows = buildBusinessSummaryRows(paidRecord, reference);
+  const paymentRows = buildBusinessPaymentRows(paidRecord, reference);
+  const applicantRows = buildBusinessApplicantRows(paidRecord);
+  const certificationRows = buildBusinessCertificationRows(paidRecord);
   const incomeRows = buildIncomeRows(formData);
+  const totalsRows = buildBusinessTotalsRows(paidRecord);
+  const pricingRows = buildBusinessPricingRows(paidRecord);
   const supportRows = buildSupportItems(paidRecord);
+  const attributionRows = buildBusinessAttributionRows(paidRecord);
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f4f7fb;padding:24px;color:#0f172a;">
       <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #dbe5f1;border-radius:18px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#0b1d3a,#2563eb);padding:24px 28px;color:#ffffff;">
           <div style="font-size:12px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.82;">CONTARAE</div>
-          <h1 style="margin:10px 0 4px;font-size:24px;">Nueva solicitud aprobada</h1>
-          <p style="margin:0;font-size:14px;opacity:0.88;">El pago fue confirmado y el formulario ya se envió correctamente a Netlify Forms.</p>
+          <h1 style="margin:10px 0 4px;font-size:24px;">Compra aprobada ${escapeHtml(paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : "")}</h1>
+          <p style="margin:0;font-size:14px;opacity:0.88;">Pago confirmado por Wompi. Esta es la notificación interna válida para iniciar la revisión profesional.</p>
         </div>
         <div style="padding:24px 28px;">
-          <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Resumen de la solicitud</h2>
+          <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Datos del pago</h2>
           <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
-            ${buildRowsHtml(summaryRows)}
+            ${buildRowsHtml(paymentRows)}
+          </table>
+          <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Datos del solicitante</h2>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+            ${buildRowsHtml(applicantRows)}
+          </table>
+          <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Datos de la certificación</h2>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+            ${buildRowsHtml(certificationRows)}
           </table>
           ${
             incomeRows.length
@@ -342,11 +440,41 @@ function buildBusinessEmailHtml(paidRecord, reference, supportEmail) {
               : ""
           }
           ${
+            totalsRows.length
+              ? `
+                <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Totales certificados</h2>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+                  ${buildRowsHtml(totalsRows)}
+                </table>
+              `
+              : ""
+          }
+          ${
+            pricingRows.length
+              ? `
+                <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Tarifa, referido y comisión</h2>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+                  ${buildRowsHtml(pricingRows)}
+                </table>
+              `
+              : ""
+          }
+          ${
             supportRows.length
               ? `
                 <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Soportes cargados en el formulario</h2>
                 <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
                   ${buildRowsHtml(supportRows)}
+                </table>
+              `
+              : ""
+          }
+          ${
+            attributionRows.length
+              ? `
+                <h2 style="margin:0 0 14px;font-size:18px;color:#0b1d3a;">Atribución y campaña</h2>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+                  ${buildRowsHtml(attributionRows)}
                 </table>
               `
               : ""
@@ -367,17 +495,32 @@ function buildBusinessEmailHtml(paidRecord, reference, supportEmail) {
 
 function buildBusinessEmailText(paidRecord, reference, supportEmail) {
   const formData = paidRecord.formData || {};
-  const summaryRows = buildBusinessSummaryRows(paidRecord, reference);
+  const paymentRows = buildBusinessPaymentRows(paidRecord, reference);
+  const applicantRows = buildBusinessApplicantRows(paidRecord);
+  const certificationRows = buildBusinessCertificationRows(paidRecord);
   const incomeRows = buildIncomeRows(formData);
+  const totalsRows = buildBusinessTotalsRows(paidRecord);
+  const pricingRows = buildBusinessPricingRows(paidRecord);
   const supportRows = buildSupportItems(paidRecord);
+  const attributionRows = buildBusinessAttributionRows(paidRecord);
 
   return [
     "CONTARAE",
-    "Nueva solicitud aprobada",
+    `Compra aprobada ${paidRecord.consecutive ? `N° ${paidRecord.consecutive}` : ""}`.trim(),
     "",
-    buildRowsText(summaryRows),
+    "Datos del pago:",
+    buildRowsText(paymentRows),
+    "",
+    "Datos del solicitante:",
+    buildRowsText(applicantRows),
+    "",
+    "Datos de la certificación:",
+    buildRowsText(certificationRows),
     incomeRows.length ? `\nDetalle de ingresos:\n${buildRowsText(incomeRows)}` : "",
+    totalsRows.length ? `\nTotales certificados:\n${buildRowsText(totalsRows)}` : "",
+    pricingRows.length ? `\nTarifa, referido y comisión:\n${buildRowsText(pricingRows)}` : "",
     supportRows.length ? `\nSoportes cargados:\n${buildRowsText(supportRows)}` : "",
+    attributionRows.length ? `\nAtribución y campaña:\n${buildRowsText(attributionRows)}` : "",
     supportEmail ? `\nCorreo de soporte: ${supportEmail}` : ""
   ]
     .filter(Boolean)
@@ -613,37 +756,9 @@ async function sendResendEmail({
   return payload;
 }
 
-function buildNetlifyFormPayload(formName, paidRecord, reference) {
-  const params = new URLSearchParams();
-  params.append("form-name", formName);
-
-  const formData = paidRecord.formData || {};
-
-  Object.entries(formData).forEach(([key, value]) => {
-    if (value === undefined || value === null) return;
-    if (["estado_pago", "consecutivo", "referencia_wompi"].includes(key)) return;
-    params.append(key, String(value));
-  });
-
-  params.append("referencia_wompi", reference);
-  params.append("consecutivo", String(paidRecord.consecutive || ""));
-  params.append("estado_pago", "APROBADO");
-  params.append(
-    "email",
-    String(formData.email || formData.correo || paidRecord.wompiTransaction?.customer_email || "")
-  );
-  params.append(
-    "wompi_transaction_id",
-    String(paidRecord.wompiTransaction?.id || "")
-  );
-
-  return params;
-}
-
 export default async (req, context) => {
   const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, X-Event-Checksum",
+    ...buildCorsHeaders(req),
     "Content-Type": "application/json"
   };
 
@@ -817,8 +932,6 @@ export default async (req, context) => {
 
     console.log("Transacción aprobada, continúa procesamiento");
 
-    const formName = process.env.NETLIFY_FORM_NAME || "certificacion";
-
     let paidRecord = await store.get(`paid:${reference}`, { type: "json" });
 
     if (!paidRecord) {
@@ -915,17 +1028,16 @@ export default async (req, context) => {
       };
     }
 
-    if (updatedPaidRecord.netlifySubmittedAt && allNotificationsCompleted) {
+    if (allNotificationsCompleted) {
       if (updatedPaidRecord !== paidRecord) {
         await store.setJSON(`paid:${reference}`, updatedPaidRecord);
       }
       return new Response(
         JSON.stringify({
           ok: true,
-          message: "Solicitud ya aprobada y enviada a Netlify Forms",
+          message: "Solicitud ya aprobada y notificada por Resend",
           reference,
           consecutivo: updatedPaidRecord.consecutive,
-          submittedAt: updatedPaidRecord.netlifySubmittedAt,
           businessNotificationSentAt: updatedPaidRecord.businessNotificationSentAt || null,
           customerNotificationSentAt: updatedPaidRecord.customerNotificationSentAt || null,
           allyNotificationSentAt: updatedPaidRecord.allyNotificationSentAt || null,
@@ -934,36 +1046,6 @@ export default async (req, context) => {
         }),
         { status: 200, headers }
       );
-    }
-
-    if (!updatedPaidRecord.netlifySubmittedAt) {
-      const origin = new URL(req.url).origin;
-      const params = buildNetlifyFormPayload(formName, updatedPaidRecord, reference);
-
-      const submitResponse = await fetch(`${origin}/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: params.toString()
-      });
-
-      if (!submitResponse.ok) {
-        const responseText = await submitResponse.text();
-        return new Response(
-          JSON.stringify({
-            error: "Netlify Forms no aceptó el envío",
-            detail: responseText
-          }),
-          { status: 500, headers }
-        );
-      }
-
-      updatedPaidRecord = {
-        ...updatedPaidRecord,
-        netlifySubmittedAt: new Date().toISOString(),
-        netlifyFormName: formName
-      };
     }
 
     const resendApiKey = process.env.RESEND_API_KEY;
@@ -984,7 +1066,7 @@ export default async (req, context) => {
             apiKey: resendApiKey,
             from: resendFromEmail,
             to: businessNotificationEmail,
-            subject: `CONTARAE | Solicitud aprobada ${updatedPaidRecord.consecutive ? `N° ${updatedPaidRecord.consecutive}` : reference}`,
+            subject: `CONTARAE | Compra aprobada ${updatedPaidRecord.consecutive ? `N° ${updatedPaidRecord.consecutive}` : reference}${updatedPaidRecord.formData?.nombre ? ` - ${updatedPaidRecord.formData.nombre}` : ""}`,
             html: buildBusinessEmailHtml(updatedPaidRecord, reference, replyToBusinessEmail),
             text: buildBusinessEmailText(updatedPaidRecord, reference, replyToBusinessEmail),
             replyTo: customerEmail || replyToBusinessEmail,
@@ -1074,10 +1156,9 @@ export default async (req, context) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        message: "Webhook procesado y formulario enviado correctamente",
+        message: "Webhook procesado y notificaciones Resend gestionadas",
         reference,
         consecutivo: updatedPaidRecord.consecutive,
-        submittedAt: updatedPaidRecord.netlifySubmittedAt,
         businessNotificationSentAt: updatedPaidRecord.businessNotificationSentAt || null,
         customerNotificationSentAt: updatedPaidRecord.customerNotificationSentAt || null,
         allyNotificationSentAt: updatedPaidRecord.allyNotificationSentAt || null,

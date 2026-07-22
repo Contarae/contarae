@@ -1,12 +1,13 @@
 import { getServicePaymentByReference } from "./utils/service-requests.js";
+import corsUtils from "./utils/cors.cjs";
+
+const { buildCorsHeaders } = corsUtils;
 
 export default async (req) => {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+  const headers = buildCorsHeaders(req, {
     "Content-Type": "application/json",
     "Cache-Control": "no-store"
-  };
+  });
 
   if (req.method === "OPTIONS") {
     return new Response("", { status: 200, headers });

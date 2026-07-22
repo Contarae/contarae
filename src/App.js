@@ -2899,7 +2899,7 @@ function CrtS(){
         if(paidResponse.ok){
           const paidData=await paidResponse.json();
           const paidRecord=paidData.record||{};
-          if(paidRecord.netlifySubmittedAt){markPaymentApproved(reference,paidRecord);return;}
+          if(String(paidRecord.status||"").toLowerCase()==="approved"||paidRecord.approvedAt||paidRecord.consecutive){markPaymentApproved(reference,paidRecord);return;}
           sPaymentFlow(prev=>({...prev,phase:PAYMENT_PHASES.awaiting,reference,status:"APPROVED",message:"Pago confirmado en Wompi. Estamos terminando el registro y el envío de la solicitud.",consecutive:String(paidRecord.consecutive||prev.consecutive||"")}));
         }else{
           const pendingResponse=await fetch(`/api/get-pending-form?reference=${encodeURIComponent(reference)}`);
@@ -3544,7 +3544,6 @@ export default function App(){
     </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
-	    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_tipo"/><input name="periodo_vigencia"/><input name="periodo_fecha_inicio"/><input name="periodo_fecha_fin"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="ingresos_independiente"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/><input name="wompi_transaction_id"/>{MARKETING_FORM_FIELDS.map(name=><input key={name} name={name}/>)}</form>
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><FaqS/></div>

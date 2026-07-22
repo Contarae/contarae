@@ -1,11 +1,23 @@
 import { getStore } from "@netlify/blobs";
+import corsUtils from "./utils/cors.cjs";
+
+const { buildCorsHeaders } = corsUtils;
+
+function buildPublicPendingRecord(record = {}) {
+  return {
+    reference: record.reference || "",
+    status: record.status || "pending",
+    lastEventStatus: record.lastEventStatus || "",
+    lastEventAt: record.lastEventAt || "",
+    approvedAt: record.approvedAt || "",
+    consecutive: record.consecutive || ""
+  };
+}
 
 export default async (req, context) => {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+  const headers = buildCorsHeaders(req, {
     "Content-Type": "application/json"
-  };
+  });
 
   if (req.method === "OPTIONS") {
     return new Response("", {
@@ -55,7 +67,7 @@ export default async (req, context) => {
       JSON.stringify({
         ok: true,
         reference,
-        record
+        record: buildPublicPendingRecord(record)
       }),
       {
         status: 200,

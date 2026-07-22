@@ -3,14 +3,15 @@ import {
   normalizeReference,
   uploadIncomingSupportFiles
 } from "./utils/certification-supports.js";
+import corsUtils from "./utils/cors.cjs";
 
-const headers = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Content-Type": "application/json"
-};
+const { buildCorsHeaders } = corsUtils;
 
 export default async (req) => {
+  const headers = buildCorsHeaders(req, {
+    "Content-Type": "application/json"
+  });
+
   if (req.method === "OPTIONS") {
     return new Response("", { status: 200, headers });
   }

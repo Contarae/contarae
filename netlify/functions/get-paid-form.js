@@ -1,11 +1,29 @@
 import { getStore } from "@netlify/blobs";
+import corsUtils from "./utils/cors.cjs";
+
+const { buildCorsHeaders } = corsUtils;
+
+function buildPublicPaidRecord(record = {}) {
+  return {
+    reference: record.reference || "",
+    status: record.status || "",
+    approvedAt: record.approvedAt || "",
+    consecutive: record.consecutive || "",
+    ga4PaymentApprovedSentAt: record.ga4PaymentApprovedSentAt || "",
+    pricing: {
+      finalAmount: Number(record.pricing?.finalAmount || 0) || 0
+    },
+    wompiTransaction: {
+      id: record.wompiTransaction?.id || "",
+      status: record.wompiTransaction?.status || ""
+    }
+  };
+}
 
 export default async (req, context) => {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+  const headers = buildCorsHeaders(req, {
     "Content-Type": "application/json"
-  };
+  });
 
   if (req.method === "OPTIONS") {
     return new Response("", {
@@ -59,7 +77,7 @@ export default async (req, context) => {
       JSON.stringify({
         ok: true,
         reference,
-        record
+        record: buildPublicPaidRecord(record)
       }),
       {
         status: 200,

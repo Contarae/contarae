@@ -2,16 +2,23 @@ const {
   calculateCertificationPricingAsync,
   normalizePromoCode
 } = require("./utils/promo-codes.cjs");
+const { buildCorsHeaders } = require("./utils/cors.cjs");
 
 exports.handler = async (event) => {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+  const headers = buildCorsHeaders(event, {
     "Content-Type": "application/json"
-  };
+  });
 
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers, body: "" };
+  }
+
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: "Método no permitido" })
+    };
   }
 
   try {
