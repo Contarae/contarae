@@ -275,6 +275,10 @@ function buildBusinessSummaryRows(paidRecord, reference) {
     ["Lugar de expedición", formData.lugar_expedicion],
     ["Destino / entidad", joinValues([formData.destino, formData.entidad])],
     ["Período", formData.periodo],
+    ["Tipo de período", formData.periodo_tipo],
+    ["Vigencia", formData.periodo_vigencia],
+    ["Fecha inicial del período", formData.periodo_fecha_inicio],
+    ["Fecha final del período", formData.periodo_fecha_fin],
     ["Total mensual recurrente", formData.total_ingresos],
     ["Total recurrente del período", formData.total_ingresos_periodo],
     ["Total eventuales del período", formData.total_ingresos_eventuales],
@@ -396,7 +400,10 @@ function buildCustomerEmailHtml(paidRecord, reference, supportEmail, whatsappLin
     ["Descuento promocional", formData.descuento_promocional],
     ["Valor pagado", formData.tarifa_pagada],
     ["Destino", joinValues([formData.destino, formData.entidad])],
-    ["Período", formData.periodo]
+    ["Período", formData.periodo],
+    ["Vigencia", formData.periodo_vigencia],
+    ["Fecha inicial del período", formData.periodo_fecha_inicio],
+    ["Fecha final del período", formData.periodo_fecha_fin]
   ].filter(([, value]) => String(value || "").trim());
 
   return `
@@ -458,7 +465,10 @@ function buildCustomerEmailText(paidRecord, reference, supportEmail, whatsappLin
     ["Descuento promocional", formData.descuento_promocional],
     ["Valor pagado", formData.tarifa_pagada],
     ["Destino", joinValues([formData.destino, formData.entidad])],
-    ["Período", formData.periodo]
+    ["Período", formData.periodo],
+    ["Vigencia", formData.periodo_vigencia],
+    ["Fecha inicial del período", formData.periodo_fecha_inicio],
+    ["Fecha final del período", formData.periodo_fecha_fin]
   ].filter(([, value]) => String(value || "").trim());
 
   return [

@@ -176,6 +176,10 @@ const ORIGINAL_FORM_FIELDS = [
   ["destino", "Destino del documento"],
   ["entidad", "Entidad receptora"],
   ["periodo", "Período a certificar"],
+  ["periodo_tipo", "Tipo de período"],
+  ["periodo_vigencia", "Año de vigencia"],
+  ["periodo_fecha_inicio", "Fecha inicial del período"],
+  ["periodo_fecha_fin", "Fecha final del período"],
   ["periodo_meses", "Meses certificados"],
   ["total_ingresos", "Total mensual recurrente"],
   ["total_ingresos_periodo", "Total recurrente del período"],
@@ -193,6 +197,10 @@ const PDF_PRIMARY_FIELDS = [
   ["destino", "Destino"],
   ["entidad", "Entidad"],
   ["periodo", "Período"],
+  ["periodo_tipo", "Tipo de período"],
+  ["periodo_vigencia", "Año de vigencia"],
+  ["periodo_fecha_inicio", "Fecha inicial"],
+  ["periodo_fecha_fin", "Fecha final"],
   ["periodo_meses", "Meses certificados"],
   ["total_ingresos", "Total mensual recurrente"],
   ["total_ingresos_periodo", "Total recurrente del período"],
@@ -933,7 +941,7 @@ function buildPaymentsCsv(payments = [], certificationRecords = []) {
 }
 
 function buildCertificationsCsv(records = []) {
-  const headers = ["referencia", "consecutivo", "cliente", "documento", "correo", "telefono", "destino", "entidad", "estado_certificacion", "estado_pago", "tarifa_base", "codigo_promocional", "aliado", "descuento_promocional", "tarifa", "comision_aliado_estimada", "soportes", "creado", "actualizado"];
+  const headers = ["referencia", "consecutivo", "cliente", "documento", "correo", "telefono", "destino", "entidad", "periodo", "tipo_periodo", "vigencia", "fecha_inicio_periodo", "fecha_fin_periodo", "estado_certificacion", "estado_pago", "tarifa_base", "codigo_promocional", "aliado", "descuento_promocional", "tarifa", "comision_aliado_estimada", "soportes", "creado", "actualizado"];
   return buildCsv(headers, records.map((record) => ({
     referencia: record.reference,
     consecutivo: record.consecutive,
@@ -943,6 +951,11 @@ function buildCertificationsCsv(records = []) {
     telefono: record.customerPhone,
     destino: record.destination,
     entidad: record.entity,
+    periodo: record.period,
+    tipo_periodo: record.periodType,
+    vigencia: record.periodYear,
+    fecha_inicio_periodo: record.periodStartDate,
+    fecha_fin_periodo: record.periodEndDate,
     estado_certificacion: getStatusMeta(record.certificationStatus).label,
     estado_pago: getPaymentMeta(record.paymentStatus).label,
     tarifa_base: record.baseFee,
@@ -1051,6 +1064,10 @@ function buildCertificateDraftState(source = {}) {
     destino: source?.destino || "",
     entidad: source?.entidad || "",
     periodo: source?.periodo || "",
+    periodo_tipo: source?.periodo_tipo || "",
+    periodo_vigencia: source?.periodo_vigencia || "",
+    periodo_fecha_inicio: source?.periodo_fecha_inicio || "",
+    periodo_fecha_fin: source?.periodo_fecha_fin || "",
     ingresos_laborales: source?.ingresos_laborales || "",
     pensiones: source?.pensiones || "",
     dividendos: source?.dividendos || "",
@@ -1102,16 +1119,59 @@ function serializeEventualIncomeRows(rows = []) {
   );
 }
 
+function isValidCertificateDate(value = "") {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function getCertificateDateParts(value = "") {
+  if (!isValidCertificateDate(value)) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  return year && month && day ? { year, month, day } : null;
+}
+
+function getCertificateLastDayOfMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+}
+
+function getCertificateRangeMonths(startValue = "", endValue = "") {
+  const start = getCertificateDateParts(startValue);
+  const end = getCertificateDateParts(endValue);
+  if (!start || !end) return 0;
+  if (start.day !== 1) return 0;
+  if (end.day !== getCertificateLastDayOfMonth(end.year, end.month)) return 0;
+  const months = (end.year - start.year) * 12 + (end.month - start.month) + 1;
+  return months > 0 ? months : 0;
+}
+
+function resolveCertificateDraftMonths(values = {}) {
+  if (String(values.periodo_tipo || "") === "date_range") {
+    return getCertificateRangeMonths(values.periodo_fecha_inicio, values.periodo_fecha_fin);
+  }
+  if (String(values.periodo_tipo || "") === "annual") return 12;
+  const explicitMonths = Number(String(values.periodo_meses || "").replace(/\D/g, "")) || 0;
+  if (explicitMonths > 0) return explicitMonths;
+  const rangeMonths = getCertificateRangeMonths(values.periodo_fecha_inicio, values.periodo_fecha_fin);
+  if (rangeMonths > 0) return rangeMonths;
+  return 0;
+}
+
 function recalculateCertificateDerivedFields(values = {}) {
   const monthlyTotal = CERTIFICATE_CURRENCY_FIELDS.reduce((sum, field) => sum + parseCurrency(values[field]), 0);
-  const months = Number(String(values.periodo_meses || "").replace(/\D/g, "")) || 0;
+  const normalizedYear = String(values.periodo_vigencia || "").replace(/\D/g, "").slice(0, 4);
+  const periodType = String(values.periodo_tipo || "");
+  const annualDates = periodType === "annual" && /^\d{4}$/.test(normalizedYear)
+    ? { periodo_fecha_inicio: `${normalizedYear}-01-01`, periodo_fecha_fin: `${normalizedYear}-12-31` }
+    : {};
+  const normalizedValues = { ...values, periodo_vigencia: normalizedYear, ...annualDates };
+  const months = resolveCertificateDraftMonths(normalizedValues);
   const eventualRows = parseEventualIncomeRows(values.ingresos_eventuales_json).filter(isCompleteEventualIncomeRow);
   const eventualTotal = eventualRows.reduce((sum, row) => sum + parseCurrency(row.value), 0);
   const recurringPeriodTotal = monthlyTotal * months;
   const globalPeriodTotal = recurringPeriodTotal + eventualTotal;
 
   return {
-    ...values,
+    ...normalizedValues,
+    periodo_meses: months ? String(months) : "",
     total_ingresos: monthlyTotal ? normalizeCurrencyInput(monthlyTotal) : "",
     total_ingresos_periodo: recurringPeriodTotal ? normalizeCurrencyInput(recurringPeriodTotal) : "",
     total_ingresos_eventuales: eventualTotal ? normalizeCurrencyInput(eventualTotal) : "",
@@ -5953,7 +6013,9 @@ export default function AdminPanel() {
     setCertificateDraft((current) => {
       const nextValue = CERTIFICATE_CURRENCY_FIELDS.includes(field)
         ? normalizeCurrencyInput(value)
-        : value;
+        : field === "periodo_vigencia"
+          ? String(value || "").replace(/\D/g, "").slice(0, 4)
+          : value;
       return recalculateCertificateDerivedFields({
         ...current,
         [field]: nextValue
@@ -6728,8 +6790,9 @@ export default function AdminPanel() {
                                   </span>
                                 ) : null}
                               </div>
-                              <input
-                                disabled={!pdfEditMode || editLocked || isDerivedField}
+	                              <input
+                                type={field === "periodo_fecha_inicio" || field === "periodo_fecha_fin" ? "date" : "text"}
+	                                disabled={!pdfEditMode || editLocked || isDerivedField}
                                 style={{ ...inputStyle, background: !pdfEditMode || editLocked || isDerivedField ? "#EFF6FF" : "#fff", marginBottom: fieldMeta.modified ? 8 : 0 }}
                                 placeholder={label}
                                 value={certificateDraft[field]}

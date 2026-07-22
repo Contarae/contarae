@@ -222,6 +222,11 @@ function formatLongDate(value = new Date()) {
   }
 }
 
+function formatPeriodDate(value = "") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return "";
+  return formatLongDate(`${String(value).slice(0, 10)}T12:00:00-05:00`);
+}
+
 function removeAccents(value) {
   return String(value || "")
     .normalize("NFD")
@@ -534,9 +539,38 @@ function extractNumericToken(rawValue) {
   return PERIOD_WORD_MAP[textToken] || null;
 }
 
+function getPeriodDateParts(value = "") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  return year && month && day ? { year, month, day } : null;
+}
+
+function getLastDayOfMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+}
+
+function getFullCalendarPeriodMonths(startValue = "", endValue = "") {
+  const start = getPeriodDateParts(startValue);
+  const end = getPeriodDateParts(endValue);
+  if (!start || !end) return 0;
+  if (start.day !== 1) return 0;
+  if (end.day !== getLastDayOfMonth(end.year, end.month)) return 0;
+  const months = (end.year - start.year) * 12 + (end.month - start.month) + 1;
+  return months > 0 ? months : 0;
+}
+
 function resolveCertifiedPeriodMonths(formData = {}) {
+  const periodType = String(formData.periodo_tipo || "").trim();
+  if (periodType === "date_range") {
+    return getFullCalendarPeriodMonths(formData.periodo_fecha_inicio, formData.periodo_fecha_fin);
+  }
+  if (periodType === "annual") return 12;
+
   const explicitMonths = Number(String(formData.periodo_meses || "").replace(/\D/g, "")) || 0;
   if (explicitMonths > 0) return explicitMonths;
+
+  const monthsFromDates = getFullCalendarPeriodMonths(formData.periodo_fecha_inicio, formData.periodo_fecha_fin);
+  if (monthsFromDates > 0) return monthsFromDates;
 
   const rawPeriod = formData.periodo;
   const normalized = removeAccents(rawPeriod).toLowerCase();
@@ -553,11 +587,20 @@ function resolveCertifiedPeriodMonths(formData = {}) {
     months = (baseCount || 1) * 2;
   } else if (normalized.includes("ano") || normalized.includes("año")) {
     months = (baseCount || 1) * 12;
+  } else if (normalized.includes("vigencia") || normalized.includes("anual")) {
+    months = 12;
   } else if (normalized.includes("mes")) {
     months = baseCount || 1;
   }
 
   return months || 0;
+}
+
+function getPeriodDateDescription(formData = {}) {
+  const start = formatPeriodDate(formData.periodo_fecha_inicio);
+  const end = formatPeriodDate(formData.periodo_fecha_fin);
+  if (!start || !end) return "";
+  return `entre el ${start} y el ${end}`;
 }
 
 function buildCertifiedPeriodInMonths(formData = {}) {
@@ -567,6 +610,40 @@ function buildCertifiedPeriodInMonths(formData = {}) {
   }
   const monthWords = months === 1 ? "un" : numberToSpanishWords(months).toLowerCase();
   return `${monthWords} (${months}) ${months === 1 ? "mes" : "meses"}`;
+}
+
+function buildPeriodValidationPhrase(formData = {}) {
+  const periodType = String(formData.periodo_tipo || "").trim();
+  const year = String(formData.periodo_vigencia || "").replace(/\D/g, "").slice(0, 4);
+  const dateDescription = getPeriodDateDescription(formData);
+
+  if (periodType === "annual" && year) {
+    return dateDescription
+      ? `para la vigencia anual ${year}, comprendida ${dateDescription}`
+      : `para la vigencia anual ${year}`;
+  }
+
+  if (periodType === "date_range" && dateDescription) {
+    return `para el período comprendido ${dateDescription}`;
+  }
+
+  return `para el período correspondiente a ${buildCertifiedPeriodInMonths(formData)}`;
+}
+
+function buildPeriodTotalPhrase(formData = {}) {
+  const periodType = String(formData.periodo_tipo || "").trim();
+  const year = String(formData.periodo_vigencia || "").replace(/\D/g, "").slice(0, 4);
+  const dateDescription = getPeriodDateDescription(formData);
+
+  if (periodType === "annual" && year) {
+    return `para la vigencia anual ${year}`;
+  }
+
+  if (periodType === "date_range" && dateDescription) {
+    return `para el período certificado comprendido ${dateDescription}`;
+  }
+
+  return `para el período certificado de ${buildCertifiedPeriodInMonths(formData)}`;
 }
 
 function buildRecurringIncomeRows(formData = {}) {
@@ -679,7 +756,8 @@ export function buildCertificationNarrative(record = {}) {
   const totalGlobalPeriod =
     parseCurrency(formData.total_ingresos_global_periodo) ||
     totalRecurringPeriod + totalEventualPeriod;
-  const periodInMonths = buildCertifiedPeriodInMonths(formData);
+  const periodValidationPhrase = buildPeriodValidationPhrase(formData);
+  const periodTotalPhrase = buildPeriodTotalPhrase(formData);
   const isSingleMonthPeriod = certifiedMonths === 1;
   const formattedCustomerDocument = buildCustomerIdentificationLabel(formData);
   const formattedAccountantDocument = formatDocumentNumber(profile.accountantDocumentNumber) || "POR CONFIGURAR";
@@ -725,7 +803,7 @@ export function buildCertificationNarrative(record = {}) {
   };
   const blocks = [
     paragraph(
-      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument} y titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que, con fundamento en la información suministrada y en los documentos soporte puestos a mi disposición por ${customerReference}, quien se identifica con ${formattedCustomerDocument}, se realizó la validación documental de los ingresos reportados para el período correspondiente a ${periodInMonths}.`
+      `Yo, ${profile.accountantName}, ${profile.title}, identificado con la cédula de ciudadanía No. ${formattedAccountantDocument} y titular de la Tarjeta Profesional No. ${formattedProfessionalCard}, certifico que, con fundamento en la información suministrada y en los documentos soporte puestos a mi disposición por ${customerReference}, quien se identifica con ${formattedCustomerDocument}, se realizó la validación documental de los ingresos reportados ${periodValidationPhrase}.`
     )
   ];
 
@@ -741,7 +819,7 @@ export function buildCertificationNarrative(record = {}) {
           : [
               `Como resultado de dicha validación, se estableció que ${customerReference} percibe ingresos mensuales ${buildSingleIncomePhrase(recurringRows[0])}, por valor de `,
               highlightedAmount(recurringRows[0].numericValue),
-              `; en consecuencia, para el período certificado de ${periodInMonths}, el total correspondiente a dicho lapso asciende a `,
+              `; en consecuencia, ${periodTotalPhrase}, el total correspondiente a dicho lapso asciende a `,
               highlightedAmount(totalRecurringPeriod),
               "."
             ]
@@ -761,7 +839,7 @@ export function buildCertificationNarrative(record = {}) {
         ...(isSingleMonthPeriod
           ? ["."]
           : [
-              ` y, para el período certificado de ${periodInMonths}, un total de `,
+              ` y, ${periodTotalPhrase}, un total de `,
               highlightedAmount(totalRecurringPeriod),
               "."
             ])
@@ -789,7 +867,7 @@ export function buildCertificationNarrative(record = {}) {
         ...(isSingleMonthPeriod
           ? ["."]
           : [
-              ` y, para el período certificado de ${periodInMonths}, un total de `,
+              ` y, ${periodTotalPhrase}, un total de `,
               highlightedAmount(totalRecurringPeriod),
               "."
             ])

@@ -72,6 +72,10 @@ const CERTIFICATE_EDITABLE_FIELDS = [
   "destino",
   "entidad",
   "periodo",
+  "periodo_tipo",
+  "periodo_vigencia",
+  "periodo_fecha_inicio",
+  "periodo_fecha_fin",
   "ingresos_laborales",
   "pensiones",
   "dividendos",
@@ -105,14 +109,63 @@ function parseEventualIncomeRows(value) {
   }
 }
 
+function isValidDateValue(value = "") {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function getDateParts(value = "") {
+  if (!isValidDateValue(value)) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  return year && month && day ? { year, month, day } : null;
+}
+
+function getLastDayOfMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+}
+
+function getFullCalendarMonthsBetween(startValue = "", endValue = "") {
+  const start = getDateParts(startValue);
+  const end = getDateParts(endValue);
+  if (!start || !end) return 0;
+  if (start.day !== 1) return 0;
+  if (end.day !== getLastDayOfMonth(end.year, end.month)) return 0;
+  const months = (end.year - start.year) * 12 + (end.month - start.month) + 1;
+  return months > 0 ? months : 0;
+}
+
+function normalizeAnnualPeriod(formData = {}) {
+  const year = String(formData.periodo_vigencia || "").replace(/\D/g, "").slice(0, 4);
+  if (!/^\d{4}$/.test(year)) return {};
+  return {
+    periodo_fecha_inicio: formData.periodo_fecha_inicio || `${year}-01-01`,
+    periodo_fecha_fin: formData.periodo_fecha_fin || `${year}-12-31`
+  };
+}
+
 function resolveCertifiedMonths(formData = {}) {
+  const periodType = String(formData.periodo_tipo || "").trim();
+  if (periodType === "date_range") {
+    return getFullCalendarMonthsBetween(formData.periodo_fecha_inicio, formData.periodo_fecha_fin);
+  }
+
+  if (periodType === "annual" || periodType === "annual_period") {
+    return 12;
+  }
+
   const explicitMonths = Number(String(formData.periodo_meses || "").replace(/\D/g, "")) || 0;
   if (explicitMonths > 0) return explicitMonths;
+
+  const monthsFromRange = getFullCalendarMonthsBetween(
+    formData.periodo_fecha_inicio,
+    formData.periodo_fecha_fin
+  );
+  if (monthsFromRange > 0) return monthsFromRange;
 
   const normalized = String(formData.periodo || "").toLowerCase();
   if (normalized.includes("6")) return 6;
   if (normalized.includes("3")) return 3;
   if (normalized.includes("año") || normalized.includes("ano")) return 12;
+  if (normalized.includes("vigencia") || normalized.includes("anual")) return 12;
   if (normalized.includes("mes")) return 1;
   return 0;
 }
@@ -208,6 +261,10 @@ export function buildCertificateData(record = {}) {
 
   const totals = computeCertificationTotals(merged);
 
+  if (merged.periodo_tipo === "annual") {
+    Object.assign(merged, normalizeAnnualPeriod(merged));
+  }
+
   if (!merged.total_ingresos_periodo) {
     merged.total_ingresos_periodo =
       formatCurrencyValue(totals.recurringPeriodTotal) || String(formData.total_ingresos_periodo || "");
@@ -298,6 +355,10 @@ function summarizeRecord(record, source) {
     customerPhone: formData.telefono || "",
     destination: joinValues([formData.destino, formData.entidad]),
     period: formData.periodo || "",
+    periodType: formData.periodo_tipo || "",
+    periodStartDate: formData.periodo_fecha_inicio || "",
+    periodEndDate: formData.periodo_fecha_fin || "",
+    periodYear: formData.periodo_vigencia || "",
     totalIncome: formData.total_ingresos || "",
     recurringPeriodTotal: formData.total_ingresos_periodo || "",
     eventualIncomeTotal: hasEventuals ? formData.total_ingresos_eventuales || "" : "",

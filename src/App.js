@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import AdminPanel from "./AdminPanel";
 import ClientPortal from "./ClientPortal";
@@ -104,12 +104,36 @@ const SUPPORT_MAX_FILES=5;
 const SUPPORT_MAX_BYTES=6*1024*1024;
 const SUPPORT_ACCEPT=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx";
 const SUPPORT_ALLOWED_TYPES=new Set(["application/pdf","image/jpeg","image/png","image/webp","image/heic","image/heif","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
-const CERT_PERIOD_OPTIONS=[{label:"Último mes",months:1},{label:"Últimos 3 meses",months:3},{label:"Últimos 6 meses",months:6},{label:"Último año",months:12},{label:"Otro período",months:null}];
+const PERIOD_TYPES={preset:"preset",customMonths:"custom_months",dateRange:"date_range",annual:"annual"};
+const CERT_PERIOD_OPTIONS=[
+  {label:"Último mes",months:1,type:PERIOD_TYPES.preset},
+  {label:"Últimos 3 meses",months:3,type:PERIOD_TYPES.preset},
+  {label:"Últimos 6 meses",months:6,type:PERIOD_TYPES.preset},
+  {label:"Último año",months:12,type:PERIOD_TYPES.preset},
+  {label:"Vigencia anual",months:12,type:PERIOD_TYPES.annual},
+  {label:"Personalizado por número de meses",months:null,type:PERIOD_TYPES.customMonths},
+  {label:"Rango de fechas personalizado",months:null,type:PERIOD_TYPES.dateRange}
+];
 const fmtB=bytes=>{const n=Number(bytes||0);if(!Number.isFinite(n)||n<=0)return"0 B";if(n<1024)return`${n} B`;if(n<1024*1024)return`${(n/1024).toFixed(1)} KB`;return`${(n/(1024*1024)).toFixed(1)} MB`;};
 const createEmptyEventualIncome=()=>({amount:"",concept:""});
 const normalizeMonthInput=value=>String(value||"").replace(/\D/g,"").slice(0,2);
-const getCertifiedMonths=(period,customMonths)=>{const option=CERT_PERIOD_OPTIONS.find(item=>item.label===period);if(option?.months)return option.months;return Number(normalizeMonthInput(customMonths))||0;};
-const buildCertifiedPeriodLabel=(period,months)=>{if(!period)return"";if(period==="Otro período"&&months>0)return`Otro período (${months} ${months===1?"mes":"meses"})`;return period;};
+const normalizeYearInput=value=>String(value||"").replace(/\D/g,"").slice(0,4);
+const getPeriodOption=period=>CERT_PERIOD_OPTIONS.find(item=>item.label===period)||null;
+const isValidDateInput=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||""));
+const getDateInputParts=value=>{if(!isValidDateInput(value))return null;const[year,month,day]=String(value).split("-").map(Number);return year&&month&&day?{year,month,day}:null;};
+const getLastDayOfMonth=(year,month)=>new Date(Date.UTC(year,month,0,12)).getUTCDate();
+const getAnnualPeriodDates=yearValue=>{const year=Number(normalizeYearInput(yearValue));if(!year||year<1900||year>2100)return{start:"",end:""};return{start:`${year}-01-01`,end:`${year}-12-31`};};
+const getFullCalendarMonthsBetween=(startValue,endValue)=>{const start=getDateInputParts(startValue);const end=getDateInputParts(endValue);if(!start||!end)return 0;if(start.day!==1)return 0;if(end.day!==getLastDayOfMonth(end.year,end.month))return 0;const months=(end.year-start.year)*12+(end.month-start.month)+1;return months>0?months:0;};
+const getCertifiedPeriodFields=(period,customMonths,startValue,endValue,yearValue)=>{
+  const option=getPeriodOption(period);
+  if(option?.type===PERIOD_TYPES.annual){const dates=getAnnualPeriodDates(yearValue);return{type:PERIOD_TYPES.annual,months:dates.start?12:0,start:dates.start,end:dates.end,year:normalizeYearInput(yearValue)};}
+  if(option?.type===PERIOD_TYPES.dateRange){return{type:PERIOD_TYPES.dateRange,months:getFullCalendarMonthsBetween(startValue,endValue),start:startValue||"",end:endValue||"",year:""};}
+  if(option?.type===PERIOD_TYPES.customMonths||period==="Otro período"){return{type:PERIOD_TYPES.customMonths,months:Number(normalizeMonthInput(customMonths))||0,start:"",end:"",year:""};}
+  if(option?.months)return{type:option.type||PERIOD_TYPES.preset,months:option.months,start:"",end:"",year:""};
+  return{type:"",months:0,start:"",end:"",year:""};
+};
+const getCertifiedMonths=(period,customMonths,startValue,endValue,yearValue)=>getCertifiedPeriodFields(period,customMonths,startValue,endValue,yearValue).months;
+const buildCertifiedPeriodLabel=(period,months,startValue,endValue,yearValue)=>{const fields=getCertifiedPeriodFields(period,months,startValue,endValue,yearValue);if(!period)return"";if(fields.type===PERIOD_TYPES.annual&&fields.year)return`Vigencia anual ${fields.year}`;if(fields.type===PERIOD_TYPES.dateRange&&fields.months>0)return"Rango de fechas personalizado";if((fields.type===PERIOD_TYPES.customMonths||period==="Otro período")&&fields.months>0)return`Personalizado por número de meses (${fields.months} ${fields.months===1?"mes":"meses"})`;return period;};
 const sanitizeEventualIncomeRows=rows=>(Array.isArray(rows)?rows:[]).map(row=>({amount:String(row?.amount||""),concept:String(row?.concept||"").trim()}));
 const getFilledEventualIncomeRows=rows=>sanitizeEventualIncomeRows(rows).filter(row=>pN(row.amount)>0&&row.concept);
 const hasIncompleteEventualIncomeRows=rows=>sanitizeEventualIncomeRows(rows).some(row=>(pN(row.amount)>0&&!row.concept)||(!pN(row.amount)&&row.concept));
@@ -899,6 +923,51 @@ function LogoNav(){
   );
 }
 function LogoFt(){return(<div style={{display:"flex",alignItems:"center",gap:11,justifyContent:"center",marginBottom:14}}><svg width="38" height="46" viewBox="0 0 56 64"><path d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z" fill="#1B3A5C" stroke="#2563EB" strokeWidth="2.5"/><path d="M28 6 L50 19 L50 45 L28 58 L6 45 L6 19 Z" fill="none" stroke="#60A5FA" strokeWidth="1.2" opacity=".5"/><text x="28" y="42" textAnchor="middle" fontFamily="Georgia,serif" fontSize="34" fill="#fff" fontWeight="700">C</text></svg><div><div style={{display:"flex"}}><span style={{fontFamily:FH,fontSize:22,fontWeight:700,color:"#fff",letterSpacing:"2px"}}>CONTA</span><span style={{fontFamily:FH,fontSize:22,fontWeight:700,color:"#60A5FA",letterSpacing:"2px"}}>RAE</span></div><div style={{height:1.5,background:"#60A5FA",opacity:.5,marginTop:3,marginBottom:5,borderRadius:2}}/><div style={{fontSize:8,color:"rgba(255,255,255,.75)",letterSpacing:"2.8px",fontFamily:F}}>SERVICIOS CONTABLES, TRIBUTARIOS Y FINANCIEROS</div></div></div>)}
+
+const INTRO_SESSION_KEY="contarae-intro-seen";
+function PublicIntro({onDone}){
+  useEffect(()=>{
+    const reduced=window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const timer=window.setTimeout(onDone,reduced?450:1850);
+    return()=>window.clearTimeout(timer);
+  },[onDone]);
+  return(<div className="public-intro" role="status" aria-label="Cargando CONTARAE">
+    <style>{`
+      .public-intro{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 50% 42%,#173c69 0,#0b1d3a 34%,#050b16 78%);animation:introExit .42s 1.43s cubic-bezier(.7,0,.84,0) forwards}
+      .public-intro::before{content:"";position:absolute;width:min(620px,90vw);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.17),rgba(37,99,235,.05) 38%,transparent 68%);filter:blur(10px);animation:introAura 1.45s ease-out both}
+      .public-intro-stage{position:relative;display:flex;flex-direction:column;align-items:center;perspective:900px;transform-style:preserve-3d}
+      .public-intro-mark{position:relative;width:112px;height:132px;transform-style:preserve-3d;animation:introMark 1.48s cubic-bezier(.16,1,.3,1) both;filter:drop-shadow(0 26px 22px rgba(0,0,0,.42))}
+      .public-intro-mark svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+      .public-intro-depth{transform:translate3d(8px,7px,-18px);filter:brightness(.48)}
+      .public-intro-face{transform:translateZ(16px)}
+      .public-intro-shine{position:absolute;inset:5px 8px 9px;border-radius:42%;background:linear-gradient(112deg,transparent 28%,rgba(255,255,255,.34) 45%,transparent 61%);mix-blend-mode:screen;transform:translateZ(20px);animation:introShine 1.25s .25s ease both}
+      .public-intro-brand{display:flex;margin-top:20px;opacity:0;transform:translateY(12px);animation:introCopy .55s .62s ease-out forwards}
+      .public-intro-brand span{font-family:${FH};font-size:clamp(27px,5vw,38px);font-weight:700;letter-spacing:4px;color:#f8fbff}
+      .public-intro-brand span:last-child{color:#7dd3fc}
+      .public-intro-tag{margin-top:8px;font-family:${F};font-size:clamp(7px,1.5vw,10px);letter-spacing:3px;color:rgba(226,232,240,.76);opacity:0;animation:introCopy .5s .78s ease-out forwards}
+      @keyframes introMark{0%{opacity:0;transform:rotateY(-72deg) rotateX(16deg) scale(.62)}55%{opacity:1;transform:rotateY(12deg) rotateX(-3deg) scale(1.05)}100%{opacity:1;transform:rotateY(0) rotateX(0) scale(1)}}
+      @keyframes introShine{0%{opacity:0;transform:translate3d(-55px,0,20px) skewX(-12deg)}35%{opacity:1}100%{opacity:0;transform:translate3d(55px,0,20px) skewX(-12deg)}}
+      @keyframes introCopy{to{opacity:1;transform:translateY(0)}}
+      @keyframes introAura{0%{opacity:0;transform:scale(.55)}55%{opacity:1}100%{opacity:.7;transform:scale(1)}}
+      @keyframes introExit{to{opacity:0;visibility:hidden;transform:scale(1.035)}}
+      @media(prefers-reduced-motion:reduce){.public-intro{animation:introExit .2s .25s ease forwards}.public-intro-mark,.public-intro-brand,.public-intro-tag,.public-intro::before{animation:none;opacity:1;transform:none}.public-intro-shine{display:none}}
+    `}</style>
+    <div className="public-intro-stage">
+      <div className="public-intro-mark" aria-hidden="true">
+        <svg className="public-intro-depth" viewBox="0 0 112 132"><path d="M56 2 108 32v68l-52 30L4 100V32Z" fill="#071426" stroke="#174b80" strokeWidth="4"/></svg>
+        <svg className="public-intro-face" viewBox="0 0 112 132">
+          <defs><linearGradient id="introLogoFace" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#1d4f7d"/><stop offset=".48" stopColor="#102b4c"/><stop offset="1" stopColor="#07162b"/></linearGradient><linearGradient id="introLogoEdge"><stop stopColor="#bae6fd"/><stop offset=".48" stopColor="#3b82f6"/><stop offset="1" stopColor="#38bdf8"/></linearGradient></defs>
+          <path d="M56 2 108 32v68l-52 30L4 100V32Z" fill="url(#introLogoFace)" stroke="url(#introLogoEdge)" strokeWidth="3"/>
+          <path d="M56 12 98 37v58l-42 25-42-25V37Z" fill="none" stroke="#93c5fd" strokeWidth="1.5" opacity=".62"/>
+          <text x="56" y="87" textAnchor="middle" fontFamily="Georgia,serif" fontSize="61" fill="#fff" fontWeight="700">C</text>
+        </svg>
+        <div className="public-intro-shine"/>
+      </div>
+      <div className="public-intro-brand"><span>CONTA</span><span>RAE</span></div>
+      <div className="public-intro-tag">SERVICIOS CONTABLES, TRIBUTARIOS Y FINANCIEROS</div>
+    </div>
+  </div>);
+}
 
 const B=["#F8FBFF","#FFFFFF","#F2F7FE","#FBFDFF","#EFF5FC","#FFFFFF","#F3F8FF","#F8FBFF"];
 const SUB_BG=["#FBFDFF","#F3F7FD","#EAF2FB"];
@@ -2627,7 +2696,7 @@ function PaymentsPortalPage(){
 /* ══════ CERTIFICATION ══════ */
 function CrtS(){
   const CT=CERTIFICATION_PRICE_TIERS.map(item=>({r:item.formRange,v:item.value,before:certReferenceValue(item.value)}));
-  const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",perMes:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iInd:"",iO:"",oD:"",ev:[createEmptyEventualIncome()],cm:""};
+  const INITIAL_FORM={n:"",td:"CC",cc:"",le:"",tel:"",em:"",dir:"",ent:"",per:"",perMes:"",perStart:"",perEnd:"",perYear:"",iL:"",iP:"",iD:"",iI:"",iA:"",iR:"",iInd:"",iO:"",oD:"",ev:[createEmptyEventualIncome()],cm:""};
   const PAYMENT_STORAGE_KEY="contarae-certification-reference";
   const PAYMENT_QUERY_PARAM="cert_ref";
   const FINAL_FAILED_STATUSES=new Set(["DECLINED","ERROR","VOIDED","FAILED","REJECTED","CANCELED","CANCELLED"]);
@@ -2649,6 +2718,7 @@ function CrtS(){
   const trackedCertStepsRef=useRef(new Set());
   const approvedPaymentEventsRef=useRef(new Set());
   const u=(k,v)=>sF(p=>({...p,[k]:v}));
+  const updatePeriod=value=>sF(p=>({...p,per:value,perMes:"",perStart:"",perEnd:"",perYear:""}));
   const uF=(k,v)=>sF(p=>({...p,[k]:fmtI(v)}));
   const uE=(index,key,value)=>sF(p=>({...p,ev:(p.ev||[]).map((row,rowIndex)=>rowIndex===index?{...row,[key]:key==="amount"?fmtI(value):value}:row)}));
   const addEventualIncomeRow=()=>sF(p=>({...p,ev:[...(p.ev||[]),createEmptyEventualIncome()]}));
@@ -2671,7 +2741,8 @@ function CrtS(){
   };
   const ings=[["Ingresos laborales","iL","Salario y prestaciones de relación laboral."],["Pensiones","iP","Mesada pensional por vejez, invalidez o sobrevivencia."],["Dividendos","iD","Utilidades como socio o accionista."],["Inversiones","iI","Rendimientos de CDTs, fondos, acciones."],["Arriendos","iA","Cánones de arrendamiento de inmuebles propios."],["Remesas","iR","Dinero recibido del exterior."],["Ingresos por actividad independiente","iInd","Honorarios, prestación de servicios, comisiones habituales o actividad económica propia."]];
   const recurrentMonthlyTotal=ings.reduce((s,[,k])=>s+pN(f[k]),0)+pN(f.iO);
-  const certifiedMonths=getCertifiedMonths(f.per,f.perMes);
+  const certifiedPeriodFields=getCertifiedPeriodFields(f.per,f.perMes,f.perStart,f.perEnd,f.perYear);
+  const certifiedMonths=certifiedPeriodFields.months;
   const filledEventuals=getFilledEventualIncomeRows(f.ev);
   const eventualTotal=filledEventuals.reduce((sum,row)=>sum+pN(row.amount),0);
   const recurrentPeriodTotal=certifiedMonths?recurrentMonthlyTotal*certifiedMonths:0;
@@ -2682,7 +2753,17 @@ function CrtS(){
   const promoDiscount=promoApplied?Number(promoStatus.discountAmount||0):0;
   const tarifa=promoApplied?Number(promoStatus.finalAmount||baseTarifa):baseTarifa;
   const createPaymentReference=()=>`CONTARAE-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
-  const periodLabel=buildCertifiedPeriodLabel(f.per,certifiedMonths);
+  const periodLabel=buildCertifiedPeriodLabel(f.per,certifiedMonths,f.perStart,f.perEnd,f.perYear);
+  const periodValidationMessage=()=>{
+    if(!f.per)return"Seleccione el período a certificar.";
+    if(certifiedPeriodFields.type===PERIOD_TYPES.annual&&!certifiedPeriodFields.months)return"Ingrese un año de vigencia válido.";
+    if(certifiedPeriodFields.type===PERIOD_TYPES.dateRange){
+      if(!f.perStart||!f.perEnd)return"Seleccione fecha inicial y fecha final.";
+      if(!certifiedPeriodFields.months)return"El rango debe iniciar el día 1 y finalizar el último día de un mes.";
+    }
+    if(certifiedPeriodFields.type===PERIOD_TYPES.customMonths&&!certifiedPeriodFields.months)return"Ingrese el número de meses a certificar.";
+    return"";
+  };
   const trackCertStepOnce=(event,params={})=>{
     if(trackedCertStepsRef.current.has(event))return;
     trackedCertStepsRef.current.add(event);
@@ -2729,10 +2810,14 @@ function CrtS(){
     telefono:normalizeColombianMobileNumber(f.tel).slice(0,10),
     correo:normalizeEmail(f.em),
     email:normalizeEmail(f.em),
-    destino:f.dir,
-    entidad:f.ent,
-    periodo:periodLabel,
-    periodo_meses:certifiedMonths?String(certifiedMonths):"",
+	    destino:f.dir,
+	    entidad:f.ent,
+	    periodo:periodLabel,
+	    periodo_tipo:certifiedPeriodFields.type,
+	    periodo_vigencia:certifiedPeriodFields.year,
+	    periodo_fecha_inicio:certifiedPeriodFields.start,
+	    periodo_fecha_fin:certifiedPeriodFields.end,
+	    periodo_meses:certifiedMonths?String(certifiedMonths):"",
     ingresos_laborales:f.iL,
     pensiones:f.iP,
     dividendos:f.iD,
@@ -2938,9 +3023,11 @@ function CrtS(){
     {step===1&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:14,fontFamily:F}}>🏢 Paso 2: Destino de la Certificación</h4><div style={{display:"grid",gap:14}}>
       <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>¿A quién va dirigida?</label><select style={{...IS,cursor:"pointer"}} value={f.dir} onChange={e=>u("dir",e.target.value)}><option value="">Seleccione...</option>{["Banco o entidad financiera","Inmobiliaria o arrendador","Embajada o trámite migratorio","Concesionario de vehículos","Entidad pública","Contratación o licitación","Otro destino"].map(o=><option key={o}>{o}</option>)}</select></div>
       <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Nombre de la entidad</label><input style={IS} value={f.ent} onChange={e=>u("ent",e.target.value)} placeholder="Ej: Bancolombia, Century 21..."/></div>
-      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Período a certificar</label><select style={{...IS,cursor:"pointer"}} value={f.per} onChange={e=>u("per",e.target.value)}><option value="">Seleccione...</option>{CERT_PERIOD_OPTIONS.map(option=><option key={option.label}>{option.label}</option>)}</select></div>
-      {f.per==="Otro período"&&<div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Número de meses a certificar</label><input style={IS} value={f.perMes} onChange={e=>u("perMes",normalizeMonthInput(e.target.value))} placeholder="Ej: 4"/><div style={{marginTop:6,fontSize:12,color:"#64748B",fontFamily:F}}>Usaremos este valor para calcular el total recurrente del período certificado.</div></div>}
-    </div><div style={{display:"flex",justifyContent:"space-between",marginTop:16}}><button type="button" onClick={()=>moveStep(0)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button><button type="button" onClick={()=>f.dir&&certifiedMonths>0?moveStep(2):alert("Seleccione el destino y un período válido")} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div></div>}
+	      <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Período a certificar</label><select style={{...IS,cursor:"pointer"}} value={f.per} onChange={e=>updatePeriod(e.target.value)}><option value="">Seleccione...</option>{CERT_PERIOD_OPTIONS.map(option=><option key={option.label}>{option.label}</option>)}</select></div>
+	      {f.per==="Personalizado por número de meses"&&<div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Número de meses a certificar</label><input style={IS} value={f.perMes} onChange={e=>u("perMes",normalizeMonthInput(e.target.value))} placeholder="Ej: 4"/><div style={{marginTop:6,fontSize:12,color:"#64748B",fontFamily:F}}>Usaremos este valor para calcular el total recurrente del período certificado.</div></div>}
+	      {f.per==="Vigencia anual"&&<div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Año de vigencia</label><input {...numericInputProps} style={IS} value={f.perYear} onChange={e=>u("perYear",normalizeYearInput(e.target.value))} placeholder="Ej: 2025"/><div style={{marginTop:6,fontSize:12,color:"#64748B",fontFamily:F}}>El sistema certificará del 1 de enero al 31 de diciembre del año indicado y calculará 12 meses.</div></div>}
+	      {f.per==="Rango de fechas personalizado"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}><div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Fecha inicial</label><input type="date" style={IS} value={f.perStart} onChange={e=>u("perStart",e.target.value)}/></div><div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Fecha final</label><input type="date" style={IS} value={f.perEnd} onChange={e=>u("perEnd",e.target.value)}/></div><div style={{gridColumn:"1/-1",fontSize:12,color:"#64748B",fontFamily:F,lineHeight:1.6}}>Use meses completos: la fecha inicial debe ser día 1 y la fecha final el último día del mes. Meses calculados: <strong>{certifiedMonths||0}</strong>.</div></div>}
+	    </div><div style={{display:"flex",justifyContent:"space-between",marginTop:16}}><button type="button" onClick={()=>moveStep(0)} style={{padding:"12px 22px",borderRadius:11,background:"transparent",color:"#2563EB",fontSize:15,fontWeight:600,border:"2px solid rgba(37,99,235,.2)",cursor:"pointer",fontFamily:F}}>← Atrás</button><button type="button" onClick={()=>{const validation=periodValidationMessage();f.dir&&!validation?moveStep(2):alert(!f.dir?"Seleccione el destino.":validation);}} style={{padding:"12px 30px",borderRadius:11,background:"linear-gradient(135deg,#1B3A5C,#2563EB)",color:"#fff",fontSize:15,fontWeight:600,border:"none",cursor:"pointer",fontFamily:F}}>Siguiente →</button></div></div>}
 
     {step===2&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:4,fontFamily:F}}>💰 Paso 3: Ingresos y Soportes</h4><p style={{fontSize:13,color:"#7A8FA8",marginBottom:14,fontFamily:F}}>Primero relacione sus ingresos mensuales recurrentes. Luego, si aplica, agregue ingresos eventuales del período certificado.</p>
       <div style={{padding:18,borderRadius:14,background:"#F8FBFF",border:"1px solid rgba(37,99,235,.10)",marginBottom:14}}><div style={{fontSize:12,letterSpacing:"1.2px",fontWeight:800,color:"#1D4ED8",marginBottom:12,fontFamily:F}}>INGRESOS MENSUALES RECURRENTES</div><div style={{display:"grid",gap:14}}>{ings.map(([l,k,tip])=><div key={k}><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>{l}</label><span style={{fontSize:13,color:"#7A8FA8",fontFamily:F,display:"block",marginBottom:3}}>{tip}</span><input {...currencyInputProps} style={IS} value={f[k]} onChange={e=>uF(k,e.target.value)} placeholder="$ 0"/></div>)}
@@ -3425,6 +3512,17 @@ export default function App(){
   const certSupportRoute=!!certSupportConfig;
   const serviceSeoConfig=getServiceSeoRouteConfig(path);
   const serviceSeoRoute=!!serviceSeoConfig;
+  const isPrivateUtilityRoute=adminRoute||verifyRoute||paymentRoute||paymentsPortalRoute||clientPortalRoute;
+  const[showPublicIntro,setShowPublicIntro]=useState(()=>{
+    if(typeof window==="undefined")return false;
+    const initialPath=getCurrentPath();
+    if(isAdminPath(initialPath)||isVerifyPath(initialPath)||isPaymentPath(initialPath)||isPaymentsPortalPath(initialPath)||isClientPortalPath(initialPath))return false;
+    try{return window.sessionStorage.getItem(INTRO_SESSION_KEY)!=="1";}catch{return true;}
+  });
+  const finishPublicIntro=useCallback(()=>{
+    try{window.sessionStorage.setItem(INTRO_SESSION_KEY,"1");}catch{}
+    setShowPublicIntro(false);
+  },[]);
 
   useEffect(()=>{captureMarketingAttribution();const timer=window.setTimeout(captureMarketingAttribution,1800);return()=>window.clearTimeout(timer);},[path]);
   useEffect(()=>{const sync=()=>sPath(getCurrentPath());window.addEventListener("popstate",sync);window.addEventListener("hashchange",sync);return()=>{window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync);};},[]);
@@ -3438,6 +3536,7 @@ export default function App(){
   },[path,certRoute,certSupportRoute,certSupportConfig,toolRoute,toolConfig,serviceSeoRoute,serviceSeoConfig,adminRoute,verifyRoute,paymentRoute,paymentsPortalRoute,clientPortalRoute]);
 
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
+    {showPublicIntro&&!isPrivateUtilityRoute&&<PublicIntro onDone={finishPublicIntro}/>}
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px;}.cert-support-guide-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;align-items:stretch;}.cert-support-guide-card{grid-column:span 2;min-height:100%;}.cert-support-guide-card:nth-child(4){grid-column:2 / span 2;}.cert-support-guide-card:nth-child(5){grid-column:4 / span 2;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:repeat(2,minmax(0,1fr));}.cert-support-guide-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;}.cert-support-guide-card,.cert-support-guide-card:nth-child(4){grid-column:span 2!important;}.cert-support-guide-card:nth-child(5){grid-column:2 / span 2!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}.cert-support-guide-grid{grid-template-columns:1fr!important;}.cert-support-guide-card,.cert-support-guide-card:nth-child(4),.cert-support-guide-card:nth-child(5){grid-column:auto!important;}.lead-form-grid,.renta-lead-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:1fr!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:calc(14px + env(safe-area-inset-bottom,0px))!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:calc(66px + env(safe-area-inset-bottom,0px))!important;font-size:14px!important;opacity:.78!important;}}`}</style>
     {adminRoute?<AdminPanel/>:clientPortalRoute?<ClientPortal/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
@@ -3445,7 +3544,7 @@ export default function App(){
     </>:<>
     <script src="https://checkout.wompi.co/widget.js" async></script>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
-    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="ingresos_independiente"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/><input name="wompi_transaction_id"/>{MARKETING_FORM_FIELDS.map(name=><input key={name} name={name}/>)}</form>
+	    <form name="certificacion" data-netlify="true" hidden><input name="form-name" type="hidden" value="certificacion"/><input name="consecutivo"/><input name="nombre"/><input name="tipo_documento"/><input name="numero_documento"/><input name="lugar_expedicion"/><input name="telefono"/><input name="correo"/><input name="email"/><input name="destino"/><input name="entidad"/><input name="periodo"/><input name="periodo_tipo"/><input name="periodo_vigencia"/><input name="periodo_fecha_inicio"/><input name="periodo_fecha_fin"/><input name="periodo_meses"/><input name="ingresos_laborales"/><input name="pensiones"/><input name="dividendos"/><input name="inversiones"/><input name="arriendos"/><input name="remesas"/><input name="ingresos_independiente"/><input name="otros_ingresos"/><input name="otros_descripcion"/><input name="ingresos_eventuales_json"/><input name="total_ingresos"/><input name="total_ingresos_num"/><input name="total_ingresos_periodo"/><input name="total_ingresos_eventuales"/><input name="total_ingresos_global_periodo"/><input name="tarifa_base"/><input name="codigo_promocional"/><input name="aliado_estrategico"/><input name="descuento_promocional"/><input name="porcentaje_descuento_promocional"/><input name="porcentaje_comision_aliado"/><input name="comision_aliado_estimada"/><input name="tarifa_pagada"/><input name="soportes_adjuntos"/><input name="referencia_wompi"/><input name="estado_pago"/><input name="comentarios"/><input name="declaracion_juramentada"/><input name="wompi_transaction_id"/>{MARKETING_FORM_FIELDS.map(name=><input key={name} name={name}/>)}</form>
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><FaqS/></div>

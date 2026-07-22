@@ -24,6 +24,23 @@ function buildLookupQuery(value = "") {
   return params.toString();
 }
 
+function formatDisplayDate(value = "") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return String(value || "");
+  try {
+    return new Intl.DateTimeFormat("es-CO", {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    }).format(new Date(`${String(value).slice(0, 10)}T12:00:00-05:00`));
+  } catch {
+    return String(value || "");
+  }
+}
+
+function formatPeriodRange(start = "", end = "") {
+  return [formatDisplayDate(start), formatDisplayDate(end)].filter(Boolean).join(" a ");
+}
+
 function statusStyles(tone = "neutral") {
   if (tone === "success") {
     return {
@@ -369,6 +386,12 @@ export default function CertificateVerificationPage() {
                     ["Documento", result.certificate.holderDocument || ""],
                     ["Destino", result.certificate.destination || "No especificado"],
                     ["Período", result.certificate.period || "No especificado"],
+                    ...(result.certificate.periodYear
+                      ? [["Vigencia", result.certificate.periodYear || ""]]
+                      : []),
+                    ...(result.certificate.periodStartDate || result.certificate.periodEndDate
+                      ? [["Rango certificado", formatPeriodRange(result.certificate.periodStartDate, result.certificate.periodEndDate)]]
+                      : []),
                     ["Ingreso mensual recurrente", result.certificate.totalMonthlyIncome || ""],
                     ["Total recurrente del período", result.certificate.totalRecurringPeriodIncome || ""],
                     ...(result.certificate.totalEventualPeriodIncome
