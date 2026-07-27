@@ -24,6 +24,15 @@ exports.handler = async (event) => {
   try {
     const { reference, amountInCents, currency, monthlyIncome, promoCode } = JSON.parse(event.body);
     const integrityKey = process.env.WOMPI_INTEGRITY_KEY;
+
+    if (!integrityKey) {
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ error: "Falta configurar la llave de integridad de Wompi." })
+      };
+    }
+
     const pricing = await calculateCertificationPricingAsync({
       monthlyIncome,
       promoCode

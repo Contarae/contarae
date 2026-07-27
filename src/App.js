@@ -77,6 +77,36 @@ const getMarketingFormFields=()=>{
 const getMarketingEventParams=()=>{const fields=getMarketingFormFields();const{marketing_attribution_json,...params}=fields;return params;};
 const trackMarketingEvent=(event,params={})=>{if(typeof window==="undefined"||!event)return;window.dataLayer=window.dataLayer||[];window.dataLayer.push({event,page_path:window.location.pathname,page_location:window.location.href,...getMarketingEventParams(),...params});};
 const WK="pub_prod_aEMHipEJ29G4pZOiIwgRC1GOvbqIYzP6";
+const WOMPI_WIDGET_SRC="https://checkout.wompi.co/widget.js";
+let wompiWidgetLoadPromise=null;
+const ensureWompiWidgetLoaded=()=>{
+  if(typeof window==="undefined")return Promise.resolve(false);
+  if(window.WidgetCheckout)return Promise.resolve(true);
+  if(wompiWidgetLoadPromise)return wompiWidgetLoadPromise;
+  wompiWidgetLoadPromise=new Promise((resolve,reject)=>{
+    let settled=false;
+    const existing=document.querySelector(`script[src="${WOMPI_WIDGET_SRC}"]`);
+    const script=existing||document.createElement("script");
+    const finish=()=>{if(settled)return;settled=true;resolve(Boolean(window.WidgetCheckout));};
+    const fail=()=>{if(settled)return;settled=true;reject(new Error("No fue posible cargar el widget de Wompi."));};
+    script.addEventListener("load",finish,{once:true});
+    script.addEventListener("error",fail,{once:true});
+    if(!existing){
+      script.type="text/javascript";
+      script.src=WOMPI_WIDGET_SRC;
+      script.async=true;
+      document.head.appendChild(script);
+    }
+    window.setTimeout(()=>{
+      if(window.WidgetCheckout)finish();
+    },80);
+    window.setTimeout(fail,8000);
+  }).catch(error=>{
+    wompiWidgetLoadPromise=null;
+    throw error;
+  });
+  return wompiWidgetLoadPromise;
+};
 const onlyDigits=value=>String(value||"").replace(/\D/g,"");
 const normalizeEmail=value=>String(value||"").trim().toLowerCase();
 const isValidEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(normalizeEmail(value));
@@ -2926,14 +2956,13 @@ function CrtS(){
   };
   const openWompi=async()=>{let paymentReference="";try{
     trackMarketingEvent("cert_payment_click",{currency:"COP",value:tarifa,service_name:"certificacion_ingresos"});
-    if(typeof window==="undefined"||!window.WidgetCheckout){alert("La pasarela de pago aún se está cargando. Intente nuevamente en unos segundos.");return;}
+    const widgetReady=await ensureWompiWidgetLoaded();
+    if(!widgetReady){throw new Error("WidgetCheckout no quedó disponible.");}
     if(promoCodeValue(promoCode)&&!promoApplied){alert("Valide el código promocional o borre el campo antes de pagar.");return;}
     const normalizedPersonal=normalizePersonalData();
     sF(current=>({...current,...normalizedPersonal}));
     if(!normalizedPersonal.n||!normalizedPersonal.cc||!isValidColombianMobileNumber(normalizedPersonal.tel)||!isValidEmail(normalizedPersonal.em)){alert("Revise los datos personales: nombre, documento, celular y correo deben estar completos y válidos.");sStep(0);sOpenForm(true);return;}
     paymentReference=createPaymentReference();
-    const phoneDigits=normalizeColombianMobileNumber(normalizedPersonal.tel);
-    const legalIdType=f.td==="Pasaporte"?"PP":f.td;
     let uploadedSupportFiles=[];
     sLastRef(paymentReference);
     sPaymentFlow({phase:PAYMENT_PHASES.preparing,reference:paymentReference,status:"PREPARING",message:supportFiles.length?"Estamos cargando sus soportes y guardando la solicitud antes de abrir el pago.":"Estamos guardando su solicitud en estado pendiente antes de abrir el pago.",consecutive:""});
@@ -2957,19 +2986,11 @@ function CrtS(){
       reference:paymentReference,
       publicKey:WK,
       signature:{integrity:sd.signature},
-      redirectUrl:buildRedirectUrl(paymentReference),
-      customerData:{
-        email:normalizedPersonal.em||undefined,
-        fullName:normalizedPersonal.n||undefined,
-        phoneNumber:phoneDigits||undefined,
-        phoneNumberPrefix:phoneDigits?"+57":undefined,
-        legalId:normalizedPersonal.cc||undefined,
-        legalIdType:legalIdType||undefined
-      }
+      redirectUrl:buildRedirectUrl(paymentReference)
     });
     ck.open(result=>handleWidgetResult(paymentReference,result));
     window.setTimeout(()=>releaseCheckoutOverlay(paymentReference),120);
-  }catch(e){clearTrackedReference();markPaymentFailed(paymentReference||lastRef,"CONNECTION_ERROR","Ocurrió un problema al conectar con la pasarela de pago. Intente nuevamente o contáctenos para ayudarle.");}};
+  }catch(e){console.error("Error abriendo Wompi",e);clearTrackedReference();markPaymentFailed(paymentReference||lastRef,"CONNECTION_ERROR","Ocurrió un problema al conectar con la pasarela de pago. Intente nuevamente o contáctenos para ayudarle.");}};
   const supportRef=paymentFlow.reference||lastRef||"PENDIENTE";
   const supportCode=paymentFlow.consecutive?`Solicitud N° ${paymentFlow.consecutive}`:supportRef;
   const waMsg=`Hola CONTARAE, confirmo mi solicitud:%0ACódigo: ${supportCode}%0AReferencia: ${supportRef}%0ANombre: ${f.n}%0ADocumento: ${f.td} ${f.cc}%0AIngreso mensual recurrente: $${fm(recurrentMonthlyTotal)}%0ATotal recurrente del período: $${fm(recurrentPeriodTotal)}${eventualTotal?`%0ATotal ingresos eventuales: $${fm(eventualTotal)}%0ATotal global del período: $${fm(globalPeriodTotal)}`:""}${promoApplied?`%0ACódigo promocional: ${promoStatus.code}%0ADescuento promocional: $${fm(promoDiscount)}`:""}%0AValor pagado: $${fm(tarifa)}%0ADestino: ${f.ent||f.dir}%0AEnviaré los soportes documentales por este medio o por correo electrónico.`;
@@ -3539,10 +3560,8 @@ export default function App(){
     {showPublicIntro&&!isPrivateUtilityRoute&&<PublicIntro onDone={finishPublicIntro}/>}
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px;}.cert-support-guide-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;align-items:stretch;}.cert-support-guide-card{grid-column:span 2;min-height:100%;}.cert-support-guide-card:nth-child(4){grid-column:2 / span 2;}.cert-support-guide-card:nth-child(5){grid-column:4 / span 2;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:repeat(2,minmax(0,1fr));}.cert-support-guide-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;}.cert-support-guide-card,.cert-support-guide-card:nth-child(4){grid-column:span 2!important;}.cert-support-guide-card:nth-child(5){grid-column:2 / span 2!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}.cert-support-guide-grid{grid-template-columns:1fr!important;}.cert-support-guide-card,.cert-support-guide-card:nth-child(4),.cert-support-guide-card:nth-child(5){grid-column:auto!important;}.lead-form-grid,.renta-lead-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:1fr!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:calc(14px + env(safe-area-inset-bottom,0px))!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:calc(66px + env(safe-area-inset-bottom,0px))!important;font-size:14px!important;opacity:.78!important;}}`}</style>
     {adminRoute?<AdminPanel/>:clientPortalRoute?<ClientPortal/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
-    <script src="https://checkout.wompi.co/widget.js" async></script>
     <ServicePaymentPage/>
     </>:<>
-    <script src="https://checkout.wompi.co/widget.js" async></script>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
