@@ -776,8 +776,6 @@ export default async (req, context) => {
   try {
     const body = await req.json();
 
-    console.log("Webhook body recibido:", JSON.stringify(body));
-
     const eventName = body?.event || body?.name || "";
     const signature = body?.signature || {};
     const transaction =
@@ -802,9 +800,7 @@ export default async (req, context) => {
     const rawStatus = transaction?.status || "";
     const status = String(rawStatus).toUpperCase().trim();
 
-    console.log("Webhook eventName:", eventName);
-    console.log("Webhook reference:", reference);
-    console.log("Webhook status:", status);
+    console.log("Webhook recibido:", { eventName, status });
 
     if (!eventName) {
       return new Response(
@@ -842,9 +838,6 @@ export default async (req, context) => {
       .update(`${concatenatedValues}${timestamp}${eventSecret}`)
       .digest("hex")
       .toUpperCase();
-
-    console.log("Checksum local:", localChecksum);
-    console.log("Checksum wompi:", wompiChecksum);
 
     if (localChecksum !== wompiChecksum) {
       console.log("Firma inválida");
