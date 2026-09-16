@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getStore as getBlobStore } from "@netlify/blobs";
+import { assertBlobWrite, attachBlobVersion, getBlobWriteConditions } from "./blob-versioning.js";
 
 const PORTAL_USERS_STORE = "client-portal";
 const USERS_KEY = "portal-users:v1";
@@ -25,7 +26,12 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
 }
 
 function getPasswordEncryptionKey() {
-  const secret = process.env.CLIENT_PORTAL_SECRET || process.env.ADMIN_SESSION_SECRET || "contarae-client-portal-local-secret";
+  const configuredSecret = process.env.CLIENT_PORTAL_SECRET || "";
+  const developmentSecret = process.env.CONTEXT === "production"
+    ? ""
+    : process.env.ADMIN_PANEL_SECRET || process.env.ADMIN_SECRET || "contarae-client-portal-local-only-secret";
+  const secret = configuredSecret || developmentSecret;
+  if (!secret) throw new Error("Falta CLIENT_PORTAL_SECRET para proteger las claves del portal.");
   return crypto.createHash("sha256").update(String(secret)).digest();
 }
 
@@ -107,8 +113,11 @@ function normalizeUsersData(data = {}) {
 
 async function loadUsersData() {
   const store = getStore();
-  const data = await store.get(USERS_KEY, { type: "json" });
-  return normalizeUsersData(data || {});
+  const stored = await store.getWithMetadata(USERS_KEY, { type: "json", consistency: "strong" });
+  return attachBlobVersion(normalizeUsersData(stored?.data || {}), {
+    etag: stored?.etag,
+    exists: Boolean(stored)
+  });
 }
 
 async function saveUsersData(data = {}) {
@@ -116,8 +125,9 @@ async function saveUsersData(data = {}) {
     ...data,
     updatedAt: new Date().toISOString()
   });
-  await getStore().setJSON(USERS_KEY, nextData);
-  return nextData;
+  const writeResult = await getStore().setJSON(USERS_KEY, nextData, getBlobWriteConditions(data));
+  assertBlobWrite(writeResult);
+  return attachBlobVersion(nextData, { etag: writeResult.etag, exists: true });
 }
 
 export async function listClientPortalUsers() {
@@ -263,7 +273,11 @@ export async function authenticateStoredClientPortalUser(username, password) {
     lastLoginAt: now,
     auditTrail: [...(user.auditTrail || []), createAudit("portal_user_login", user.username)]
   };
-  await saveUsersData(data);
+  try {
+    await saveUsersData(data);
+  } catch (error) {
+    if (error.code !== "storage_conflict") throw error;
+  }
 
   return {
     ok: true,

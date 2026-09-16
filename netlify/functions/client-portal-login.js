@@ -61,3 +61,12 @@ export default async (req) => {
     );
   }
 };
+
+export const config = {
+  path: ["/api/client-portal-login", "/.netlify/functions/client-portal-login"],
+  rateLimit: {
+    windowLimit: 20,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
+  }
+};

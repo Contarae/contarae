@@ -129,7 +129,7 @@ export function getAdminSessionFromRequest(req) {
   const cookies = parseCookies(req);
   const payload = verifyAdminSession(cookies[ADMIN_SESSION_COOKIE], config.secret);
 
-  if (!payload) {
+  if (!payload || !safeEqual(payload.u, config.username)) {
     return {
       configured: true,
       authenticated: false,
@@ -178,6 +178,9 @@ export function buildAdminHeaders(extra = {}) {
   return {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
     ...extra
   };
 }

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getStore as getBlobStore } from "@netlify/blobs";
+import { assertBlobWrite, attachBlobVersion, getBlobWriteConditions } from "./blob-versioning.js";
 
 const PORTAL_STORE_NAME = "client-portal";
 const COMPANY_PREFIX = "company:";
@@ -544,13 +545,24 @@ export async function loadCompanyDataRaw(companyId, companyName = "") {
   const normalizedCompanyId = cleanText(companyId);
   if (!normalizedCompanyId) throw new Error("No se pudo identificar la empresa del portal.");
   const store = getPortalStore();
-  const record = await store.get(`${COMPANY_PREFIX}${normalizedCompanyId}`, { type: "json" });
-  if (!record) {
+  const key = `${COMPANY_PREFIX}${normalizedCompanyId}`;
+  let stored = await store.getWithMetadata(key, { type: "json", consistency: "strong" });
+  if (!stored) {
     const initial = defaultData(normalizedCompanyId, companyName);
-    await store.setJSON(`${COMPANY_PREFIX}${normalizedCompanyId}`, initial);
-    return normalizeData(initial, normalizedCompanyId, companyName);
+    const writeResult = await store.setJSON(key, initial, { onlyIfNew: true });
+    if (writeResult.modified) {
+      return attachBlobVersion(normalizeData(initial, normalizedCompanyId, companyName), {
+        etag: writeResult.etag,
+        exists: true
+      });
+    }
+    stored = await store.getWithMetadata(key, { type: "json", consistency: "strong" });
   }
-  return normalizeData(record, normalizedCompanyId, companyName);
+  if (!stored) throw new Error("No fue posible cargar la información actualizada de la empresa.");
+  return attachBlobVersion(normalizeData(stored.data, normalizedCompanyId, companyName), {
+    etag: stored.etag,
+    exists: true
+  });
 }
 
 export async function loadCompactCompanyData(companyId, companyName = "") {
@@ -561,20 +573,6 @@ export async function loadCompactCompanyData(companyId, companyName = "") {
   }
 
   const compact = compactCompanyData(rawData);
-  try {
-    const normalizedCompanyId = cleanText(companyId);
-    const cachedRawData = normalizeData({
-      ...rawData,
-      summaryCache: {
-        sourceUpdatedAt: rawData.updatedAt || "",
-        generatedAt: new Date().toISOString(),
-        data: compact
-      }
-    }, normalizedCompanyId, rawData.company?.name || companyName);
-    await getPortalStore().setJSON(`${COMPANY_PREFIX}${normalizedCompanyId}`, cachedRawData);
-  } catch (error) {
-    // The cache is an optimization only; the portal can continue with the fresh compact payload.
-  }
   return compact;
 }
 
@@ -605,8 +603,13 @@ export async function saveCompanyDataRaw(companyId, data, actor = "portal") {
       createAudit("company_saved", actor)
     ]
   }, normalizedCompanyId, persistableData?.company?.name);
-  await getPortalStore().setJSON(`${COMPANY_PREFIX}${normalizedCompanyId}`, nextData);
-  return nextData;
+  const writeResult = await getPortalStore().setJSON(
+    `${COMPANY_PREFIX}${normalizedCompanyId}`,
+    nextData,
+    getBlobWriteConditions(data)
+  );
+  assertBlobWrite(writeResult);
+  return attachBlobVersion(nextData, { etag: writeResult.etag, exists: true });
 }
 
 function findCustomer(data, customerId) {

@@ -57,11 +57,11 @@ function parseUsersJson() {
 }
 
 export function getClientPortalConfig() {
-  const secret =
-    process.env.CLIENT_PORTAL_SECRET ||
-    process.env.ADMIN_PANEL_SECRET ||
-    process.env.ADMIN_SECRET ||
-    "";
+  const configuredSecret = process.env.CLIENT_PORTAL_SECRET || "";
+  const developmentSecret = process.env.CONTEXT === "production"
+    ? ""
+    : process.env.ADMIN_PANEL_SECRET || process.env.ADMIN_SECRET || "";
+  const secret = configuredSecret || developmentSecret;
 
   const usersFromJson = parseUsersJson()
     .map((user) => ({
@@ -231,6 +231,9 @@ export function buildClientPortalHeaders(extra = {}) {
   return {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
     ...extra
   };
 }
