@@ -153,6 +153,7 @@ export function buildAdminSessionCookie(req, token, maxAgeSeconds = SESSION_MAX_
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
+    `Max-Age=${maxAgeSeconds}`,
     secure ? "Secure" : ""
   ]
     .filter(Boolean)
