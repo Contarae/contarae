@@ -13,6 +13,7 @@ import {
 } from "./utils/professional-documents.js";
 import { buildWatermarkedProfessionalCardAttachment } from "./utils/professional-watermark.js";
 import { sendResendEmail } from "./utils/resend-email.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 import {
   buildCertificateVerificationCode,
   buildCertificateVerificationPath,
@@ -438,6 +439,18 @@ export default async (req) => {
       updatedAt: now,
       lastReviewedAt: now,
       lastReviewedBy: session.username
+    });
+    await recordSecurityEvent(req, {
+      type: isCorrection ? "certification_correction_sent" : "certification_sent",
+      actor: session.username,
+      subject: reference,
+      outcome: "ok",
+      reason: isCorrection ? correctionReason : "",
+      details: {
+        version: certificateVersion,
+        includeProfessionalCard,
+        includeJccBackground
+      }
     });
 
     return new Response(

@@ -4,6 +4,7 @@ import {
   getAdminSessionFromRequest
 } from "./utils/admin-auth.js";
 import { voidManualServicePayment } from "./utils/service-requests.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -54,6 +55,14 @@ export default async (req) => {
       { reason: body?.reason },
       session.username
     );
+    await recordSecurityEvent(req, {
+      type: "service_payment_voided",
+      actor: session.username,
+      subject: body?.paymentReference || body?.reference,
+      outcome: "ok",
+      reason: body?.reason,
+      details: { serviceReference: body?.reference }
+    });
 
     return new Response(
       JSON.stringify({

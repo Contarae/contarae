@@ -158,11 +158,10 @@ export default async (req, context) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "Error guardando la solicitud pendiente",
-        detail: error.message
+        error: error.status === 400 ? error.message : "Error guardando la solicitud pendiente"
       }),
       {
-        status: 500,
+        status: error.status || 500,
         headers
       }
     );

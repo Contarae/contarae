@@ -56,13 +56,9 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible registrar tus datos",
-        detail: error.message
+        error: error.status === 400 ? error.message : "No fue posible registrar tus datos"
       }),
-      {
-        status: 400,
-        headers
-      }
+      { status: error.status || 400, headers }
     );
   }
 };

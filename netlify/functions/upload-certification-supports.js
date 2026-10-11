@@ -66,11 +66,10 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible cargar los soportes.",
-        detail: error.message
+        error: error.message || "No fue posible cargar los soportes."
       }),
       {
-        status: 500,
+        status: error.status || 400,
         headers
       }
     );

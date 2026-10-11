@@ -4,6 +4,7 @@ import {
   getAdminSessionFromRequest
 } from "./utils/admin-auth.js";
 import { deleteClientLead } from "./utils/client-leads.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -49,6 +50,12 @@ export default async (req) => {
     }
 
     const deleted = await deleteClientLead(body?.id);
+    await recordSecurityEvent(req, {
+      type: "client_lead_deleted",
+      actor: session.username,
+      subject: deleted?.id || body?.id,
+      outcome: "ok"
+    });
 
     return new Response(
       JSON.stringify({

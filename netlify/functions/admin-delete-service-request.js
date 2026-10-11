@@ -4,6 +4,7 @@ import {
   getAdminSessionFromRequest
 } from "./utils/admin-auth.js";
 import { deleteServiceRequest } from "./utils/service-requests.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -49,6 +50,12 @@ export default async (req) => {
     }
 
     const deleted = await deleteServiceRequest(body?.reference, session.username);
+    await recordSecurityEvent(req, {
+      type: "service_request_deleted",
+      actor: session.username,
+      subject: body?.reference,
+      outcome: "ok"
+    });
 
     return new Response(
       JSON.stringify({

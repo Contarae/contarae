@@ -80,7 +80,7 @@ function bytesIncludeAscii(bytes, text, start = 0, end = bytes.length) {
   return value.includes(text);
 }
 
-function hasExpectedFileSignature(bytes, contentType = "", fileName = "") {
+export function hasExpectedFileSignature(bytes, contentType = "", fileName = "") {
   const normalizedType = normalizeContentType(contentType, fileName);
   const extension = getFileExtension(fileName);
 

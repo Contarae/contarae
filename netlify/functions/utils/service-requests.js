@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { getStore } from "@netlify/blobs";
 import {
   formatBytes,
+  hasExpectedFileSignature,
   isAllowedSupportContentType,
   normalizeContentType,
   normalizeReference,
@@ -789,10 +790,16 @@ async function uploadPaymentSupportFiles(store, reference, paymentReference, fil
       throw new Error(`El archivo "${file.name}" supera el límite de ${formatBytes(MAX_SERVICE_DOCUMENT_SIZE)}.`);
     }
 
+    const buffer = await file.arrayBuffer();
+    const signatureBytes = new Uint8Array(buffer.slice(0, 32));
+    if (!hasExpectedFileSignature(signatureBytes, contentType, file.name)) {
+      throw new Error(`El archivo "${file.name}" no parece coincidir con el formato indicado.`);
+    }
+
     const blobKey = buildPaymentSupportBlobKey(normalizedReference, normalizedPaymentReference, file.name);
     const uploadedAt = new Date().toISOString();
 
-    await store.set(blobKey, await file.arrayBuffer(), {
+    await store.set(blobKey, buffer, {
       metadata: {
         reference: normalizedReference,
         paymentReference: normalizedPaymentReference,
@@ -1345,10 +1352,16 @@ export async function uploadServiceRequestDocuments(reference, files = [], actor
       throw new Error(`El archivo "${file.name}" supera el límite de ${formatBytes(MAX_SERVICE_DOCUMENT_SIZE)}.`);
     }
 
+    const buffer = await file.arrayBuffer();
+    const signatureBytes = new Uint8Array(buffer.slice(0, 32));
+    if (!hasExpectedFileSignature(signatureBytes, contentType, file.name)) {
+      throw new Error(`El archivo "${file.name}" no parece coincidir con el formato indicado.`);
+    }
+
     const blobKey = buildServiceDocumentBlobKey(normalizedReference, file.name);
     const uploadedAt = new Date().toISOString();
 
-    await store.set(blobKey, await file.arrayBuffer(), {
+    await store.set(blobKey, buffer, {
       metadata: {
         reference: normalizedReference,
         originalName: file.name,

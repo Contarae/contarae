@@ -43,13 +43,9 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible consultar los pagos",
-        detail: error.message
+        error: error.status === 400 ? error.message : "No fue posible consultar los pagos"
       }),
-      {
-        status: 400,
-        headers
-      }
+      { status: error.status || 400, headers }
     );
   }
 };
