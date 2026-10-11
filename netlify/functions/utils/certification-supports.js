@@ -71,6 +71,34 @@ export function isAllowedSupportContentType(contentType = "", fileName = "") {
   return ALLOWED_SUPPORT_CONTENT_TYPES.has(normalized);
 }
 
+function bytesStartWith(bytes, signature = []) {
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+function bytesIncludeAscii(bytes, text, start = 0, end = bytes.length) {
+  const value = Array.from(bytes.slice(start, end)).map((byte) => String.fromCharCode(byte)).join("");
+  return value.includes(text);
+}
+
+function hasExpectedFileSignature(bytes, contentType = "", fileName = "") {
+  const normalizedType = normalizeContentType(contentType, fileName);
+  const extension = getFileExtension(fileName);
+
+  if (!bytes?.length) return false;
+  if (normalizedType === "application/pdf" || extension === "pdf") return bytesStartWith(bytes, [0x25, 0x50, 0x44, 0x46]);
+  if (normalizedType === "image/jpeg" || ["jpg", "jpeg"].includes(extension)) return bytesStartWith(bytes, [0xff, 0xd8, 0xff]);
+  if (normalizedType === "image/png" || extension === "png") return bytesStartWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (normalizedType === "image/webp" || extension === "webp") {
+    return bytesStartWith(bytes, [0x52, 0x49, 0x46, 0x46]) && bytesIncludeAscii(bytes, "WEBP", 8, 16);
+  }
+  if (normalizedType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || extension === "docx") {
+    return bytesStartWith(bytes, [0x50, 0x4b, 0x03, 0x04]);
+  }
+  if (normalizedType === "application/msword" || extension === "doc") return bytesStartWith(bytes, [0xd0, 0xcf, 0x11, 0xe0]);
+  if (["image/heic", "image/heif"].includes(normalizedType) || ["heic", "heif"].includes(extension)) return true;
+  return false;
+}
+
 export function formatBytes(bytes = 0) {
   const value = Number(bytes || 0);
   if (!Number.isFinite(value) || value <= 0) return "0 B";
@@ -171,10 +199,17 @@ export async function uploadIncomingSupportFiles(store, reference, files = []) {
       throw new Error(`El archivo "${file.name}" supera el límite de ${formatBytes(MAX_SUPPORT_FILE_SIZE)}.`);
     }
 
+    const buffer = await file.arrayBuffer();
+    const signatureBytes = new Uint8Array(buffer.slice(0, 32));
+
+    if (!hasExpectedFileSignature(signatureBytes, contentType, file.name)) {
+      throw new Error(`El archivo "${file.name}" no parece coincidir con el formato indicado.`);
+    }
+
     const blobKey = buildSupportBlobKey(normalizedReference, file.name);
     const uploadedAt = new Date().toISOString();
 
-    await store.set(blobKey, await file.arrayBuffer(), {
+    await store.set(blobKey, buffer, {
       metadata: {
         reference: normalizedReference,
         originalName: file.name,

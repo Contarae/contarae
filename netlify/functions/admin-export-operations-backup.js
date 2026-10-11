@@ -3,6 +3,7 @@ import { listAllCertifications } from "./utils/certification-admin.js";
 import { listClientLeads } from "./utils/client-leads.js";
 import { getServiceRequestByReference, listAllServiceRequests, listServicePayments } from "./utils/service-requests.js";
 import promoUtils from "./utils/promo-codes.cjs";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 const { listPromoCodes } = promoUtils;
 
@@ -48,6 +49,11 @@ export default async (req) => {
     const promoCodes = Array.isArray(promoCodeResult) ? promoCodeResult : promoCodeResult.records || [];
 
     const generatedAt = new Date().toISOString();
+    await recordSecurityEvent(req, {
+      type: "admin_operations_backup_exported",
+      actor: session.username,
+      outcome: "ok"
+    });
     const payload = {
       generatedAt,
       generatedBy: session.username,

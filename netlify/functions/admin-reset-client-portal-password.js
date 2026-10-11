@@ -4,6 +4,7 @@ import {
   getAdminSessionFromRequest
 } from "./utils/admin-auth.js";
 import { resetClientPortalPassword } from "./utils/client-portal-users.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -21,6 +22,13 @@ export default async (req) => {
     if (!auth.ok) return new Response(JSON.stringify({ error: "Contraseña de funcionario inválida." }), { status: 401, headers });
 
     const user = await resetClientPortalPassword(body?.userId, body?.temporaryPassword, session.username);
+    await recordSecurityEvent(req, {
+      type: "client_portal_password_reset",
+      actor: session.username,
+      subject: user.username,
+      outcome: "ok",
+      details: { companyId: user.companyId }
+    });
     return new Response(JSON.stringify({ user }), { status: 200, headers });
   } catch (error) {
     return new Response(JSON.stringify({ error: "No fue posible restablecer la clave temporal.", detail: error.message }), { status: 400, headers });

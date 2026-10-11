@@ -1,9 +1,5 @@
-import {
-  authenticateAdminCredentials,
-  buildAdminHeaders,
-  getAdminSessionFromRequest
-} from "./utils/admin-auth.js";
-import { revealClientPortalPassword } from "./utils/client-portal-users.js";
+import { buildAdminHeaders, getAdminSessionFromRequest } from "./utils/admin-auth.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -14,15 +10,17 @@ export default async (req) => {
   if (!session.configured) return new Response(JSON.stringify({ error: "El panel no está configurado." }), { status: 500, headers });
   if (!session.authenticated) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 401, headers });
 
-  try {
-    const body = await req.json();
-    const password = String(body?.adminPassword || "");
-    const auth = authenticateAdminCredentials(session.username, password);
-    if (!auth.ok) return new Response(JSON.stringify({ error: "Contraseña de funcionario inválida." }), { status: 401, headers });
+  await recordSecurityEvent(req, {
+    type: "client_portal_password_reveal_blocked",
+    actor: session.username,
+    outcome: "blocked",
+    reason: "password_reveal_disabled"
+  });
 
-    const result = await revealClientPortalPassword(body?.userId, session.username);
-    return new Response(JSON.stringify(result), { status: 200, headers });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: "No fue posible consultar la clave.", detail: error.message }), { status: 400, headers });
-  }
+  return new Response(
+    JSON.stringify({
+      error: "Por seguridad ya no es posible revelar claves. Usa la opción de restablecer contraseña temporal."
+    }),
+    { status: 410, headers }
+  );
 };

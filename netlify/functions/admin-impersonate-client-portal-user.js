@@ -9,6 +9,7 @@ import {
   getClientPortalConfig
 } from "./utils/client-portal-auth.js";
 import { getClientPortalUser, recordClientPortalImpersonation } from "./utils/client-portal-users.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -37,6 +38,14 @@ export default async (req) => {
     if (user.status === "suspended") return new Response(JSON.stringify({ error: "El usuario está suspendido." }), { status: 409, headers });
 
     const auditedUser = await recordClientPortalImpersonation(user.id, session.username, reason);
+    await recordSecurityEvent(req, {
+      type: "client_portal_impersonation_started",
+      actor: session.username,
+      subject: auditedUser.username,
+      outcome: "ok",
+      reason,
+      details: { companyId: auditedUser.companyId }
+    });
     const token = createClientPortalSession(
       {
         username: auditedUser.username,
