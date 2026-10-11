@@ -3,6 +3,14 @@ import corsUtils from "./utils/cors.cjs";
 
 const { buildCorsHeaders } = corsUtils;
 
+function normalizeCertificationReference(value = "") {
+  return String(value || "").trim().toUpperCase();
+}
+
+function isValidCertificationReference(reference = "") {
+  return /^CONTARAE-\d{10,}-[A-Z0-9]{5,10}$/.test(normalizeCertificationReference(reference));
+}
+
 function buildPublicPendingRecord(record = {}) {
   return {
     reference: record.reference || "",
@@ -16,7 +24,8 @@ function buildPublicPendingRecord(record = {}) {
 
 export default async (req, context) => {
   const headers = buildCorsHeaders(req, {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store"
   });
 
   if (req.method === "OPTIONS") {
@@ -38,11 +47,21 @@ export default async (req, context) => {
 
   try {
     const url = new URL(req.url);
-    const reference = url.searchParams.get("reference");
+    const reference = normalizeCertificationReference(url.searchParams.get("reference"));
 
     if (!reference) {
       return new Response(
         JSON.stringify({ error: "Falta la referencia" }),
+        {
+          status: 400,
+          headers
+        }
+      );
+    }
+
+    if (!isValidCertificationReference(reference)) {
+      return new Response(
+        JSON.stringify({ error: "Referencia inválida" }),
         {
           status: 400,
           headers

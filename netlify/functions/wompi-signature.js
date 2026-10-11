@@ -4,9 +4,20 @@ const {
 } = require("./utils/promo-codes.cjs");
 const { buildCorsHeaders } = require("./utils/cors.cjs");
 
+const MAX_SIGNATURE_PAYLOAD_BYTES = 20 * 1024;
+
+function normalizeCertificationReference(value = "") {
+  return String(value || "").trim().toUpperCase();
+}
+
+function isValidCertificationReference(reference = "") {
+  return /^CONTARAE-\d{10,}-[A-Z0-9]{5,10}$/.test(normalizeCertificationReference(reference));
+}
+
 exports.handler = async (event) => {
   const headers = buildCorsHeaders(event, {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store"
   });
 
   if (event.httpMethod === "OPTIONS") {
@@ -22,8 +33,44 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { reference, amountInCents, currency, monthlyIncome, promoCode } = JSON.parse(event.body);
+    const contentLength = Number(event.headers?.["content-length"] || event.headers?.["Content-Length"] || 0);
+    if (contentLength > MAX_SIGNATURE_PAYLOAD_BYTES) {
+      return {
+        statusCode: 413,
+        headers,
+        body: JSON.stringify({ error: "La solicitud supera el tamaño permitido." })
+      };
+    }
+
+    const { reference, amountInCents, currency, monthlyIncome, promoCode } = JSON.parse(event.body || "{}");
+    const normalizedReference = normalizeCertificationReference(reference);
+    const normalizedCurrency = String(currency || "").trim().toUpperCase();
+    const requestedAmountInCents = Number(amountInCents || 0);
     const integrityKey = process.env.WOMPI_INTEGRITY_KEY;
+
+    if (!isValidCertificationReference(normalizedReference)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Referencia de pago inválida." })
+      };
+    }
+
+    if (normalizedCurrency !== "COP") {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Moneda no permitida." })
+      };
+    }
+
+    if (!Number.isInteger(requestedAmountInCents) || requestedAmountInCents <= 0) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Valor de pago inválido." })
+      };
+    }
 
     if (!integrityKey) {
       return {
@@ -38,7 +85,6 @@ exports.handler = async (event) => {
       promoCode
     });
     const expectedAmountInCents = pricing.finalAmount * 100;
-    const requestedAmountInCents = Number(amountInCents || 0);
 
     if (normalizePromoCode(promoCode) && !pricing.promoApplied) {
       return {
@@ -62,7 +108,7 @@ exports.handler = async (event) => {
     const crypto = require("crypto");
     const signature = crypto
       .createHash("sha256")
-      .update(`${reference}${amountInCents}${currency}${integrityKey}`)
+      .update(`${normalizedReference}${requestedAmountInCents}${normalizedCurrency}${integrityKey}`)
       .digest("hex");
 
     return {
