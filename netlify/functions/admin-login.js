@@ -4,6 +4,7 @@ import {
   buildAdminSessionCookie,
   createAdminSession
 } from "./utils/admin-auth.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -38,6 +39,12 @@ export default async (req) => {
     }
 
     if (!auth.ok) {
+      await recordSecurityEvent(req, {
+        type: "admin_login_failed",
+        actor: username,
+        outcome: "failed",
+        reason: auth.reason
+      });
       return new Response(
         JSON.stringify({ error: "Usuario o contraseña inválidos" }),
         {
@@ -48,6 +55,11 @@ export default async (req) => {
     }
 
     const token = createAdminSession(auth.config.username, auth.config.secret);
+    await recordSecurityEvent(req, {
+      type: "admin_login_success",
+      actor: auth.config.username,
+      outcome: "ok"
+    });
 
     return new Response(
       JSON.stringify({
