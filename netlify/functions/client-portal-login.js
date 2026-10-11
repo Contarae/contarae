@@ -4,6 +4,7 @@ import {
   buildClientPortalSessionCookie,
   createClientPortalSession
 } from "./utils/client-portal-auth.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
 export default async (req) => {
   const headers = buildClientPortalHeaders();
@@ -29,6 +30,12 @@ export default async (req) => {
     }
 
     if (!auth.ok) {
+      await recordSecurityEvent(req, {
+        type: "client_portal_login_failed",
+        actor: username,
+        outcome: "failed",
+        reason: auth.reason
+      });
       return new Response(
         JSON.stringify({
           error: auth.reason === "suspended" ? "Este usuario esta suspendido." : "Usuario o contrasena invalidos"
@@ -38,6 +45,12 @@ export default async (req) => {
     }
 
     const token = createClientPortalSession(auth.user, auth.config.secret);
+    await recordSecurityEvent(req, {
+      type: "client_portal_login_success",
+      actor: auth.user.username,
+      subject: auth.user.companyId,
+      outcome: "ok"
+    });
     return new Response(
       JSON.stringify({
         ok: true,
