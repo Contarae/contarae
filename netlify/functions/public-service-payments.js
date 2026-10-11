@@ -1,7 +1,10 @@
 import { listPublicServicePaymentsByDocument } from "./utils/service-requests.js";
 import corsUtils from "./utils/cors.cjs";
+import requestSecurity from "./utils/request-security.cjs";
 
 const { buildCorsHeaders } = corsUtils;
+const { assertContentLength, assertNoHoneypot } = requestSecurity;
+const MAX_PAYMENT_LOOKUP_PAYLOAD_BYTES = 16 * 1024;
 
 export default async (req) => {
   const headers = buildCorsHeaders(req, {
@@ -22,7 +25,9 @@ export default async (req) => {
   }
 
   try {
+    assertContentLength(req, MAX_PAYMENT_LOOKUP_PAYLOAD_BYTES);
     const body = await req.json();
+    assertNoHoneypot(body);
     const result = await listPublicServicePaymentsByDocument(body);
 
     return new Response(
@@ -46,5 +51,14 @@ export default async (req) => {
         headers
       }
     );
+  }
+};
+
+export const config = {
+  path: ["/api/public-service-payments", "/.netlify/functions/public-service-payments"],
+  rateLimit: {
+    windowLimit: 30,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
   }
 };

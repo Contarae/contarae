@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BACKUP_STORE_NAME,
+  collectFileInventory,
   collectStructuredStoreBackup,
   createStructuredDataBackup
 } from "../netlify/functions/utils/data-backup.js";
@@ -36,6 +37,14 @@ function createMockStores(seed = {}) {
       },
       async getWithMetadata(key) {
         return values.get(key) || null;
+      },
+      async getMetadata(key) {
+        const value = values.get(key);
+        if (!value) return null;
+        return {
+          etag: value.etag,
+          metadata: value.metadata || {}
+        };
       },
       async setJSON(key, data, options = {}) {
         values.set(key, {
@@ -72,6 +81,25 @@ test("collectStructuredStoreBackup includes JSON records and skips file blobs", 
   assert.deepEqual(Object.keys(backup.records).sort(), ["paid:ABC", "pending:ABC"]);
 });
 
+test("collectFileInventory records file blobs without reading file contents", async () => {
+  const { getStoreImpl } = createMockStores({
+    "certification-requests": {
+      "pending:ABC": { status: "pending" },
+      "supports/ABC/file.pdf": { binary: true },
+      "issued/ABC/certificate.pdf": { binary: true }
+    }
+  });
+
+  const inventory = await collectFileInventory("certification-requests", {
+    getStoreImpl
+  });
+
+  assert.equal(inventory.scanned, 3);
+  assert.equal(inventory.included, 2);
+  assert.deepEqual(inventory.categories, { issued: 1, supports: 1 });
+  assert.equal(inventory.files.every((file) => file.key && file.keyHash && file.etag), true);
+});
+
 test("createStructuredDataBackup stores one private daily backup and prunes old backups", async () => {
   const { getStoreImpl, stores } = createMockStores({
     "source-store": {
@@ -95,4 +123,7 @@ test("createStructuredDataBackup stores one private daily backup and prunes old 
   assert.equal(backupStore.has("daily/2026-09-16.json"), true);
   assert.equal(backupStore.has("daily/2026-09-15.json"), true);
   assert.equal(backupStore.has("daily/2026-09-14.json"), false);
+  assert.deepEqual(backupStore.get("daily/2026-09-16.json").data.fileInventories, {
+    "source-store": []
+  });
 });

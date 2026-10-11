@@ -48,6 +48,18 @@ export function getFileExtension(fileName = "") {
   return parts.length > 1 ? parts.pop() : "";
 }
 
+function hasSuspiciousFileName(fileName = "") {
+  const normalized = sanitizeFileName(fileName).toLowerCase();
+  if (!normalized) return true;
+  if (/\.(exe|bat|cmd|com|scr|js|mjs|cjs|html?|svg|php|phtml|sh|ps1|jar|app|dmg|pkg|zip|rar|7z)(\.|$)/i.test(normalized)) {
+    return true;
+  }
+  const parts = normalized.split(".").filter(Boolean);
+  return parts.length > 2 && parts.slice(0, -1).some((part) =>
+    ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx"].includes(part)
+  );
+}
+
 export function normalizeContentType(contentType = "", fileName = "") {
   const trimmed = String(contentType || "").trim().toLowerCase();
   if (trimmed) return trimmed;
@@ -142,6 +154,12 @@ export async function uploadIncomingSupportFiles(store, reference, files = []) {
 
   for (const file of files) {
     const contentType = String(file.type || "").trim().toLowerCase();
+
+    if (hasSuspiciousFileName(file.name)) {
+      throw new Error(
+        `El archivo "${file.name}" tiene un nombre o extensión no permitida. Cambia el nombre y vuelve a cargarlo.`
+      );
+    }
 
     if (!isAllowedSupportContentType(contentType, file.name)) {
       throw new Error(

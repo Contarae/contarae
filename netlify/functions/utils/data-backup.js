@@ -21,8 +21,17 @@ function isStructuredKey(key = "") {
   return Boolean(key) && !String(key).includes("/");
 }
 
+function isFileBlobKey(key = "") {
+  return Boolean(key) && String(key).includes("/");
+}
+
 function keyHash(key = "") {
   return crypto.createHash("sha256").update(String(key)).digest("hex").slice(0, 16);
+}
+
+function fileCategoryForKey(key = "") {
+  const [category = "unknown"] = String(key || "").split("/");
+  return category || "unknown";
 }
 
 async function runWithConcurrency(items, limit, mapper) {
@@ -90,6 +99,65 @@ export async function collectStructuredStoreBackup(storeName, options = {}) {
   };
 }
 
+export async function collectFileInventory(storeName, options = {}) {
+  const {
+    getStoreImpl = getStore,
+    concurrency = 10
+  } = options;
+  const store = getStoreImpl(storeName);
+  const list = await store.list();
+  const keys = (list.blobs || [])
+    .map((blob) => blob.key)
+    .filter(isFileBlobKey)
+    .sort();
+  const skipped = [];
+  const files = [];
+
+  await runWithConcurrency(keys, concurrency, async (key) => {
+    const listedBlob = (list.blobs || []).find((blob) => blob.key === key) || {};
+
+    try {
+      const metadataResult = typeof store.getMetadata === "function"
+        ? await store.getMetadata(key, { consistency: "strong" })
+        : null;
+      files.push({
+        key,
+        keyHash: keyHash(key),
+        category: fileCategoryForKey(key),
+        etag: metadataResult?.etag || listedBlob.etag || "",
+        metadata: metadataResult?.metadata || {}
+      });
+    } catch (error) {
+      files.push({
+        key,
+        keyHash: keyHash(key),
+        category: fileCategoryForKey(key),
+        etag: listedBlob.etag || "",
+        metadata: {}
+      });
+      skipped.push({
+        keyHash: keyHash(key),
+        reason: String(error?.name || error?.message || "metadata_read_error").slice(0, 120)
+      });
+    }
+  });
+
+  const categories = files.reduce((acc, file) => {
+    acc[file.category] = (acc[file.category] || 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    storeName,
+    scanned: (list.blobs || []).length,
+    included: files.length,
+    skipped: skipped.length,
+    skippedItems: skipped,
+    categories,
+    files
+  };
+}
+
 async function pruneOldBackups(backupStore, retentionDays = DEFAULT_RETENTION_DAYS) {
   const list = await backupStore.list({ prefix: BACKUP_PREFIX });
   const keys = (list.blobs || [])
@@ -119,6 +187,7 @@ export async function createStructuredDataBackup(options = {}) {
   const generatedAt = date.toISOString();
   const backupKey = `${BACKUP_PREFIX}${isoDate(date)}.json`;
   const stores = {};
+  const fileInventories = {};
   const summary = {};
 
   for (const storeName of sourceStores) {
@@ -126,12 +195,23 @@ export async function createStructuredDataBackup(options = {}) {
       getStoreImpl,
       concurrency
     });
+    const fileInventory = await collectFileInventory(storeName, {
+      getStoreImpl,
+      concurrency
+    });
     stores[storeName] = result.records;
+    fileInventories[storeName] = fileInventory.files;
     summary[storeName] = {
       scanned: result.scanned,
       included: result.included,
       skipped: result.skipped,
-      skippedItems: result.skippedItems
+      skippedItems: result.skippedItems,
+      files: {
+        included: fileInventory.included,
+        skipped: fileInventory.skipped,
+        skippedItems: fileInventory.skippedItems,
+        categories: fileInventory.categories
+      }
     };
   }
 
@@ -139,10 +219,11 @@ export async function createStructuredDataBackup(options = {}) {
     version: 1,
     generatedAt,
     sourceStores,
-    scope: "structured-json-records",
-    note: "This backup excludes binary/file blobs such as uploaded support documents and issued PDFs.",
+    scope: "structured-json-records-and-file-inventory",
+    note: "This backup stores structured JSON records and a private inventory of file blobs. It does not duplicate binary file contents.",
     summary,
-    stores
+    stores,
+    fileInventories
   };
 
   const backupStore = getStoreImpl(BACKUP_STORE_NAME);
@@ -150,7 +231,7 @@ export async function createStructuredDataBackup(options = {}) {
     metadata: {
       generatedAt,
       sourceStores: sourceStores.join(","),
-      scope: "structured-json-records"
+      scope: "structured-json-records-and-file-inventory"
     }
   });
 

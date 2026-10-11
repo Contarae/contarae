@@ -116,3 +116,12 @@ export default async (req, context) => {
     );
   }
 };
+
+export const config = {
+  path: ["/api/get-paid-form", "/.netlify/functions/get-paid-form"],
+  rateLimit: {
+    windowLimit: 60,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
+  }
+};

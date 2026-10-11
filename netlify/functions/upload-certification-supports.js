@@ -76,3 +76,12 @@ export default async (req) => {
     );
   }
 };
+
+export const config = {
+  path: ["/api/upload-certification-supports", "/.netlify/functions/upload-certification-supports"],
+  rateLimit: {
+    windowLimit: 20,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
+  }
+};

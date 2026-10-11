@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import promoUtils from "./utils/promo-codes.cjs";
 import corsUtils from "./utils/cors.cjs";
+import requestSecurity from "./utils/request-security.cjs";
 
 const {
   calculateCertificationPricingAsync,
@@ -8,6 +9,7 @@ const {
   normalizePromoCode
 } = promoUtils;
 const { buildCorsHeaders } = corsUtils;
+const { assertNoHoneypot } = requestSecurity;
 
 const MAX_PENDING_PAYLOAD_BYTES = 200 * 1024;
 
@@ -65,6 +67,7 @@ export default async (req, context) => {
     }
 
     const data = await req.json();
+    assertNoHoneypot(data);
     const reference = String(data.reference || "").trim();
 
     if (!reference || !isValidCertificationReference(reference)) {
@@ -163,5 +166,14 @@ export default async (req, context) => {
         headers
       }
     );
+  }
+};
+
+export const config = {
+  path: ["/api/save-pending-form", "/.netlify/functions/save-pending-form"],
+  rateLimit: {
+    windowLimit: 40,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
   }
 };

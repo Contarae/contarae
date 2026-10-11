@@ -106,3 +106,12 @@ export default async (req, context) => {
     );
   }
 };
+
+export const config = {
+  path: ["/api/get-pending-form", "/.netlify/functions/get-pending-form"],
+  rateLimit: {
+    windowLimit: 60,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
+  }
+};

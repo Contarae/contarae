@@ -1,7 +1,10 @@
 import { saveClientLead } from "./utils/client-leads.js";
 import corsUtils from "./utils/cors.cjs";
+import requestSecurity from "./utils/request-security.cjs";
 
 const { buildCorsHeaders } = corsUtils;
+const { assertContentLength, assertNoHoneypot } = requestSecurity;
+const MAX_LEAD_PAYLOAD_BYTES = 32 * 1024;
 
 export default async (req) => {
   const headers = buildCorsHeaders(req, {
@@ -22,7 +25,9 @@ export default async (req) => {
   }
 
   try {
+    assertContentLength(req, MAX_LEAD_PAYLOAD_BYTES);
     const body = await req.json();
+    assertNoHoneypot(body);
     const url = new URL(req.url);
     const lead = await saveClientLead(body, {
       sourcePath: body?.sourcePath || url.pathname,
@@ -59,5 +64,14 @@ export default async (req) => {
         headers
       }
     );
+  }
+};
+
+export const config = {
+  path: ["/api/submit-client-lead", "/.netlify/functions/submit-client-lead"],
+  rateLimit: {
+    windowLimit: 30,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
   }
 };
