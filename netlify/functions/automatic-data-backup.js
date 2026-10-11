@@ -1,6 +1,7 @@
 import { createStructuredDataBackup } from "./utils/data-backup.js";
+import { recordSecurityEvent } from "./utils/security-audit.js";
 
-export default async () => {
+export default async (req) => {
   try {
     const result = await createStructuredDataBackup();
     const totals = Object.fromEntries(
@@ -18,6 +19,13 @@ export default async () => {
       backupKey: result.backupKey,
       totals,
       retention: result.retention
+    });
+    await recordSecurityEvent(req, {
+      type: "automatic_backup_completed",
+      actor: "system",
+      subject: result.backupKey,
+      outcome: "ok",
+      details: { sha256: result.sha256, totals }
     });
 
     return new Response(
@@ -38,6 +46,12 @@ export default async () => {
   } catch (error) {
     console.error("Structured data backup failed", {
       message: error.message
+    });
+    await recordSecurityEvent(req, {
+      type: "automatic_backup_failed",
+      actor: "system",
+      outcome: "failed",
+      reason: error.message
     });
 
     return new Response(

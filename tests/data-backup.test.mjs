@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  BACKUP_MANIFEST_KEY,
   BACKUP_STORE_NAME,
   collectFileInventory,
   collectStructuredStoreBackup,
@@ -121,9 +122,13 @@ test("createStructuredDataBackup stores one private daily backup and prunes old 
   const backupStore = stores.get(BACKUP_STORE_NAME);
   assert.equal(result.backupKey, "daily/2026-09-16.json");
   assert.equal(backupStore.has("daily/2026-09-16.json"), true);
+  assert.equal(backupStore.has(BACKUP_MANIFEST_KEY), true);
   assert.equal(backupStore.has("daily/2026-09-15.json"), true);
   assert.equal(backupStore.has("daily/2026-09-14.json"), false);
+  assert.match(result.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(backupStore.get(BACKUP_MANIFEST_KEY).data.sha256, result.sha256);
   assert.deepEqual(backupStore.get("daily/2026-09-16.json").data.fileInventories, {
     "source-store": []
   });
+  assert.equal(backupStore.get("daily/2026-09-16.json").data.integrity.sha256, result.sha256);
 });

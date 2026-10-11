@@ -1818,6 +1818,7 @@ function OperationsDashboard({
   certificationRecords = [],
   clientLeads = [],
   payments = [],
+  health = null,
   loading,
   error,
   onOpenRequest,
@@ -1833,6 +1834,9 @@ function OperationsDashboard({
   const calendar = useMemo(() => buildMonthlyDueCalendar(serviceRecords, today), [serviceRecords, today]);
   const selectedDayRequests = serviceRecords.filter((record) => String(record.dueDate || "").slice(0, 10) === selectedCalendarDate);
   const certificationPending = certificationRecords.filter((record) => ["en_revision", "documentos_solicitados"].includes(record.certificationStatus)).length;
+  const missingEnv = (health?.environment || []).filter((item) => !item.configured);
+  const latestBackup = health?.latestBackup || null;
+  const securityEvents = health?.securityEvents || [];
   const currentPayments = payments.filter((payment) => payment.kind === "payment" && isAppliedServicePayment(payment) && isWithinDashboardRange(payment.paidAt || payment.createdAt, range));
   const previousPayments = payments.filter((payment) => payment.kind === "payment" && isAppliedServicePayment(payment) && isWithinDashboardRange(payment.paidAt || payment.createdAt, previousRange));
   const currentLeads = clientLeads.filter((lead) => isWithinDashboardRange(lead.createdAt, range));
@@ -2029,6 +2033,40 @@ function OperationsDashboard({
         <StatCard label="TASA DE PAGO" value={loading ? "..." : `${paymentRate}%`} tone="#15803D" note={`${formatMoney(historicalTotalPaidAmount)} recaudado sobre ${formatMoney(historicalTotalSalesAmount)}.`} />
         <StatCard label="PAGOS ANULADOS" value={loading ? "..." : voidedPayments.length} tone="#C2410C" note={`${appliedPayments.length} pago(s) aplicado(s) en histórico.`} />
       </div>
+
+      <DashboardPanel eyebrow="SALUD OPERATIVA" title="Seguridad y respaldos">
+        <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
+          <InfoTile
+            label="Último backup"
+            value={latestBackup?.generatedAt ? formatDate(latestBackup.generatedAt) : "Sin registro"}
+          />
+          <InfoTile
+            label="Integridad"
+            value={latestBackup?.sha256 ? latestBackup.sha256.slice(0, 12) : "Pendiente"}
+          />
+          <InfoTile
+            label="Variables críticas"
+            value={missingEnv.length ? `${missingEnv.length} pendiente(s)` : "Completas"}
+          />
+        </div>
+        {securityEvents.length ? (
+          <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+            {securityEvents.slice(0, 4).map((event) => (
+              <div key={event.id || `${event.type}-${event.createdAt}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, background: "#F8FBFF", border: "1px solid rgba(37,99,235,.10)" }}>
+                <div>
+                  <div style={{ fontFamily: F, color: "#0F172A", fontWeight: 900, fontSize: 13 }}>{event.type || "evento_seguridad"}</div>
+                  <div style={{ fontFamily: F, color: "#64748B", fontSize: 12, lineHeight: 1.5 }}>{event.actor || "sistema"}{event.subject ? ` · ${event.subject}` : ""}</div>
+                </div>
+                <div style={{ fontFamily: F, color: event.outcome === "failed" ? "#DC2626" : "#15803D", fontSize: 12, fontWeight: 900 }}>{formatDate(event.createdAt)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginTop: 14 }}>
+            <EmptyDashboardNote>La bitácora de seguridad aparecerá aquí cuando registre eventos.</EmptyDashboardNote>
+          </div>
+        )}
+      </DashboardPanel>
 
       <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "stretch" }}>
         <DashboardPanel eyebrow="SALUD COMERCIAL" title="Embudo de servicios">
@@ -4318,6 +4356,8 @@ export default function AdminPanel() {
   const [taskDraft, setTaskDraft] = useState(EMPTY_TASK_DRAFT);
   const [taskBusy, setTaskBusy] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [health, setHealth] = useState(null);
+  const [healthError, setHealthError] = useState("");
   const draftRef = useRef(draft);
   const certificateDraftRef = useRef(certificateDraft);
   const certificationDetailRequestRef = useRef(0);
@@ -4577,6 +4617,20 @@ export default function AdminPanel() {
     }
   };
 
+  const loadHealth = async () => {
+    setHealthError("");
+    try {
+      const response = await fetch("/api/admin-health");
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "No fue posible cargar la salud operativa.");
+      }
+      setHealth(data);
+    } catch (error) {
+      setHealthError(error.message);
+    }
+  };
+
   const loadDetail = async (reference) => {
     if (!reference) return;
     const requestId = certificationDetailRequestRef.current + 1;
@@ -4630,6 +4684,7 @@ export default function AdminPanel() {
       loadClientLeads();
       loadPortalUsers();
       loadPromoCodes();
+      loadHealth();
     }
   }, [session.authenticated]);
 
@@ -6001,6 +6056,7 @@ export default function AdminPanel() {
     loadClientLeads();
     loadPortalUsers();
     loadPromoCodes();
+    loadHealth();
     if (selectedServiceReference) {
       loadServiceDetail(selectedServiceReference);
     }
@@ -6357,8 +6413,9 @@ export default function AdminPanel() {
             certificationRecords={records}
             clientLeads={clientLeads}
             payments={servicePayments}
+            health={health}
             loading={serviceLoading || listLoading || servicePaymentsLoading}
-            error={serviceError || listError || servicePaymentsError}
+            error={serviceError || listError || servicePaymentsError || healthError}
             onOpenRequest={handleSelectServiceRequest}
             onOpenModule={handleModuleChange}
             onNewRequest={handleStartNewServiceRequest}

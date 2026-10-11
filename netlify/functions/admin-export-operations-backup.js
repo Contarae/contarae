@@ -52,7 +52,14 @@ export default async (req) => {
     await recordSecurityEvent(req, {
       type: "admin_operations_backup_exported",
       actor: session.username,
-      outcome: "ok"
+      outcome: "ok",
+      details: {
+        serviceRequests: serviceRequests.filter(Boolean).length,
+        servicePayments: servicePayments.length,
+        clientLeads: clientLeads.length,
+        certifications: certifications.length,
+        promoCodes: promoCodes.length
+      }
     });
     const payload = {
       generatedAt,

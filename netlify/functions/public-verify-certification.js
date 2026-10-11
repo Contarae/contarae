@@ -229,10 +229,18 @@ export default async (req) => {
   } catch (error) {
     return jsonResponse(
       {
-        error: "No fue posible validar el certificado.",
-        detail: error.message
+        error: "No fue posible validar el certificado."
       },
       500
     );
+  }
+};
+
+export const config = {
+  path: ["/api/public-verify-certification", "/.netlify/functions/public-verify-certification"],
+  rateLimit: {
+    windowLimit: 80,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
   }
 };

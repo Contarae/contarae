@@ -11,6 +11,7 @@ export const STRUCTURED_BACKUP_STORES = [
 
 export const BACKUP_STORE_NAME = "contarae-backups";
 export const BACKUP_PREFIX = "daily/";
+export const BACKUP_MANIFEST_KEY = "manifest/latest.json";
 export const DEFAULT_RETENTION_DAYS = 30;
 
 function isoDate(date = new Date()) {
@@ -225,13 +226,36 @@ export async function createStructuredDataBackup(options = {}) {
     stores,
     fileInventories
   };
+  const payloadJson = JSON.stringify(payload);
+  const sha256 = crypto.createHash("sha256").update(payloadJson).digest("hex");
+  const manifest = {
+    version: 1,
+    backupKey,
+    generatedAt,
+    sha256,
+    sourceStores,
+    scope: payload.scope,
+    summary,
+    retentionDays
+  };
 
   const backupStore = getStoreImpl(BACKUP_STORE_NAME);
-  await backupStore.setJSON(backupKey, payload, {
+  await backupStore.setJSON(backupKey, {
+    ...payload,
+    integrity: { sha256 }
+  }, {
     metadata: {
       generatedAt,
       sourceStores: sourceStores.join(","),
-      scope: "structured-json-records-and-file-inventory"
+      scope: "structured-json-records-and-file-inventory",
+      sha256
+    }
+  });
+  await backupStore.setJSON(BACKUP_MANIFEST_KEY, manifest, {
+    metadata: {
+      generatedAt,
+      backupKey,
+      sha256
     }
   });
 
@@ -241,7 +265,34 @@ export async function createStructuredDataBackup(options = {}) {
     ok: true,
     backupKey,
     generatedAt,
+    sha256,
     summary,
     retention
   };
+}
+
+export async function getLatestBackupManifest(options = {}) {
+  const { getStoreImpl = getStore } = options;
+  const store = getStoreImpl(BACKUP_STORE_NAME);
+  const manifest = await store.get(BACKUP_MANIFEST_KEY, { type: "json" });
+  if (manifest) return manifest;
+
+  const list = await store.list({ prefix: BACKUP_PREFIX });
+  const latestKey = (list.blobs || [])
+    .map((blob) => blob.key)
+    .filter((key) => /^daily\/\d{4}-\d{2}-\d{2}\.json$/.test(key))
+    .sort()
+    .reverse()[0];
+  if (!latestKey) return null;
+
+  const backup = await store.get(latestKey, { type: "json" });
+  return backup ? {
+    version: 1,
+    backupKey: latestKey,
+    generatedAt: backup.generatedAt || "",
+    sha256: backup.integrity?.sha256 || "",
+    sourceStores: backup.sourceStores || [],
+    scope: backup.scope || "",
+    summary: backup.summary || {}
+  } : null;
 }

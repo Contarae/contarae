@@ -49,3 +49,27 @@ export async function recordSecurityEvent(req, event = {}) {
     return null;
   }
 }
+
+export async function listSecurityEvents(options = {}) {
+  const {
+    limit = 20,
+    getStoreImpl = getStore
+  } = options;
+  const store = getStoreImpl(SECURITY_AUDIT_STORE);
+  const list = await store.list({ prefix: SECURITY_AUDIT_PREFIX });
+  const keys = (list.blobs || [])
+    .map((blob) => blob.key)
+    .sort()
+    .reverse()
+    .slice(0, Math.max(1, Math.min(Number(limit || 20), 100)));
+  const events = await Promise.all(keys.map((key) => store.get(key, { type: "json" })));
+  return events.filter(Boolean).map((event) => ({
+    id: event.id || "",
+    type: event.type || "",
+    actor: event.actor || "",
+    subject: event.subject || "",
+    outcome: event.outcome || "",
+    reason: event.reason || "",
+    createdAt: event.createdAt || ""
+  }));
+}

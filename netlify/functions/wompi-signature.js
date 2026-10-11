@@ -3,6 +3,7 @@ const {
   normalizePromoCode
 } = require("./utils/promo-codes.cjs");
 const { buildCorsHeaders } = require("./utils/cors.cjs");
+const { assertNoHoneypot } = require("./utils/request-security.cjs");
 
 const MAX_SIGNATURE_PAYLOAD_BYTES = 20 * 1024;
 
@@ -42,7 +43,9 @@ exports.handler = async (event) => {
       };
     }
 
-    const { reference, amountInCents, currency, monthlyIncome, promoCode } = JSON.parse(event.body || "{}");
+    const body = JSON.parse(event.body || "{}");
+    assertNoHoneypot(body);
+    const { reference, amountInCents, currency, monthlyIncome, promoCode } = body;
     const normalizedReference = normalizeCertificationReference(reference);
     const normalizedCurrency = String(currency || "").trim().toUpperCase();
     const requestedAmountInCents = Number(amountInCents || 0);
@@ -132,5 +135,14 @@ exports.handler = async (event) => {
       headers,
       body: JSON.stringify({ error: "Error generando firma" })
     };
+  }
+};
+
+exports.config = {
+  path: ["/api/wompi-signature", "/.netlify/functions/wompi-signature"],
+  rateLimit: {
+    windowLimit: 40,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
   }
 };

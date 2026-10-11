@@ -3,6 +3,9 @@ const {
   normalizePromoCode
 } = require("./utils/promo-codes.cjs");
 const { buildCorsHeaders } = require("./utils/cors.cjs");
+const { assertContentLength, assertNoHoneypot } = require("./utils/request-security.cjs");
+
+const MAX_PROMO_PAYLOAD_BYTES = 12 * 1024;
 
 exports.handler = async (event) => {
   const headers = buildCorsHeaders(event, {
@@ -22,7 +25,9 @@ exports.handler = async (event) => {
   }
 
   try {
+    assertContentLength(event, MAX_PROMO_PAYLOAD_BYTES);
     const body = JSON.parse(event.body || "{}");
+    assertNoHoneypot(body);
     const code = normalizePromoCode(body.code);
 
     if (!code) {
@@ -77,5 +82,14 @@ exports.handler = async (event) => {
       headers,
       body: JSON.stringify({ valid: false, error: "No fue posible validar el código." })
     };
+  }
+};
+
+exports.config = {
+  path: ["/api/validate-promo-code", "/.netlify/functions/validate-promo-code"],
+  rateLimit: {
+    windowLimit: 60,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"]
   }
 };
