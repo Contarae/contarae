@@ -1,9 +1,15 @@
+import crypto from "crypto";
+import promoUtils from "./utils/promo-codes.cjs";
+import corsUtils from "./utils/cors.cjs";
+import requestSecurity from "./utils/request-security.cjs";
+import { boundedEventHandler } from "./utils/bounded-event-handler.js";
+
 const {
   calculateCertificationPricingAsync,
   normalizePromoCode
-} = require("./utils/promo-codes.cjs");
-const { buildCorsHeaders } = require("./utils/cors.cjs");
-const { assertNoHoneypot } = require("./utils/request-security.cjs");
+} = promoUtils;
+const { buildCorsHeaders } = corsUtils;
+const { assertNoHoneypot, readEventJsonBody } = requestSecurity;
 
 const MAX_SIGNATURE_PAYLOAD_BYTES = 20 * 1024;
 
@@ -15,7 +21,7 @@ function isValidCertificationReference(reference = "") {
   return /^CONTARAE-\d{10,}-[A-Z0-9]{5,10}$/.test(normalizeCertificationReference(reference));
 }
 
-exports.handler = async (event) => {
+export const eventHandler = async (event) => {
   const headers = buildCorsHeaders(event, {
     "Content-Type": "application/json",
     "Cache-Control": "no-store"
@@ -34,16 +40,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const contentLength = Number(event.headers?.["content-length"] || event.headers?.["Content-Length"] || 0);
-    if (contentLength > MAX_SIGNATURE_PAYLOAD_BYTES) {
-      return {
-        statusCode: 413,
-        headers,
-        body: JSON.stringify({ error: "La solicitud supera el tamaño permitido." })
-      };
-    }
-
-    const body = JSON.parse(event.body || "{}");
+    const body = readEventJsonBody(event, MAX_SIGNATURE_PAYLOAD_BYTES);
     assertNoHoneypot(body);
     const { reference, amountInCents, currency, monthlyIncome, promoCode } = body;
     const normalizedReference = normalizeCertificationReference(reference);
@@ -108,7 +105,6 @@ exports.handler = async (event) => {
       };
     }
 
-    const crypto = require("crypto");
     const signature = crypto
       .createHash("sha256")
       .update(`${normalizedReference}${requestedAmountInCents}${normalizedCurrency}${integrityKey}`)
@@ -131,14 +127,16 @@ exports.handler = async (event) => {
     };
   } catch (error) {
     return {
-      statusCode: 500,
+      statusCode: error.status || 500,
       headers,
-      body: JSON.stringify({ error: "Error generando firma" })
+      body: JSON.stringify({ error: [400, 413].includes(error.status) ? error.message : "Error generando firma" })
     };
   }
 };
 
-exports.config = {
+export default boundedEventHandler(eventHandler, MAX_SIGNATURE_PAYLOAD_BYTES);
+
+export const config = {
   path: ["/api/wompi-signature", "/.netlify/functions/wompi-signature"],
   rateLimit: {
     windowLimit: 40,

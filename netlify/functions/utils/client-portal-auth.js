@@ -107,6 +107,8 @@ export async function authenticateClientPortalCredentials(username, password) {
     };
   }
   if (storedAuth.reason === "suspended") return { ok: false, reason: "suspended", config };
+  // A stored account owns its password; an old environment fallback must not bypass a reset.
+  if (storedAuth.reason !== "not_found") return { ok: false, reason: "invalid_credentials", config };
 
   const user = config.users.find((candidate) => safeEqual(normalizedUsername, candidate.username));
   if (!user || !safeEqual(password, user.password)) {

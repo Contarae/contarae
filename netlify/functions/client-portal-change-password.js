@@ -6,6 +6,7 @@ import {
   getClientPortalSessionFromRequest
 } from "./utils/client-portal-auth.js";
 import { changeClientPortalPassword } from "./utils/client-portal-users.js";
+import requestSecurity from "./utils/request-security.cjs";
 
 export default async (req) => {
   const headers = buildClientPortalHeaders();
@@ -20,7 +21,7 @@ export default async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const body = await requestSecurity.readJsonBody(req, 16 * 1024);
     const user = await changeClientPortalPassword(session.username, body?.currentPassword, body?.nextPassword);
     const config = getClientPortalConfig();
     const token = createClientPortalSession(
@@ -43,6 +44,6 @@ export default async (req) => {
       }
     );
   } catch (error) {
-    return new Response(JSON.stringify({ error: "No fue posible cambiar la contrasena.", detail: error.message }), { status: 400, headers });
+    return new Response(JSON.stringify({ error: "No fue posible cambiar la contrasena.", detail: error.message }), { status: error.status || 400, headers });
   }
 };

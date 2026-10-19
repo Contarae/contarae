@@ -25,33 +25,9 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   return `scrypt:${salt}:${derived}`;
 }
 
-function getPasswordEncryptionKey() {
-  const configuredSecret = process.env.CLIENT_PORTAL_SECRET || "";
-  const developmentSecret = process.env.CONTEXT === "production"
-    ? ""
-    : process.env.ADMIN_PANEL_SECRET || process.env.ADMIN_SECRET || "contarae-client-portal-local-only-secret";
-  const secret = configuredSecret || developmentSecret;
-  if (!secret) throw new Error("Falta CLIENT_PORTAL_SECRET para proteger las claves del portal.");
-  return crypto.createHash("sha256").update(String(secret)).digest();
-}
-
-function encryptPortalPassword(password = "") {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", getPasswordEncryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(String(password), "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `v1:${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
-}
-
-function decryptPortalPassword(cipherText = "") {
-  const [version, ivHex, tagHex, encryptedHex] = String(cipherText || "").split(":");
-  if (version !== "v1" || !ivHex || !tagHex || !encryptedHex) return "";
-  const decipher = crypto.createDecipheriv("aes-256-gcm", getPasswordEncryptionKey(), Buffer.from(ivHex, "hex"));
-  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedHex, "hex")),
-    decipher.final()
-  ]).toString("utf8");
+function withoutRecoverablePassword(user) {
+  const { passwordCipher, temporaryPasswordPreview, ...safeUser } = user;
+  return safeUser;
 }
 
 function safeEqual(left, right) {
@@ -91,7 +67,6 @@ function sanitizeUser(user = {}) {
     companyName: user.companyName,
     status: user.status || "active",
     mustChangePassword: Boolean(user.mustChangePassword),
-    temporaryPasswordPreview: user.mustChangePassword ? String(user.temporaryPasswordPreview || "") : "",
     temporaryPasswordCreatedAt: user.temporaryPasswordCreatedAt || "",
     lastLoginAt: user.lastLoginAt || "",
     lastPasswordChangeAt: user.lastPasswordChangeAt || "",
@@ -123,6 +98,8 @@ async function loadUsersData() {
 async function saveUsersData(data = {}) {
   const nextData = normalizeUsersData({
     ...data,
+    // Preserve existing hashes and access. Retire legacy copies on the next normal write.
+    users: (data.users || []).map(withoutRecoverablePassword),
     updatedAt: new Date().toISOString()
   });
   const writeResult = await getStore().setJSON(USERS_KEY, nextData, getBlobWriteConditions(data));
@@ -167,9 +144,7 @@ export async function upsertClientPortalUser(input = {}, actor = "admin") {
   const passwordPatch = temporaryPassword
     ? {
         passwordHash: hashPassword(temporaryPassword),
-        passwordCipher: encryptPortalPassword(temporaryPassword),
         mustChangePassword: true,
-        temporaryPasswordPreview: temporaryPassword,
         temporaryPasswordCreatedAt: now
       }
     : {};
@@ -214,9 +189,7 @@ export async function resetClientPortalPassword(userId, temporaryPassword, actor
   const user = {
     ...data.users[index],
     passwordHash: hashPassword(temporaryPassword),
-    passwordCipher: encryptPortalPassword(temporaryPassword),
     mustChangePassword: true,
-    temporaryPasswordPreview: temporaryPassword,
     temporaryPasswordCreatedAt: now,
     updatedAt: now,
     updatedBy: actor,
@@ -245,9 +218,7 @@ export async function changeClientPortalPassword(username, currentPassword, next
   const nextUser = {
     ...user,
     passwordHash: hashPassword(nextPassword),
-    passwordCipher: encryptPortalPassword(nextPassword),
     mustChangePassword: false,
-    temporaryPasswordPreview: "",
     temporaryPasswordCreatedAt: "",
     lastPasswordChangeAt: now,
     updatedAt: now,
@@ -295,33 +266,6 @@ export async function getClientPortalUser(userId) {
   const data = await loadUsersData();
   const user = data.users.find((item) => item.id === cleanText(userId) || normalizeUsername(item.username) === normalizeUsername(userId));
   return user ? sanitizeUser(user) : null;
-}
-
-export async function revealClientPortalPassword(userId, actor = "admin") {
-  const data = await loadUsersData();
-  const index = data.users.findIndex((user) => user.id === cleanText(userId));
-  if (index < 0) throw new Error("Usuario del portal no encontrado.");
-
-  const user = data.users[index];
-  const password = decryptPortalPassword(user.passwordCipher);
-  if (!password) {
-    throw new Error("Esta clave no se puede revelar porque fue creada antes de activar la consulta protegida. Restablece una clave temporal.");
-  }
-
-  data.users[index] = {
-    ...user,
-    auditTrail: [
-      ...(user.auditTrail || []),
-      createAudit("portal_user_password_revealed", actor)
-    ]
-  };
-  data.auditTrail = [...data.auditTrail, createAudit("portal_user_password_revealed", actor, { userId: user.id, companyId: user.companyId })];
-  await saveUsersData(data);
-
-  return {
-    user: sanitizeUser(data.users[index]),
-    password
-  };
 }
 
 export async function recordClientPortalImpersonation(userId, actor = "admin", reason = "") {

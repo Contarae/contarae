@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { lazy, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import AdminPanel from "./AdminPanel";
-import ClientPortal from "./ClientPortal";
+import PortalRoute from "./PortalRoute";
+import HoneypotField from "./HoneypotField";
 import CertificateVerificationPage from "./CertificateVerificationPage";
+
+const AdminPanel = lazy(() => import("./AdminPanel"));
+const ClientPortal = lazy(() => import("./ClientPortal"));
 
 const WA="573001432008",WL=`https://wa.me/${WA}`,EM="info@contarae.com",F="'Outfit',sans-serif",FH="'Libre Baskerville',serif";
 const SOCIAL_LINKS=[
@@ -1884,6 +1887,7 @@ function LeadCaptureForm(){
 
   return(
     <form onSubmit={submit} style={{position:"relative",zIndex:1,display:"grid",gap:10,textAlign:"left",padding:22,borderRadius:22,background:"rgba(255,255,255,.08)",border:"1px solid rgba(191,219,254,.18)",backdropFilter:"blur(10px)"}}>
+      <HoneypotField value={form.company_website} onChange={value=>update("company_website",value)}/>
       <div style={{fontSize:12,letterSpacing:"1.5px",fontWeight:900,color:"#93C5FD",fontFamily:F}}>RECIBE ASESORÍA</div>
       <div style={{fontFamily:FH,fontSize:24,lineHeight:1.15,color:"#fff"}}>Déjanos tus datos y te contactamos</div>
       <div className="lead-form-grid" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
@@ -2187,6 +2191,7 @@ function RentaLeadCapture(){
       ].join(" ");
       const response=await fetch("/api/submit-client-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         name:normalized.name,
+        company_website:normalized.company_website||"",
         phone:normalized.phone,
         email:normalized.email,
         documentNumber:normalized.documentInput,
@@ -2221,6 +2226,7 @@ function RentaLeadCapture(){
 
   return(
     <form onSubmit={submit} style={{padding:22,borderRadius:24,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 22px 50px rgba(15,23,42,.10)",display:"grid",gap:12}}>
+      <HoneypotField value={form.company_website} onChange={value=>update("company_website",value)}/>
       <div>
         <div style={{fontSize:11,letterSpacing:"1.4px",fontWeight:900,color:"#1D4ED8",fontFamily:F,marginBottom:8}}>CONFIRMACIÓN SIN COSTO</div>
         <h2 style={{fontFamily:FH,fontSize:25,lineHeight:1.12,color:"#0B1D3A",margin:"0 0 8px"}}>Confirma si estás obligado a declarar renta sin ningún costo</h2>
@@ -2644,6 +2650,7 @@ function PaymentsPortalPage(){
           </div>
 
           <form className="payments-portal-form" onSubmit={consult} style={{display:"grid",gridTemplateColumns:"160px minmax(220px,1fr) auto",gap:10,alignItems:"center"}}>
+            <HoneypotField value={form.company_website} onChange={value=>setForm(current=>({...current,company_website:value}))}/>
             <select value={form.documentType} onChange={event=>update("documentType",event.target.value)} style={{...IS,borderRadius:14,padding:"14px 15px"}}>
               <option value="CC">Cédula</option>
               <option value="CE">Cédula extranjería</option>
@@ -2968,7 +2975,7 @@ function CrtS(){
     sPaymentFlow({phase:PAYMENT_PHASES.preparing,reference:paymentReference,status:"PREPARING",message:supportFiles.length?"Estamos cargando sus soportes y guardando la solicitud antes de abrir el pago.":"Estamos guardando su solicitud en estado pendiente antes de abrir el pago.",consecutive:""});
     if(supportFiles.length){uploadedSupportFiles=await uploadSupportFiles(paymentReference);}
     const pendingPayload=buildPendingPayload(paymentReference,uploadedSupportFiles);
-    const sp=await fetch("/api/save-pending-form",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,supportFiles:uploadedSupportFiles,...pendingPayload})});
+    const sp=await fetch("/api/save-pending-form",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reference:paymentReference,supportFiles:uploadedSupportFiles,...pendingPayload,company_website:f.company_website||""})});
     const spd=await sp.json();
     if(!sp.ok||!spd.ok){closePaymentFeedback();alert("No fue posible preparar la solicitud. Intente nuevamente.");return;}
     trackMarketingEvent("cert_pending_saved",{currency:"COP",value:tarifa,service_name:"certificacion_ingresos",certification_reference:paymentReference,has_support_files:supportFiles.length>0});
@@ -3032,6 +3039,7 @@ function CrtS(){
 
     <div style={{padding:28,borderRadius:16,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 5px 24px rgba(37,99,235,.05)"}}>
 
+    <HoneypotField value={f.company_website} onChange={value=>u("company_website",value)}/>
     {step===0&&<div><h4 style={{fontSize:16,fontWeight:700,color:"#1B3A5C",marginBottom:14,fontFamily:F}}>📋 Paso 1: Datos Personales</h4><div style={{display:"grid",gap:14}}>
       <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Nombre completo</label><input style={IS} value={f.n} onChange={e=>u("n",e.target.value)} onBlur={e=>u("n",formatProperName(e.target.value))} autoComplete="name"/></div>
       <div><label style={{fontSize:14,fontWeight:600,color:"#1B3A5C",fontFamily:F}}>Tipo de documento</label><select style={{...IS,cursor:"pointer"}} value={f.td} onChange={e=>u("td",e.target.value)}><option>CC</option><option>TI</option><option>CE</option><option>Pasaporte</option><option>NIT</option></select></div>
@@ -3399,6 +3407,7 @@ function ToolRenta({uv}){
         </div>
 
         <form onSubmit={submitLead} style={{display:"grid",gap:10,padding:18,borderRadius:20,background:"#fff",border:"1px solid rgba(37,99,235,.12)",boxShadow:"0 14px 30px rgba(15,23,42,.05)"}}>
+          <HoneypotField value={lead.company_website} onChange={value=>updateLead("company_website",value)}/>
           <div><div style={{fontSize:12,letterSpacing:"1.3px",fontWeight:900,color:"#1D4ED8",fontFamily:F}}>CONFIRMACIÓN SIN COSTO</div><h4 style={{fontFamily:FH,fontSize:24,lineHeight:1.15,color:"#0B1D3A",margin:"6px 0 0"}}>Déjanos tus datos y revisamos tu caso por WhatsApp</h4></div>
           <div className="renta-lead-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}><input required style={IS} value={lead.name} onChange={e=>updateLead("name",e.target.value)} onBlur={e=>updateLead("name",formatProperName(e.target.value))} placeholder="Nombre completo" autoComplete="name"/><input required style={IS} value={lead.documentNumber} onChange={e=>updateLead("documentNumber",e.target.value)} placeholder="Documento o últimos dígitos"/><input required style={IS} value={lead.phone} onChange={e=>updateLead("phone",e.target.value)} placeholder="WhatsApp" autoComplete="tel"/><input required type="email" style={IS} value={lead.email} onChange={e=>updateLead("email",e.target.value)} onBlur={e=>updateLead("email",normalizeEmail(e.target.value))} placeholder="Correo electrónico" autoComplete="email"/></div>
           <label style={{display:"flex",gap:9,fontSize:12,color:"#475569",fontFamily:F,lineHeight:1.6}}><input required type="checkbox" checked={lead.treatmentConsent} onChange={e=>updateLead("treatmentConsent",e.target.checked)}/>Autorizo el tratamiento de mis datos para gestionar esta solicitud.</label>
@@ -3559,7 +3568,7 @@ export default function App(){
   return(<div style={{fontFamily:F,color:"#0B1D3A",background:"#f8fafd",minHeight:"100vh"}}>
     {showPublicIntro&&!isPrivateUtilityRoute&&<PublicIntro onDone={finishPublicIntro}/>}
     <style>{`@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}html{scroll-behavior:smooth;scroll-padding-top:156px;}body{background:#f6fafe;color:#0B1D3A;}::selection{background:#2563EB;color:#fff;}a{color:inherit;}h1,h2,h3,h4{letter-spacing:-.02em;}p{font-family:${F};}section{position:relative;}@keyframes cardGlowFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}} .card-glow-shell:hover .card-glow-ring{opacity:1!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px;}.cert-support-guide-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;align-items:stretch;}.cert-support-guide-card{grid-column:span 2;min-height:100%;}.cert-support-guide-card:nth-child(4){grid-column:2 / span 2;}.cert-support-guide-card:nth-child(5){grid-column:4 / span 2;} @media(max-width:1024px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.cert-hero-grid{grid-template-columns:1fr!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:repeat(2,minmax(0,1fr));}.cert-support-guide-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;}.cert-support-guide-card,.cert-support-guide-card:nth-child(4){grid-column:span 2!important;}.cert-support-guide-card:nth-child(5){grid-column:2 / span 2!important;}}@media(max-width:768px){.dk{display:none!important;}.hm{display:block!important;}.tool-grid{grid-template-columns:1fr!important;}.cert-support-guide-grid{grid-template-columns:1fr!important;}.cert-support-guide-card,.cert-support-guide-card:nth-child(4),.cert-support-guide-card:nth-child(5){grid-column:auto!important;}.lead-form-grid,.renta-lead-grid{grid-template-columns:1fr!important;}section{padding-left:18px!important;padding-right:18px!important;}.cert-pricing-mini-card .cert-price-tier-list{grid-template-columns:1fr!important;}.app-cert-banner{top:88px!important;width:min(520px,calc(100% - 28px))!important;}.app-cert-banner-inner{padding:8px 12px!important;border-radius:16px!important;}.cert-hero-wrap{max-width:100%!important;}.cert-hero-grid{grid-template-columns:1fr!important;gap:16px!important;}.cert-hero-copy,.cert-hero-side{padding:20px 18px!important;border-radius:22px!important;}.cert-hero-actions{flex-direction:column!important;align-items:stretch!important;}.cert-proof-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}.cert-metrics-grid,.cert-price-grid,.cert-process-grid,.cert-recipient-grid{grid-template-columns:1fr!important;}.cert-form-overlay{padding:8px!important;align-items:flex-start!important;overflow-y:auto!important;}.cert-form-dialog{width:100%!important;max-height:none!important;min-height:calc(100vh - 16px)!important;padding:18px!important;border-radius:18px!important;}.cert-form-steps{justify-content:flex-start!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-right:0!important;}.floating-whatsapp{width:44px!important;height:44px!important;right:14px!important;bottom:calc(14px + env(safe-area-inset-bottom,0px))!important;font-size:20px!important;opacity:0!important;pointer-events:none!important;transform:translateY(8px) scale(.92)!important;box-shadow:0 3px 14px rgba(37,211,102,.28)!important;}.floating-whatsapp-visible{opacity:.76!important;pointer-events:auto!important;transform:scale(.96)!important;}.floating-whatsapp-visible:hover{opacity:1!important;transform:scale(1)!important;}.floating-to-top{width:36px!important;height:36px!important;right:18px!important;bottom:calc(66px + env(safe-area-inset-bottom,0px))!important;font-size:14px!important;opacity:.78!important;}}`}</style>
-    {adminRoute?<AdminPanel/>:clientPortalRoute?<ClientPortal/>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
+    {adminRoute?<PortalRoute><AdminPanel/></PortalRoute>:clientPortalRoute?<PortalRoute><ClientPortal/></PortalRoute>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
     <ServicePaymentPage/>
     </>:<>
     <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}

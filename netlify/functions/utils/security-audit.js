@@ -53,15 +53,20 @@ export async function recordSecurityEvent(req, event = {}) {
 export async function listSecurityEvents(options = {}) {
   const {
     limit = 20,
-    getStoreImpl = getStore
+    getStoreImpl = getStore,
+    date = new Date(),
+    days = 30
   } = options;
-  const store = getStoreImpl(SECURITY_AUDIT_STORE);
-  const list = await store.list({ prefix: SECURITY_AUDIT_PREFIX });
-  const keys = (list.blobs || [])
-    .map((blob) => blob.key)
-    .sort()
-    .reverse()
-    .slice(0, Math.max(1, Math.min(Number(limit || 20), 100)));
+  const store = getStoreImpl(SECURITY_AUDIT_STORE, { consistency: "strong" });
+  const count = Math.max(1, Math.min(Number(limit || 20), 100));
+  const keys = [];
+  // Prefix queries keep the dashboard independent from the full audit history.
+  for (let offset = 0; offset < Math.max(1, Math.min(days, 30)) && keys.length < count; offset++) {
+    const day = new Date(date);
+    day.setUTCDate(day.getUTCDate() - offset);
+    const list = await store.list({ prefix: `${SECURITY_AUDIT_PREFIX}${day.toISOString().slice(0, 10)}` });
+    keys.push(...(list.blobs || []).map(blob => blob.key).sort().reverse().slice(0, count - keys.length));
+  }
   const events = await Promise.all(keys.map((key) => store.get(key, { type: "json" })));
   return events.filter(Boolean).map((event) => ({
     id: event.id || "",

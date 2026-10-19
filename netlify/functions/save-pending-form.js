@@ -9,7 +9,7 @@ const {
   normalizePromoCode
 } = promoUtils;
 const { buildCorsHeaders } = corsUtils;
-const { assertNoHoneypot } = requestSecurity;
+const { assertNoHoneypot, readJsonBody } = requestSecurity;
 
 const MAX_PENDING_PAYLOAD_BYTES = 200 * 1024;
 
@@ -55,18 +55,7 @@ export default async (req, context) => {
   }
 
   try {
-    const contentLength = Number(req.headers.get("content-length") || 0);
-    if (contentLength > MAX_PENDING_PAYLOAD_BYTES) {
-      return new Response(
-        JSON.stringify({ error: "La solicitud supera el tamaño permitido." }),
-        {
-          status: 413,
-          headers
-        }
-      );
-    }
-
-    const data = await req.json();
+    const data = await readJsonBody(req, MAX_PENDING_PAYLOAD_BYTES);
     assertNoHoneypot(data);
     const reference = String(data.reference || "").trim();
 
@@ -158,7 +147,7 @@ export default async (req, context) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: error.status === 400 ? error.message : "Error guardando la solicitud pendiente"
+        error: [400, 413].includes(error.status) ? error.message : "Error guardando la solicitud pendiente"
       }),
       {
         status: error.status || 500,

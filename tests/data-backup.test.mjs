@@ -39,6 +39,9 @@ function createMockStores(seed = {}) {
       async getWithMetadata(key) {
         return values.get(key) || null;
       },
+      async get(key) {
+        return values.get(key)?.data || null;
+      },
       async getMetadata(key) {
         const value = values.get(key);
         if (!value) return null;
@@ -120,15 +123,15 @@ test("createStructuredDataBackup stores one private daily backup and prunes old 
   });
 
   const backupStore = stores.get(BACKUP_STORE_NAME);
-  assert.equal(result.backupKey, "daily/2026-09-16.json");
-  assert.equal(backupStore.has("daily/2026-09-16.json"), true);
+  assert.match(result.backupKey, /^daily\/2026-09-16-/);
+  assert.equal(backupStore.has(result.backupKey), true);
   assert.equal(backupStore.has(BACKUP_MANIFEST_KEY), true);
   assert.equal(backupStore.has("daily/2026-09-15.json"), true);
   assert.equal(backupStore.has("daily/2026-09-14.json"), false);
   assert.match(result.sha256, /^[a-f0-9]{64}$/);
   assert.equal(backupStore.get(BACKUP_MANIFEST_KEY).data.sha256, result.sha256);
-  assert.deepEqual(backupStore.get("daily/2026-09-16.json").data.fileInventories, {
+  assert.deepEqual(backupStore.get(result.backupKey).data.fileInventories, {
     "source-store": []
   });
-  assert.equal(backupStore.get("daily/2026-09-16.json").data.integrity.sha256, result.sha256);
+  assert.equal(backupStore.get(result.backupKey).data.integrity.sha256, result.sha256);
 });

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { readStoreRecords } from "./record-reader.js";
 import { getStore } from "@netlify/blobs";
 import {
   formatBytes,
@@ -442,14 +443,7 @@ export function sanitizeServiceRequestInput(input = {}, existing = {}) {
 }
 
 export async function listAllServiceRequests() {
-  const store = getServiceRequestStore();
-  const list = await store.list({ prefix: SERVICE_REQUEST_PREFIX });
-  const records = await Promise.all(
-    (list.blobs || []).map(async ({ key }) => {
-      const record = await store.get(key, { type: "json" });
-      return record ? summarizeServiceRequest(record) : null;
-    })
-  );
+  const records = (await readStoreRecords("service-requests", SERVICE_REQUEST_PREFIX)).map(summarizeServiceRequest);
 
   return records.filter(Boolean).sort((left, right) => {
     return new Date(left.dueDate || left.updatedAt || left.createdAt || 0) -
@@ -1112,11 +1106,7 @@ export async function listPublicServicePaymentsByDocument(input = {}) {
     throw new Error("Ingresa un número de documento válido.");
   }
 
-  const store = getServiceRequestStore();
-  const list = await store.list({ prefix: SERVICE_REQUEST_PREFIX });
-  const records = await Promise.all(
-    (list.blobs || []).map(async ({ key }) => store.get(key, { type: "json" }))
-  );
+  const records = await readStoreRecords("service-requests", SERVICE_REQUEST_PREFIX);
 
   const matchingRecords = records
     .filter(Boolean)
@@ -1158,8 +1148,8 @@ export async function listPublicServicePaymentsByDocument(input = {}) {
 }
 
 export async function listServicePayments() {
-  const records = await listAllServiceRequests();
-  const details = await Promise.all(records.map((record) => getServiceRequestByReference(record.reference)));
+  const records = await readStoreRecords("service-requests", SERVICE_REQUEST_PREFIX);
+  const details = records.map(buildServiceRequestDetail);
   const items = [];
 
   details.filter(Boolean).forEach((detail) => {

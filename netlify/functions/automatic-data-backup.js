@@ -1,74 +1,23 @@
-import { createStructuredDataBackup } from "./utils/data-backup.js";
+import { createBackupJobToken } from "./utils/backup-job-auth.js";
 import { recordSecurityEvent } from "./utils/security-audit.js";
 
-export default async (req) => {
+export default async req => {
   try {
-    const result = await createStructuredDataBackup();
-    const totals = Object.fromEntries(
-      Object.entries(result.summary || {}).map(([storeName, summary]) => [
-        storeName,
-        {
-          scanned: summary.scanned,
-          included: summary.included,
-          skipped: summary.skipped
-        }
-      ])
-    );
-
-    console.log("Structured data backup completed", {
-      backupKey: result.backupKey,
-      totals,
-      retention: result.retention
+    const baseUrl = process.env.URL;
+    if (!baseUrl || new URL(baseUrl).protocol !== "https:") throw new Error("Missing production URL for backup dispatch.");
+    const response = await fetch(new URL("/.netlify/functions/automatic-data-backup-background", baseUrl), {
+      method: "POST",
+      headers: { Authorization: createBackupJobToken() },
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
     });
-    await recordSecurityEvent(req, {
-      type: "automatic_backup_completed",
-      actor: "system",
-      subject: result.backupKey,
-      outcome: "ok",
-      details: { sha256: result.sha256, totals }
-    });
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        backupKey: result.backupKey,
-        generatedAt: result.generatedAt,
-        totals,
-        retention: result.retention
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      }
-    );
+    if (response.status !== 202) throw new Error("Background backup was not accepted.");
+    await recordSecurityEvent(req, { type: "automatic_backup_queued", actor: "system", outcome: "queued" });
+    return new Response(JSON.stringify({ queued: true }), { status: 202 });
   } catch (error) {
-    console.error("Structured data backup failed", {
-      message: error.message
-    });
-    await recordSecurityEvent(req, {
-      type: "automatic_backup_failed",
-      actor: "system",
-      outcome: "failed",
-      reason: error.message
-    });
-
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "No fue posible crear el respaldo automatico."
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      }
-    );
+    await recordSecurityEvent(req, { type: "automatic_backup_dispatch_failed", actor: "system", outcome: "failed", reason: error.message });
+    return new Response(JSON.stringify({ error: "No fue posible iniciar el respaldo." }), { status: 500 });
   }
 };
 
-export const config = {
-  schedule: "0 5 * * *"
-};
+export const config = { schedule: "0 5 * * *" };

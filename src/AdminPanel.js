@@ -2038,15 +2038,15 @@ function OperationsDashboard({
         <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
           <InfoTile
             label="Último backup"
-            value={latestBackup?.generatedAt ? formatDate(latestBackup.generatedAt) : "Sin registro"}
+            value={!health?.ok ? "Sin comprobar" : latestBackup?.generatedAt ? formatDate(latestBackup.generatedAt) : "Sin registro"}
           />
           <InfoTile
-            label="Integridad"
-            value={latestBackup?.sha256 ? latestBackup.sha256.slice(0, 12) : "Pendiente"}
+            label="Integridad de registros"
+            value={latestBackup?.integrityVerified === true ? "Verificada" : latestBackup?.integrityVerified === false ? "Error de integridad" : "Sin comprobar"}
           />
           <InfoTile
             label="Variables críticas"
-            value={missingEnv.length ? `${missingEnv.length} pendiente(s)` : "Completas"}
+            value={!health?.ok || !health?.environment?.length ? "Sin comprobar" : missingEnv.length ? `${missingEnv.length} pendiente(s)` : "Completas"}
           />
         </div>
         {securityEvents.length ? (
@@ -2063,7 +2063,7 @@ function OperationsDashboard({
           </div>
         ) : (
           <div style={{ marginTop: 14 }}>
-            <EmptyDashboardNote>La bitácora de seguridad aparecerá aquí cuando registre eventos.</EmptyDashboardNote>
+            <EmptyDashboardNote>{health?.ok ? "Sin eventos de seguridad en los últimos 30 días." : "Bitácora sin comprobar."}</EmptyDashboardNote>
           </div>
         )}
       </DashboardPanel>
@@ -3062,9 +3062,10 @@ function PortalUsersModule({
   onSave,
   onExport,
   onResetPassword,
-  onRevealPassword,
   onImpersonate,
-  onCopyTemporaryPassword
+  onCopyTemporaryPassword,
+  temporaryCredential,
+  onDismissCredential
 }) {
   const [draft, setDraft] = useState({
     id: "",
@@ -3125,6 +3126,14 @@ function PortalUsersModule({
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
+      {temporaryCredential ? (
+        <div role="status" style={{ padding: 16, background: "#EFF6FF", border: "1px solid #BFDBFE", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <span>Clave temporal de {temporaryCredential.username}</span>
+          <code style={{ overflowWrap: "anywhere" }}>{temporaryCredential.password}</code>
+          <button type="button" style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #BFDBFE", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 700, cursor: "pointer" }} onClick={() => onCopyTemporaryPassword(temporaryCredential.password)}>Copiar clave</button>
+          <button type="button" style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: "#1D4ED8", color: "#fff", fontFamily: F, fontWeight: 700, cursor: "pointer" }} onClick={onDismissCredential}>Listo</button>
+        </div>
+      ) : null}
       <div className="admin-dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
         <StatCard label="USUARIOS PORTAL" value={users.length} note="Accesos creados para clientes." tone="#1D4ED8" />
         <StatCard label="ACTIVOS" value={activeUsers} note="Pueden iniciar sesión." tone="#15803D" />
@@ -3200,7 +3209,7 @@ function PortalUsersModule({
                   </div>
                   {user.mustChangePassword ? (
                     <div style={{ marginTop: 8, fontFamily: F, fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
-                      Hay una clave temporal vigente. Para verla, usa la consulta protegida con contraseña de funcionario.
+                      Cambio de contraseña pendiente.
                     </div>
                   ) : null}
                 </div>
@@ -3213,9 +3222,6 @@ function PortalUsersModule({
                   </button>
                   <button type="button" onClick={() => onResetPassword(user)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(245,158,11,.24)", background: "#fff", color: "#B45309", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
                     Restablecer
-                  </button>
-                  <button type="button" onClick={() => onRevealPassword(user)} style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#F8FBFF", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
-                    Ver clave
                   </button>
                   <button type="button" onClick={() => onImpersonate(user)} disabled={!active} style={{ padding: "9px 12px", borderRadius: 12, border: "none", background: active ? "linear-gradient(135deg,#0B1D3A,#2563EB)" : "#CBD5E1", color: "#fff", fontFamily: F, fontWeight: 900, cursor: active ? "pointer" : "not-allowed" }}>
                     Ingresar como cliente
@@ -3242,28 +3248,24 @@ function PortalUserActionDialog({
   error,
   onChange,
   onCancel,
-  onConfirm,
-  onCopy
+  onConfirm
 }) {
   if (!dialog || typeof document === "undefined") return null;
   const isReset = dialog.type === "reset";
-  const isReveal = dialog.type === "reveal";
   const user = dialog.user || {};
   return createPortal(
     <div className="admin-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(8,15,29,.68)", zIndex: 16000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !busy && onCancel()}>
       <div className="admin-modal-card" style={{ width: "min(560px, 100%)", background: "#fff", borderRadius: 28, padding: 28, border: "1px solid rgba(37,99,235,.12)", boxShadow: "0 28px 72px rgba(15,23,42,.24)" }} onClick={(event) => event.stopPropagation()}>
         <div style={{ fontSize: 12, letterSpacing: "1.8px", color: isReset ? "#B45309" : "#1D4ED8", fontWeight: 900, fontFamily: F, marginBottom: 10 }}>
-          {isReset ? "RESTABLECER CLAVE TEMPORAL" : isReveal ? "CONSULTA PROTEGIDA DE CLAVE" : "ACCESO ASISTIDO AUDITADO"}
+          {isReset ? "RESTABLECER CLAVE TEMPORAL" : "ACCESO ASISTIDO AUDITADO"}
         </div>
         <h3 style={{ margin: 0, fontFamily: FH, fontSize: 30, color: "#0B1D3A", lineHeight: 1.1 }}>
-          {isReset ? "Nueva clave temporal" : isReveal ? "Ver clave vigente" : "Ingresar como cliente"}
+          {isReset ? "Nueva clave temporal" : "Ingresar como cliente"}
         </h3>
         <p style={{ fontFamily: F, color: "#52647F", lineHeight: 1.8, margin: "10px 0 16px" }}>
           {isReset
             ? `Se invalidará la clave anterior de ${user.companyName || user.username} y el cliente deberá cambiarla al ingresar.`
-            : isReveal
-              ? `Para revelar la clave de ${user.companyName || user.username}, confirma tu contraseña de funcionario. Esta consulta queda auditada.`
-              : `Se abrirá el portal de ${user.companyName || user.username} como soporte. Esta acción queda registrada en auditoría.`}
+            : `Se abrirá el portal de ${user.companyName || user.username} como soporte. Esta acción queda registrada en auditoría.`}
         </p>
         <div style={{ display: "grid", gap: 10 }}>
           {isReset ? (
@@ -3273,27 +3275,18 @@ function PortalUserActionDialog({
                 Generar
               </button>
             </div>
-          ) : isReveal ? null : (
+          ) : (
             <textarea style={{ ...inputStyle, minHeight: 86 }} placeholder="Motivo del acceso asistido" value={draft.reason} onChange={(event) => onChange("reason", event.target.value)} />
           )}
           <input style={inputStyle} type="password" placeholder="Contraseña del funcionario" value={draft.adminPassword} onChange={(event) => onChange("adminPassword", event.target.value)} />
         </div>
-        {isReveal && draft.revealedPassword ? (
-          <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.14)", display: "grid", gap: 10 }}>
-            <div style={{ fontFamily: F, fontSize: 12, letterSpacing: "1.3px", color: "#1D4ED8", fontWeight: 900 }}>CLAVE VIGENTE</div>
-            <code style={{ display: "block", padding: "10px 12px", borderRadius: 12, background: "#fff", border: "1px solid rgba(37,99,235,.12)", color: "#0B1D3A", fontSize: 14, overflowWrap: "anywhere" }}>{draft.revealedPassword}</code>
-            <button type="button" onClick={() => onCopy(draft.revealedPassword)} style={{ justifySelf: "start", padding: "9px 12px", borderRadius: 12, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: "pointer" }}>
-              Copiar clave
-            </button>
-          </div>
-        ) : null}
         {error ? <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(220,38,38,.08)", color: "#991B1B", fontFamily: F, fontWeight: 800 }}>{error}</div> : null}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 16 }}>
           <button type="button" onClick={onCancel} disabled={busy} style={{ padding: "11px 14px", borderRadius: 14, border: "1px solid rgba(37,99,235,.14)", background: "#fff", color: "#1D4ED8", fontFamily: F, fontWeight: 900, cursor: busy ? "not-allowed" : "pointer" }}>
             Cancelar
           </button>
           <button type="button" onClick={onConfirm} disabled={busy} style={{ padding: "11px 14px", borderRadius: 14, border: "none", background: busy ? "#CBD5E1" : "linear-gradient(135deg,#0B1D3A,#2563EB)", color: "#fff", fontFamily: F, fontWeight: 900, cursor: busy ? "not-allowed" : "pointer" }}>
-            {busy ? "Procesando..." : isReset ? "Restablecer clave" : isReveal ? "Consultar clave" : "Ingresar como cliente"}
+            {busy ? "Procesando..." : isReset ? "Restablecer clave" : "Ingresar como cliente"}
           </button>
         </div>
       </div>
@@ -4328,7 +4321,8 @@ export default function AdminPanel() {
   const [portalUsersLoading, setPortalUsersLoading] = useState(false);
   const [portalUsersError, setPortalUsersError] = useState("");
   const [portalUserActionDialog, setPortalUserActionDialog] = useState(null);
-  const [portalUserActionDraft, setPortalUserActionDraft] = useState({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+  const [temporaryCredential, setTemporaryCredential] = useState(null);
+  const [portalUserActionDraft, setPortalUserActionDraft] = useState({ adminPassword: "", temporaryPassword: "", reason: "" });
   const [portalUserActionBusy, setPortalUserActionBusy] = useState(false);
   const [portalUserActionError, setPortalUserActionError] = useState("");
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
@@ -4619,6 +4613,7 @@ export default function AdminPanel() {
 
   const loadHealth = async () => {
     setHealthError("");
+    setHealth(null);
     try {
       const response = await fetch("/api/admin-health");
       const data = await response.json();
@@ -4628,6 +4623,7 @@ export default function AdminPanel() {
       setHealth(data);
     } catch (error) {
       setHealthError(error.message);
+      setHealth(null);
     }
   };
 
@@ -4805,6 +4801,7 @@ export default function AdminPanel() {
     setServicePayments([]);
     setClientLeads([]);
     setPortalUsers([]);
+    setTemporaryCredential(null);
     setPromoCodes([]);
     setPromoCodesError("");
     setPromoCodeStorageAvailable(true);
@@ -5752,6 +5749,7 @@ export default function AdminPanel() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "No fue posible guardar el usuario del portal.");
+      if (payload.temporaryPassword) setTemporaryCredential({ username: payload.username, password: payload.temporaryPassword });
       await loadPortalUsers();
       setNotice(payload.id ? "Usuario del portal actualizado." : "Usuario del portal creado con clave temporal.");
       return data.user;
@@ -5948,8 +5946,7 @@ export default function AdminPanel() {
     setPortalUserActionDraft({
       adminPassword: "",
       temporaryPassword: type === "reset" ? generateTemporaryPassword() : "",
-      reason: type === "impersonate" ? "Soporte solicitado por el cliente." : "",
-      revealedPassword: ""
+      reason: type === "impersonate" ? "Soporte solicitado por el cliente." : ""
     });
     setPortalUserActionError("");
   };
@@ -5964,7 +5961,7 @@ export default function AdminPanel() {
   const handleCancelPortalUserAction = () => {
     if (portalUserActionBusy) return;
     setPortalUserActionDialog(null);
-    setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+    setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "" });
     setPortalUserActionError("");
   };
 
@@ -5975,12 +5972,9 @@ export default function AdminPanel() {
 
     try {
       const isReset = portalUserActionDialog.type === "reset";
-      const isReveal = portalUserActionDialog.type === "reveal";
       const endpoint = isReset
         ? "/api/admin-reset-client-portal-password"
-        : isReveal
-          ? "/api/admin-reveal-client-portal-password"
-          : "/api/admin-impersonate-client-portal-user";
+        : "/api/admin-impersonate-client-portal-user";
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -5995,23 +5989,17 @@ export default function AdminPanel() {
       if (!response.ok) throw new Error(data.detail || data.error || "No fue posible completar la acción.");
 
       await loadPortalUsers();
-      if (isReveal) {
-        setPortalUserActionDraft((current) => ({
-          ...current,
-          adminPassword: "",
-          revealedPassword: data.password || ""
-        }));
-        setNotice("Clave consultada de forma protegida. La acción quedó registrada en auditoría.");
-      } else if (isReset) {
-        setNotice("Clave temporal restablecida. Puedes copiarla desde la tarjeta del usuario.");
+      if (isReset) {
+        setTemporaryCredential({ username: portalUserActionDialog.user.username, password: portalUserActionDraft.temporaryPassword });
+        setNotice("Clave temporal restablecida.");
         setPortalUserActionDialog(null);
-        setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+        setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "" });
         setPortalUserActionError("");
       } else {
         setNotice("Acceso asistido iniciado. Se abrió el portal del cliente en una nueva pestaña.");
         window.open(data.portalUrl || "/portal-clientes", "_blank", "noopener,noreferrer");
         setPortalUserActionDialog(null);
-        setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "", revealedPassword: "" });
+        setPortalUserActionDraft({ adminPassword: "", temporaryPassword: "", reason: "" });
         setPortalUserActionError("");
       }
     } catch (error) {
@@ -6493,9 +6481,10 @@ export default function AdminPanel() {
             onSave={handleSavePortalUser}
             onExport={handleExportPortalUsers}
             onResetPassword={(user) => handleOpenPortalUserAction("reset", user)}
-            onRevealPassword={(user) => handleOpenPortalUserAction("reveal", user)}
             onImpersonate={(user) => handleOpenPortalUserAction("impersonate", user)}
             onCopyTemporaryPassword={handleCopyPortalTempPassword}
+            temporaryCredential={temporaryCredential}
+            onDismissCredential={() => setTemporaryCredential(null)}
           />
         ) : null}
 
@@ -7533,7 +7522,6 @@ export default function AdminPanel() {
         onChange={handlePortalUserActionDraftChange}
         onCancel={handleCancelPortalUserAction}
         onConfirm={handleConfirmPortalUserAction}
-        onCopy={handleCopyPortalTempPassword}
       />
       <ProtectedDeleteDialog
         dialog={deleteDialog}

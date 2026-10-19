@@ -5,6 +5,7 @@ import {
   createAdminSession
 } from "./utils/admin-auth.js";
 import { recordSecurityEvent } from "./utils/security-audit.js";
+import requestSecurity from "./utils/request-security.cjs";
 
 export default async (req) => {
   const headers = buildAdminHeaders();
@@ -21,7 +22,7 @@ export default async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const body = await requestSecurity.readJsonBody(req, 16 * 1024);
     const username = String(body?.username || "").trim();
     const password = String(body?.password || "");
     const auth = authenticateAdminCredentials(username, password);
@@ -77,11 +78,10 @@ export default async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: "No fue posible iniciar sesión",
-        detail: error.message
+        error: [400, 413].includes(error.status) ? error.message : "No fue posible iniciar sesión"
       }),
       {
-        status: 500,
+        status: error.status || 500,
         headers
       }
     );

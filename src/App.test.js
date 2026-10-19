@@ -36,7 +36,7 @@ test('renders admin login without crashing', async () => {
 
   render(<App />);
 
-  expect(await screen.findByText(/Panel operativo CONTARAE/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Panel operativo CONTARAE/i, {}, { timeout: 5000 })).toBeInTheDocument();
 });
 
 test('renders authenticated admin dashboard without crashing', async () => {
@@ -183,4 +183,64 @@ test('keeps certification records visible after closing a certification detail',
     expect(screen.queryByText(/DETALLE DE CERTIFICACIÓN/i)).not.toBeInTheDocument();
   });
   expect(await screen.findByText(/Olga Lucia Vera Castro/i)).toBeInTheDocument();
+});
+
+test('health failure never displays healthy credentials or verified backups', async () => {
+  window.history.pushState({}, '', '/admin/certificaciones');
+  global.fetch = jest.fn(async input => ({
+    ok: String(input) !== '/api/admin-health',
+    json: async () => String(input) === '/api/admin-session'
+      ? { configured: true, authenticated: true, username: 'Admincontarae' }
+      : {}
+  }));
+  render(<App />);
+  expect(await screen.findByText(/Integridad de registros/i)).toBeInTheDocument();
+  expect(screen.getAllByText('Sin comprobar').length).toBe(3);
+  expect(screen.queryByText('Completas')).not.toBeInTheDocument();
+  expect(screen.queryByText('Verificada')).not.toBeInTheDocument();
+});
+
+test('client portal still loads its login and submits existing credentials', async () => {
+  window.history.pushState({}, '', '/portal-clientes');
+  global.fetch = jest.fn(async input => ({
+    ok: String(input) !== '/api/client-portal-login',
+    json: async () => ({ configured: true, authenticated: false, error: 'Credenciales de prueba' })
+  }));
+  render(<App />);
+  expect(await screen.findByText('Control de cartera', {}, { timeout: 5000 })).toBeInTheDocument();
+  fireEvent.change(screen.getByPlaceholderText('Usuario'), { target: { value: 'cliente-prueba' } });
+  fireEvent.change(screen.getByPlaceholderText('Contrasena'), { target: { value: 'clave-prueba' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ingresar', exact: true }));
+  expect(await screen.findByText('Credenciales de prueba')).toBeInTheDocument();
+  const call = global.fetch.mock.calls.find(([url]) => url === '/api/client-portal-login');
+  expect(JSON.parse(call[1].body)).toEqual({ username: 'cliente-prueba', password: 'clave-prueba' });
+});
+
+test('new portal credentials can be copied once and dismissed without exposing saved passwords', async () => {
+  window.history.pushState({}, '', '/admin/certificaciones');
+  const writeText = jest.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  global.fetch = jest.fn(async input => ({
+    ok: true,
+    json: async () => String(input) === '/api/admin-session'
+      ? { configured: true, authenticated: true, username: 'Admincontarae' }
+      : String(input) === '/api/admin-list-client-portal-users'
+        ? { users: [{ id: 'test-user', username: 'existente', companyId: 'existente', companyName: 'Empresa existente', mustChangePassword: true }] }
+        : {}
+  }));
+  render(<App />);
+  fireEvent.change(await screen.findByLabelText(/Seleccionar módulo del panel/i), { target: { value: 'usuariosPortal' } });
+  expect(await screen.findByText('Empresa Existente')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Ver clave/i })).not.toBeInTheDocument();
+  for (const [placeholder, value] of [
+    ['Usuario de acceso', 'nuevo'], ['ID interno empresa, ej: cliente-001', 'empresa-nueva'],
+    ['Nombre empresa / cliente', 'Empresa nueva'], ['Clave temporal', 'Temporal-de-prueba']
+  ]) fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Crear usuario', exact: true }));
+  expect(await screen.findByText('Temporal-de-prueba', { selector: 'code' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Copiar clave', exact: true }));
+  expect(writeText).toHaveBeenCalledWith('Temporal-de-prueba');
+  expect(await screen.findByText('Clave temporal copiada.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Listo', exact: true }));
+  expect(screen.queryByText('Temporal-de-prueba', { selector: 'code' })).not.toBeInTheDocument();
 });

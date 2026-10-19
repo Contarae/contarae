@@ -8,7 +8,7 @@ import {
 import requestSecurity from "../netlify/functions/utils/request-security.cjs";
 import { createAdminSession, verifyAdminSession } from "../netlify/functions/utils/admin-auth.js";
 
-const { assertContentLength, assertNoHoneypot } = requestSecurity;
+const { assertContentLength, assertNoHoneypot, readJsonBody, readEventJsonBody } = requestSecurity;
 
 test("honeypot rejects automated public form payloads", () => {
   assert.throws(
@@ -39,4 +39,28 @@ test("admin sessions remain signed and expire", () => {
   const payload = verifyAdminSession(token, "secret");
   assert.equal(payload.u, "admin");
   assert.equal(verifyAdminSession(token, "other-secret"), null);
+  assert.equal(verifyAdminSession(createAdminSession("admin", "secret", -1), "secret"), null);
+});
+
+test("actual bytes are limited without Content-Length and with a misleading header", async () => {
+  for (const headers of [{}, { 'content-length': '1' }]) {
+    const req = new Request('https://example.test', { method: 'POST', headers, body: JSON.stringify({ nombre: 'á'.repeat(50) }) });
+    await assert.rejects(readJsonBody(req, 80), error => error.status === 413);
+  }
+});
+
+test("streaming requests stop reading at the byte limit", async () => {
+  let cancelled = false;
+  const body = new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(50)); }, cancel() { cancelled = true; } });
+  const req = new Request('https://example.test', { method: 'POST', body, duplex: 'half' });
+  await assert.rejects(readJsonBody(req, 60), error => error.status === 413);
+  assert.equal(cancelled, true);
+});
+
+test("JSON readers accept UTF-8 and base64 and reject malformed inputs", async () => {
+  const text = JSON.stringify({ nombre: 'María', company_website: '' });
+  assert.deepEqual(await readJsonBody(new Request('https://example.test', { method: 'POST', body: text })), JSON.parse(text));
+  assert.deepEqual(readEventJsonBody({ body: Buffer.from(text).toString('base64'), isBase64Encoded: true }), JSON.parse(text));
+  assert.throws(() => readEventJsonBody({ body: text }, 2), error => error.status === 413);
+  for (const body of ['null', '[]', '{invalid']) assert.throws(() => readEventJsonBody({ body }), error => error.status === 400);
 });

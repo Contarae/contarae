@@ -3,7 +3,7 @@ import corsUtils from "./utils/cors.cjs";
 import requestSecurity from "./utils/request-security.cjs";
 
 const { buildCorsHeaders } = corsUtils;
-const { assertContentLength, assertNoHoneypot } = requestSecurity;
+const { readJsonBody, assertNoHoneypot } = requestSecurity;
 const MAX_PAYMENT_LOOKUP_PAYLOAD_BYTES = 16 * 1024;
 
 export default async (req) => {
@@ -25,8 +25,7 @@ export default async (req) => {
   }
 
   try {
-    assertContentLength(req, MAX_PAYMENT_LOOKUP_PAYLOAD_BYTES);
-    const body = await req.json();
+    const body = await readJsonBody(req, MAX_PAYMENT_LOOKUP_PAYLOAD_BYTES);
     assertNoHoneypot(body);
     const result = await listPublicServicePaymentsByDocument(body);
 

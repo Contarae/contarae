@@ -5,6 +5,7 @@ import {
   createClientPortalSession
 } from "./utils/client-portal-auth.js";
 import { recordSecurityEvent } from "./utils/security-audit.js";
+import requestSecurity from "./utils/request-security.cjs";
 
 export default async (req) => {
   const headers = buildClientPortalHeaders();
@@ -15,7 +16,7 @@ export default async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const body = await requestSecurity.readJsonBody(req, 16 * 1024);
     const username = String(body?.username || "").trim();
     const password = String(body?.password || "");
     const auth = await authenticateClientPortalCredentials(username, password);
@@ -69,8 +70,8 @@ export default async (req) => {
     );
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: "No fue posible iniciar sesion en el portal", detail: error.message }),
-      { status: 500, headers }
+      JSON.stringify({ error: [400, 413].includes(error.status) ? error.message : "No fue posible iniciar sesion en el portal" }),
+      { status: error.status || 500, headers }
     );
   }
 };

@@ -3,7 +3,7 @@ import corsUtils from "./utils/cors.cjs";
 import requestSecurity from "./utils/request-security.cjs";
 
 const { buildCorsHeaders } = corsUtils;
-const { assertContentLength, assertNoHoneypot } = requestSecurity;
+const { readJsonBody, assertNoHoneypot } = requestSecurity;
 const MAX_LEAD_PAYLOAD_BYTES = 32 * 1024;
 
 export default async (req) => {
@@ -25,8 +25,7 @@ export default async (req) => {
   }
 
   try {
-    assertContentLength(req, MAX_LEAD_PAYLOAD_BYTES);
-    const body = await req.json();
+    const body = await readJsonBody(req, MAX_LEAD_PAYLOAD_BYTES);
     assertNoHoneypot(body);
     const url = new URL(req.url);
     const lead = await saveClientLead(body, {

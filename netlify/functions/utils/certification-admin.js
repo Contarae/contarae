@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { readStoreRecords } from "./record-reader.js";
 import {
   getIssuedCertificateDownloadPath,
   getSupportDownloadPath
@@ -482,10 +483,9 @@ export async function getCertificationByReference(reference) {
 }
 
 export async function listAllCertifications() {
-  const store = getCertificationStore();
-  const [paidList, pendingList] = await Promise.all([
-    store.list({ prefix: "paid:" }),
-    store.list({ prefix: "pending:" })
+  const [paidSource, pendingSource] = await Promise.all([
+    readStoreRecords("certification-requests", "paid:"),
+    readStoreRecords("certification-requests", "pending:")
   ]);
 
   const entries = new Map();
@@ -507,24 +507,13 @@ export async function listAllCertifications() {
     return false;
   };
 
-  const paidRecords = await Promise.all(
-    (paidList.blobs || []).map(async ({ key }) => {
-      const record = await store.get(key, { type: "json" });
-      return record ? summarizeRecord(record, "paid") : null;
-    })
-  );
+  const paidRecords = paidSource.map(record => summarizeRecord(record, "paid"));
 
   paidRecords.filter(Boolean).forEach((item) => {
     entries.set(item.reference, item);
   });
 
-  const pendingRecords = await Promise.all(
-    (pendingList.blobs || []).map(async ({ key }) => {
-      const record = await store.get(key, { type: "json" });
-      if (!record || !shouldIncludePendingRecord(record)) return null;
-      return summarizeRecord(record, "pending");
-    })
-  );
+  const pendingRecords = pendingSource.filter(shouldIncludePendingRecord).map(record => summarizeRecord(record, "pending"));
 
   pendingRecords.filter(Boolean).forEach((item) => {
     if (!entries.has(item.reference)) {

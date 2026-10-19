@@ -1,13 +1,18 @@
+import promoUtils from "./utils/promo-codes.cjs";
+import corsUtils from "./utils/cors.cjs";
+import requestSecurity from "./utils/request-security.cjs";
+import { boundedEventHandler } from "./utils/bounded-event-handler.js";
+
 const {
   calculateCertificationPricingAsync,
   normalizePromoCode
-} = require("./utils/promo-codes.cjs");
-const { buildCorsHeaders } = require("./utils/cors.cjs");
-const { assertContentLength, assertNoHoneypot } = require("./utils/request-security.cjs");
+} = promoUtils;
+const { buildCorsHeaders } = corsUtils;
+const { readEventJsonBody, assertNoHoneypot } = requestSecurity;
 
 const MAX_PROMO_PAYLOAD_BYTES = 12 * 1024;
 
-exports.handler = async (event) => {
+export const eventHandler = async (event) => {
   const headers = buildCorsHeaders(event, {
     "Content-Type": "application/json"
   });
@@ -25,8 +30,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    assertContentLength(event, MAX_PROMO_PAYLOAD_BYTES);
-    const body = JSON.parse(event.body || "{}");
+    const body = readEventJsonBody(event, MAX_PROMO_PAYLOAD_BYTES);
     assertNoHoneypot(body);
     const code = normalizePromoCode(body.code);
 
@@ -78,14 +82,16 @@ exports.handler = async (event) => {
     };
   } catch (error) {
     return {
-      statusCode: 500,
+      statusCode: error.status || 500,
       headers,
-      body: JSON.stringify({ valid: false, error: "No fue posible validar el código." })
+      body: JSON.stringify({ valid: false, error: [400, 413].includes(error.status) ? error.message : "No fue posible validar el código." })
     };
   }
 };
 
-exports.config = {
+export default boundedEventHandler(eventHandler, MAX_PROMO_PAYLOAD_BYTES);
+
+export const config = {
   path: ["/api/validate-promo-code", "/.netlify/functions/validate-promo-code"],
   rateLimit: {
     windowLimit: 60,
