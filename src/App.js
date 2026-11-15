@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import PortalRoute from "./PortalRoute";
 import HoneypotField from "./HoneypotField";
 import CertificateVerificationPage from "./CertificateVerificationPage";
+import HomeHero from "./HomeHero";
 
 const AdminPanel = lazy(() => import("./AdminPanel"));
 const ClientPortal = lazy(() => import("./ClientPortal"));
@@ -525,15 +526,15 @@ const SERVICE_SEO_ROUTES=[
     badge:"SERVICIOS CONTABLES",
     title:"Servicios contables, tributarios y financieros para personas y empresas",
     intro:"CONTARAE acompaña a personas naturales, independientes, emprendedores y pymes con soluciones contables claras, digitales y orientadas al cumplimiento.",
-    intent:"Esta ruta reúne los servicios principales: contabilidad mensual, asesoría tributaria, nómina, certificaciones contables, facturación electrónica, creación de empresa y gestión financiera.",
+    intent:"Contabilidad mensual, asesoría tributaria, nómina, certificaciones, facturación electrónica, creación de empresa y gestión financiera. También acompañamos su operación con automatización de procesos y desarrollo web con IA aplicada.",
     serviceType:"Servicios contables",
     ctaLabel:"Solicitar asesoría contable",
     whatsapp:"Hola CONTARAE, quiero recibir asesoría sobre sus servicios contables.",
     highlights:[["Atención","Virtual para Colombia, con foco en Bogotá y procesos digitales"],["Enfoque","Cumplimiento contable, tributario, laboral y financiero"],["Ideal para","Personas naturales, independientes, emprendedores y pymes"]],
     cards:[
-      ["Contabilidad integral","Registro y organización de operaciones, conciliaciones, estados financieros y acompañamiento para mantener la información contable al día."],
-      ["Gestión tributaria","Revisión de obligaciones ante la DIAN, declaraciones, retenciones, IVA, renta, información exógena y planeación tributaria."],
-      ["Soporte operativo","Acompañamiento por WhatsApp y correo para resolver inquietudes, recibir documentos y hacer seguimiento a solicitudes."]
+      ["Contabilidad y gestión tributaria","Registro de operaciones, conciliaciones, estados financieros, nómina y gestión financiera. Asesoría en renta, IVA, retenciones, información exógena y obligaciones ante la DIAN, con soporte por WhatsApp y correo."],
+      ["Automatización de procesos","Conectamos formularios, documentos, reportes y herramientas para simplificar tareas repetitivas. Definimos el alcance, las revisiones humanas necesarias y los costos de plataformas antes de iniciar.","automatizacion-procesos","Hola CONTARAE, quiero cotizar la automatización de un proceso de mi negocio."],
+      ["Desarrollo web con IA aplicada","Creamos páginas web adaptadas a su negocio, con formularios e integraciones. Los asistentes y funciones de IA se incluyen según lo acordado. La propuesta distingue desarrollo, alojamiento, mantenimiento y consumos de terceros.","desarrollo-web-ia","Hola CONTARAE, quiero cotizar una página web con IA aplicada para mi negocio."]
     ],
     checklist:["Defina el tipo de servicio que necesita.","Reúna documentos básicos de identificación, RUT, soportes o información financiera.","Cuéntenos si necesita atención puntual o acompañamiento mensual.","Reciba una propuesta según alcance, volumen de operaciones y urgencia."],
     faqs:[
@@ -1054,7 +1055,7 @@ function Nav({path}){
 
   const menu=[
     {l:"Inicio",id:"inicio"},
-    {l:"Servicios",id:"servicios",sub:[{l:"Servicios generales",id:"servicios"},{l:"Certificación de ingresos",id:"certificacion"},{l:"Planes contables",id:"planes"},{l:"Escenarios frecuentes",id:"escenarios"},{l:"Trámites contables",id:"tramites"}]},
+    {l:"Servicios",id:"servicios",sub:[{l:"Servicios generales",id:"servicios"},{l:"Certificación de ingresos",id:"certificacion"},{l:"Planes contables",id:"planes"},{l:"Automatización de procesos",href:"/servicios-contables#automatizacion-procesos"},{l:"Desarrollo web con IA",href:"/servicios-contables#desarrollo-web-ia"},{l:"Escenarios frecuentes",id:"escenarios"},{l:"Trámites contables",id:"tramites"}]},
     {l:"Herramientas",id:"herramientas",sub:[{l:"Introducción herramientas",id:"herramientas"},{l:"¿Debo declarar renta?",id:"tool-renta"},{l:"Retención en la fuente",id:"tool-retencion"},{l:"Planilla independientes",id:"tool-planilla"},{l:"Liquidador de nómina",id:"tool-nomina"},{l:"Liquidador de IVA",id:"tool-iva"},{l:"Precio antes de IVA",id:"tool-precio"},{l:"Calendario tributario",id:"calendario"}]},
     {l:"Recursos",id:"blog",sub:[{l:"Blog",id:"blog"},{l:"Descargas",id:"descargas"},{l:"Preguntas frecuentes",id:"faq"},{l:"Alertas tributarias",id:"alertas"}]},
     {l:"Nosotros",id:"whyus",sub:[{l:"¿Por qué elegirnos?",id:"whyus"},{l:"Sobre CONTARAE",id:"nosotros"}]},
@@ -1380,360 +1381,9 @@ function Nav({path}){
 
 function Banner({path}){const[s,sS]=useState(true);if(!s)return null;return(<div className="app-cert-banner" style={{position:"fixed",top:94,left:"50%",transform:"translateX(-50%)",width:"min(620px,calc(100% - 44px))",zIndex:190,pointerEvents:"none"}}><div className="app-cert-banner-inner" style={{background:"linear-gradient(90deg,#163457,#2563EB)",padding:"6px 12px",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"wrap",boxShadow:"0 10px 22px rgba(15,23,42,.12)",border:"1px solid rgba(255,255,255,.10)",pointerEvents:"auto"}}><span style={{fontSize:11,color:"#fff",fontFamily:F,lineHeight:1.35,textAlign:"center"}}>🔥 <strong>¿Necesita su certificación de ingresos HOY?</strong></span><a href={getSectionHref("certificacion",path)} style={{fontSize:11,color:"#fff",fontWeight:800,background:"rgba(255,255,255,.16)",padding:"5px 11px",borderRadius:999,textDecoration:"none",fontFamily:F,letterSpacing:".2px"}}>Solicitar</a><button onClick={()=>sS(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.65)",cursor:"pointer",fontSize:13,padding:0,marginLeft:2,fontFamily:F}}>✕</button></div></div>)}
 
-/* HERO WITH ANIMATED BG */
+/* Homepage presentation lives in HomeHero to isolate it from transactional flows. */
 
-function Hero(){
-  return(
-    <section
-      id="inicio"
-      style={{
-        minHeight:"100vh",
-        display:"flex",
-        alignItems:"center",
-        justifyContent:"center",
-        textAlign:"center",
-        padding:"148px 24px 86px",
-        position:"relative",
-        overflow:"hidden",
-        background:"linear-gradient(135deg,#F4F8FF 0%,#E7F0FF 20%,#EAF7FF 52%,#F8FBFF 100%)",
-        backgroundSize:"220% 220%",
-        animation:"gradBg 20s ease-in-out infinite"
-      }}
-    >
-      <style>{`
-        @keyframes gradBg{
-          0%{background-position:0% 50%}
-          50%{background-position:100% 50%}
-          100%{background-position:0% 50%}
-        }
-        @keyframes driftWave{
-          0%{transform:translate3d(-18px,-6px,0) scale(1.01)}
-          50%{transform:translate3d(56px,18px,0) scale(1.045)}
-          100%{transform:translate3d(-18px,-6px,0) scale(1.01)}
-        }
-        @keyframes driftWaveAlt{
-          0%{transform:translate3d(16px,8px,0) scale(1.01)}
-          50%{transform:translate3d(-48px,-18px,0) scale(1.04)}
-          100%{transform:translate3d(16px,8px,0) scale(1.01)}
-        }
-        @keyframes floatSoft{
-          0%{transform:translateY(0px) scale(1)}
-          50%{transform:translateY(-16px) scale(1.04)}
-          100%{transform:translateY(0px) scale(1)}
-        }
-        @keyframes heroReveal{
-          0%{opacity:0;transform:translateY(32px)}
-          100%{opacity:1;transform:translateY(0)}
-        }
-        @keyframes glowPulse{
-          0%{opacity:.72}
-          50%{opacity:1}
-          100%{opacity:.72}
-        }
-      `}</style>
-
-      <div style={{
-        position:"absolute",
-        inset:0,
-        background:"radial-gradient(circle at 14% 18%, rgba(59,130,246,.16) 0%, rgba(59,130,246,0) 24%), radial-gradient(circle at 84% 18%, rgba(14,165,233,.13) 0%, rgba(14,165,233,0) 22%), radial-gradient(circle at 74% 74%, rgba(96,165,250,.10) 0%, rgba(96,165,250,0) 20%)"
-      }}/>
-
-      <div style={{
-        position:"absolute",
-        top:"10%",
-        left:"-7%",
-        width:360,
-        height:360,
-        borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(59,130,246,.18) 0%, rgba(59,130,246,0) 70%)",
-        filter:"blur(18px)",
-        animation:"floatSoft 13s ease-in-out infinite"
-      }}/>
-      <div style={{
-        position:"absolute",
-        bottom:"-12%",
-        right:"-5%",
-        width:400,
-        height:400,
-        borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(14,165,233,.16) 0%, rgba(14,165,233,0) 72%)",
-        filter:"blur(18px)",
-        animation:"floatSoft 16s ease-in-out infinite"
-      }}/>
-      <div style={{
-        position:"absolute",
-        top:"16%",
-        left:"50%",
-        transform:"translateX(-50%)",
-        width:620,
-        height:620,
-        borderRadius:"50%",
-        background:"radial-gradient(circle, rgba(96,165,250,.10) 0%, rgba(255,255,255,0) 67%)",
-        filter:"blur(26px)",
-        animation:"glowPulse 12s ease-in-out infinite"
-      }}/>
-
-      <svg
-        viewBox="0 0 1600 900"
-        preserveAspectRatio="none"
-        style={{
-          position:"absolute",
-          inset:0,
-          width:"100%",
-          height:"100%",
-          opacity:.58,
-          animation:"driftWave 15s ease-in-out infinite"
-        }}
-      >
-        <defs>
-          <linearGradient id="waveStroke1" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="rgba(96,165,250,0)" />
-            <stop offset="30%" stopColor="rgba(59,130,246,.24)" />
-            <stop offset="60%" stopColor="rgba(14,165,233,.18)" />
-            <stop offset="100%" stopColor="rgba(96,165,250,0)" />
-          </linearGradient>
-          <linearGradient id="waveStroke2" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="rgba(59,130,246,0)" />
-            <stop offset="45%" stopColor="rgba(59,130,246,.18)" />
-            <stop offset="75%" stopColor="rgba(125,211,252,.15)" />
-            <stop offset="100%" stopColor="rgba(59,130,246,0)" />
-          </linearGradient>
-        </defs>
-        <path d="M-80 240 C 180 150, 360 350, 620 255 S 1120 130, 1680 270" fill="none" stroke="url(#waveStroke1)" strokeWidth="3" strokeLinecap="round"/>
-        <path d="M-120 640 C 220 500, 480 760, 820 625 S 1280 520, 1720 690" fill="none" stroke="url(#waveStroke2)" strokeWidth="2.5" strokeLinecap="round"/>
-        <path d="M1060 160 C 1220 230, 1280 340, 1170 470 C 1070 585, 1090 705, 1330 760" fill="none" stroke="rgba(59,130,246,.08)" strokeWidth="52" strokeLinecap="round"/>
-      </svg>
-
-      <svg
-        viewBox="0 0 1600 900"
-        preserveAspectRatio="none"
-        style={{
-          position:"absolute",
-          inset:0,
-          width:"100%",
-          height:"100%",
-          opacity:.5,
-          animation:"driftWaveAlt 17s ease-in-out infinite"
-        }}
-      >
-        <path d="M-120 330 C 140 250, 390 440, 660 360 S 1130 255, 1720 410" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M-100 710 C 180 610, 470 820, 820 710 S 1270 620, 1710 760" fill="none" stroke="rgba(255,255,255,.22)" strokeWidth="1.2" strokeLinecap="round"/>
-      </svg>
-
-      <div style={{
-        position:"relative",
-        zIndex:1,
-        maxWidth:860,
-        padding:"0 8px"
-      }}>
-        <div style={{
-          display:"inline-block",
-          padding:"8px 20px",
-          borderRadius:100,
-          background:"rgba(255,255,255,.68)",
-          border:"1px solid rgba(37,99,235,.11)",
-          boxShadow:"0 10px 24px rgba(37,99,235,.06)",
-          fontSize:12,
-          fontWeight:700,
-          color:"#1D4ED8",
-          marginBottom:30,
-          letterSpacing:"1.5px",
-          fontFamily:F,
-          backdropFilter:"blur(8px)",
-          animation:"heroReveal 1.15s cubic-bezier(.22,1,.36,1) both"
-        }}>
-          CONTADORES PÚBLICOS CERTIFICADOS EN COLOMBIA
-        </div>
-
-        <h1 style={{
-          fontFamily:FH,
-          fontSize:"clamp(32px,5.3vw,58px)",
-          fontWeight:700,
-          lineHeight:1.08,
-          color:"#0B1D3A",
-          marginBottom:22,
-          animation:"heroReveal 1.35s cubic-bezier(.22,1,.36,1) both",
-          animationDelay:".22s"
-        }}>
-          Soluciones contables con visión <span style={{color:"#2563EB"}}>moderna, clara y confiable</span>
-        </h1>
-
-        <p style={{
-          fontSize:17,
-          color:"#475569",
-          lineHeight:1.85,
-          maxWidth:720,
-          margin:"0 auto 38px",
-          fontFamily:F,
-          animation:"heroReveal 1.45s cubic-bezier(.22,1,.36,1) both",
-          animationDelay:".46s"
-        }}>
-          Servicios contables, tributarios y financieros para personas y empresas en Colombia.
-          Procesos bien estructurados, acompañamiento profesional y una experiencia digital más ágil para impulsar su crecimiento.
-        </p>
-
-        <div style={{marginBottom:14,animation:"heroReveal 1.55s cubic-bezier(.22,1,.36,1) both",animationDelay:".74s"}}>
-          <a
-            href="#certificacion"
-            style={{
-              display:"inline-block",
-              padding:"15px 34px",
-              borderRadius:15,
-              background:"linear-gradient(135deg,#2563EB,#38BDF8)",
-              color:"#fff",
-              fontSize:15,
-              fontWeight:700,
-              textDecoration:"none",
-              boxShadow:"0 18px 34px rgba(37,99,235,.18)",
-              fontFamily:F,
-              textAlign:"center",
-              lineHeight:1.4,
-              border:"1px solid rgba(191,219,254,.28)",
-              transition:"transform .28s ease, box-shadow .28s ease, filter .28s ease",
-              position:"relative",
-              overflow:"hidden"
-            }}
-            onMouseEnter={e=>{
-              e.currentTarget.style.transform="translateY(-2px)";
-              e.currentTarget.style.boxShadow="0 20px 36px rgba(37,99,235,.24)";
-              e.currentTarget.style.filter="brightness(1.02)";
-            }}
-            onMouseLeave={e=>{
-              e.currentTarget.style.transform="translateY(0)";
-              e.currentTarget.style.boxShadow="0 16px 30px rgba(37,99,235,.18)";
-              e.currentTarget.style.filter="brightness(1)";
-            }}
-          >
-            Solicite su certificado de ingresos firmado por Contador Público
-          </a>
-        </div>
-
-        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:12,animation:"heroReveal 1.55s cubic-bezier(.22,1,.36,1) both",animationDelay:".98s"}}>
-          <a
-            href="#planes"
-            style={{
-              padding:"12px 24px",
-              borderRadius:12,
-              color:"#1E3A8A",
-              fontSize:14,
-              fontWeight:700,
-              textDecoration:"none",
-              border:"1px solid rgba(37,99,235,.12)",
-              background:"rgba(255,255,255,.68)",
-              fontFamily:F,
-              backdropFilter:"blur(8px)",
-              boxShadow:"0 10px 20px rgba(37,99,235,.05)",
-              transition:"transform .26s ease, box-shadow .26s ease, background .26s ease"
-            }}
-            onMouseEnter={e=>{
-              e.currentTarget.style.transform="translateY(-2px)";
-              e.currentTarget.style.boxShadow="0 14px 24px rgba(37,99,235,.10)";
-              e.currentTarget.style.background="rgba(255,255,255,.88)";
-            }}
-            onMouseLeave={e=>{
-              e.currentTarget.style.transform="translateY(0)";
-              e.currentTarget.style.boxShadow="0 10px 20px rgba(37,99,235,.05)";
-              e.currentTarget.style.background="rgba(255,255,255,.68)";
-            }}
-          >
-            Ver Planes de Contabilidad
-          </a>
-
-          <a
-            href="#tramites"
-            style={{
-              padding:"12px 24px",
-              borderRadius:12,
-              color:"#1E3A8A",
-              fontSize:14,
-              fontWeight:700,
-              textDecoration:"none",
-              border:"1px solid rgba(37,99,235,.12)",
-              background:"rgba(255,255,255,.68)",
-              fontFamily:F,
-              backdropFilter:"blur(8px)",
-              boxShadow:"0 10px 20px rgba(37,99,235,.05)",
-              transition:"transform .26s ease, box-shadow .26s ease, background .26s ease"
-            }}
-            onMouseEnter={e=>{
-              e.currentTarget.style.transform="translateY(-2px)";
-              e.currentTarget.style.boxShadow="0 14px 24px rgba(37,99,235,.10)";
-              e.currentTarget.style.background="rgba(255,255,255,.88)";
-            }}
-            onMouseLeave={e=>{
-              e.currentTarget.style.transform="translateY(0)";
-              e.currentTarget.style.boxShadow="0 10px 20px rgba(37,99,235,.05)";
-              e.currentTarget.style.background="rgba(255,255,255,.68)";
-            }}
-          >
-            Declaración de Renta
-          </a>
-        </div>
-
-        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",animation:"heroReveal 1.55s cubic-bezier(.22,1,.36,1) both",animationDelay:"1.18s"}}>
-          <a
-            href="#servicios"
-            style={{
-              padding:"10px 20px",
-              borderRadius:10,
-              background:"rgba(37,99,235,.08)",
-              color:"#1E3A8A",
-              fontSize:14,
-              fontWeight:700,
-              textDecoration:"none",
-              fontFamily:F,
-              border:"1px solid rgba(37,99,235,.10)",
-              transition:"transform .26s ease, background .26s ease, box-shadow .26s ease"
-            }}
-            onMouseEnter={e=>{
-              e.currentTarget.style.transform="translateY(-2px)";
-              e.currentTarget.style.background="rgba(37,99,235,.12)";
-              e.currentTarget.style.boxShadow="0 12px 22px rgba(37,99,235,.08)";
-            }}
-            onMouseLeave={e=>{
-              e.currentTarget.style.transform="translateY(0)";
-              e.currentTarget.style.background="rgba(37,99,235,.08)";
-              e.currentTarget.style.boxShadow="none";
-            }}
-          >
-            Asesoría Tributaria
-          </a>
-
-          <a
-            href="#tramites"
-            style={{
-              padding:"10px 20px",
-              borderRadius:10,
-              background:"rgba(37,99,235,.08)",
-              color:"#1E3A8A",
-              fontSize:14,
-              fontWeight:700,
-              textDecoration:"none",
-              fontFamily:F,
-              border:"1px solid rgba(37,99,235,.10)",
-              transition:"transform .26s ease, background .26s ease, box-shadow .26s ease"
-            }}
-            onMouseEnter={e=>{
-              e.currentTarget.style.transform="translateY(-2px)";
-              e.currentTarget.style.background="rgba(37,99,235,.12)";
-              e.currentTarget.style.boxShadow="0 12px 22px rgba(37,99,235,.08)";
-            }}
-            onMouseLeave={e=>{
-              e.currentTarget.style.transform="translateY(0)";
-              e.currentTarget.style.background="rgba(37,99,235,.08)";
-              e.currentTarget.style.boxShadow="none";
-            }}
-          >
-            Crear mi Empresa
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-
-function WhyUs(){return(<Sec id="whyus" title="¿Por qué elegir a CONTARAE?" sub="NUESTROS DIFERENCIALES" bg={B[6]}><div style={{maxWidth:760,margin:"0 auto 24px",textAlign:"center",fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F}}>Diseñamos una experiencia profesional, clara y cercana para que cada trámite, cálculo o servicio tenga una presentación más confiable y fácil de entender.</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:20}}>{[
+function WhyUs(){return(<Sec id="whyus" title="¿Por qué elegir a CONTARAE?" sub="NUESTROS DIFERENCIALES" bg={B[6]}><div style={{maxWidth:760,margin:"0 auto 24px",textAlign:"center",fontSize:15,color:"#5A6F8A",lineHeight:1.8,fontFamily:F}}>Diseñamos una experiencia profesional, clara y cercana para que cada trámite, cálculo o servicio tenga una presentación más confiable y fácil de entender.</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,300px),1fr))",gap:20}}>{[
   {i:"⚡",t:"Respuesta inmediata",d:"Atendemos su solicitud en menos de 24 horas hábiles. Su tiempo es valioso y lo respetamos con la agilidad que necesita."},
   {i:"🎓",t:"Contadores Públicos certificados",d:"Profesionales con tarjeta profesional vigente ante la Junta Central de Contadores y experiencia comprobada."},
   {i:"💻",t:"100% en línea",d:"Todos nuestros servicios se gestionan de forma digital, sin desplazamientos. Desde cualquier lugar de Colombia."},
@@ -1743,13 +1393,13 @@ function WhyUs(){return(<Sec id="whyus" title="¿Por qué elegir a CONTARAE?" su
 ].map((w,i)=><Cd key={i}><div style={{fontSize:28,marginBottom:8}}>{w.i}</div><h3 style={{fontSize:16,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{w.t}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{w.d}</p></Cd>)}</div></Sec>)}
 
 function SvcS(){const svcs=[
-  {i:"📊",t:"Contabilidad Integral",d:"Ciclo contable completo para microempresas, emprendedores y pymes: registro de operaciones, conciliaciones bancarias, estados financieros y aplicación de NIIF.",p:"/contabilidad-para-pymes",w:"Hola CONTARAE, estoy interesado en el servicio de Contabilidad Integral."},
-  {i:"📋",t:"Asesoría Tributaria",d:"Acompañamiento en obligaciones ante la DIAN: declaración de renta, IVA, retención en la fuente, ICA, información exógena y planeación tributaria.",p:"/asesoria-tributaria",w:"Hola CONTARAE, necesito asesoría tributaria."},
-  {i:"💰",t:"Gestión Financiera",d:"Presupuestos, flujo de caja, indicadores financieros (KPIs), análisis de costos y reportes gerenciales personalizados.",p:"/servicios-contables",w:"Hola CONTARAE, me interesa el servicio de Gestión Financiera."},
+  {i:"📊",t:"Contabilidad y Gestión Financiera",d:"Ciclo contable, conciliaciones, estados financieros y NIIF. Presupuestos, flujo de caja, indicadores, análisis de costos y reportes para microempresas y pymes.",p:"/contabilidad-para-pymes",w:"Hola CONTARAE, estoy interesado en el servicio de Contabilidad Integral."},
+  {i:"📋",t:"Asesoría Tributaria y Empresarial",d:"Renta, IVA, retenciones, ICA, información exógena y planeación tributaria. Orientación societaria, auditoría interna, informes especiales y otros trámites contables.",p:"/asesoria-tributaria",w:"Hola CONTARAE, necesito asesoría tributaria."},
+  {i:"⚙",t:"Automatización de Procesos",d:"Conectamos sus herramientas, formularios, documentos y reportes para simplificar tareas repetitivas. Propuesta a medida, con alcance y costos definidos.",p:"/servicios-contables#automatizacion-procesos",w:"Hola CONTARAE, quiero cotizar la automatización de un proceso de mi negocio."},
   {i:"👥",t:"Nómina y Seguridad Social",d:"Liquidación de salarios, prestaciones sociales, aportes a seguridad social, planilla PILA, contratos laborales y formulario 220.",p:"/nomina-y-seguridad-social",w:"Hola CONTARAE, necesito información sobre Nómina y Seguridad Social."},
   {i:"📄",t:"Certificaciones Contables",d:"Certificados de ingresos, patrimonio y más, firmados por Contador Público. Conforme a Ley 43 de 1990. Entrega digital inmediata en PDF.",p:CERT_ROUTE,w:"Hola CONTARAE, necesito una certificación contable."},
-  {i:"🔧",t:"Otros Servicios Contables",d:"Auditoría interna, informes financieros especiales, asesoría ante la DIAN, liquidación de empresas, constitución de consorcios y orientación societaria.",p:"/servicios-contables",w:"Hola CONTARAE, necesito información sobre un servicio contable específico."}
-];return(<Sec id="servicios" title="Soluciones profesionales para su negocio" sub="NUESTROS SERVICIOS" bg={B[1]}><p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:20,maxWidth:680,margin:"-34px auto 20px",fontFamily:F}}>Outsourcing contable para microempresas, emprendedores y pymes en Colombia.</p><div style={{textAlign:"center",marginBottom:34}}><a href="/servicios-contables" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"11px 18px",borderRadius:13,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.12)",color:"#1D4ED8",fontSize:14,fontWeight:800,textDecoration:"none",fontFamily:F}}>Ver página de servicios contables</a></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:18}}>{svcs.map((s,i)=><Cd key={i}><div style={{fontSize:28,marginBottom:8}}>{s.i}</div><h3 style={{fontSize:16,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{s.t}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{s.d}</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:10}}><a href={s.p} style={{fontSize:14,color:"#2563EB",fontWeight:700,textDecoration:"none",fontFamily:F}}>Ver servicio →</a><a href={wm(s.w)} target="_blank" rel="noopener noreferrer" style={{fontSize:14,color:"#0F766E",fontWeight:700,textDecoration:"none",fontFamily:F}}>WhatsApp →</a></div></Cd>)}</div></Sec>)}
+  {i:"💻",t:"Desarrollo Web con IA Aplicada",d:"Páginas web, formularios e integraciones pensadas para su negocio. Funciones de IA según sus necesidades, con desarrollo, mantenimiento y consumos cotizados por separado.",p:"/servicios-contables#desarrollo-web-ia",w:"Hola CONTARAE, quiero cotizar una página web con IA aplicada para mi negocio."}
+];return(<Sec id="servicios" title="Soluciones profesionales para su negocio" sub="NUESTROS SERVICIOS" bg={B[1]}><p style={{textAlign:"center",fontSize:15,color:"#5A6F8A",marginTop:-34,marginBottom:20,maxWidth:680,margin:"-34px auto 20px",fontFamily:F}}>Servicios contables y soluciones digitales para personas, emprendedores y empresas en Colombia.</p><div style={{textAlign:"center",marginBottom:34}}><a href="/servicios-contables" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"11px 18px",borderRadius:13,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.12)",color:"#1D4ED8",fontSize:14,fontWeight:800,textDecoration:"none",fontFamily:F}}>Ver página de servicios contables</a></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,320px),1fr))",gap:18}}>{svcs.map((s,i)=><Cd key={i}><div style={{fontSize:28,marginBottom:8}}>{s.i}</div><h3 style={{fontSize:16,fontWeight:700,color:"#0B1D3A",marginBottom:6,fontFamily:F}}>{s.t}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{s.d}</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:10}}><a href={s.p} style={{fontSize:14,color:"#2563EB",fontWeight:700,textDecoration:"none",fontFamily:F}}>Ver servicio →</a><a href={wm(s.w)} target="_blank" rel="noopener noreferrer" style={{fontSize:14,color:"#0F766E",fontWeight:700,textDecoration:"none",fontFamily:F}}>WhatsApp →</a></div></Cd>)}</div></Sec>)}
 
 function PlnS(){
   const plans=[
@@ -1814,10 +1464,10 @@ function PlnS(){
 }
 
 function ScnS(){const scn=[{e:"👔",t:"Soy empleado y necesito certificación para arrendar",d:"Le piden certificación de ingresos firmada por contador. La emitimos en horas, 100% en línea.",l:CERT_ROUTE},{e:"💼",t:"Soy independiente y no sé si debo declarar renta",d:"Sus ingresos pueden obligarlo a declarar. Use nuestra herramienta para verificar al instante.",l:"/debo-declarar-renta"},{e:"🏪",t:"Tengo una pyme y necesito organizar mi contabilidad",d:"Su empresa necesita estados financieros confiables y cumplimiento tributario. Nuestros planes lo cubren.",l:"/contabilidad-para-pymes"},{e:"📋",t:"Me pidieron renovar la matrícula mercantil",d:"El plazo vence el 31 de marzo. No renovar genera sanciones. Hacemos el trámite completo.",l:"#tramites"},{e:"🏗️",t:"Quiero crear mi empresa legalmente en Colombia",d:"SAS, LTDA o S.A., Cámara de Comercio, RUT y todos los requisitos para operar formalmente.",l:"/creacion-de-empresa"},{e:"🧮",t:"Quiero saber cuánto me retienen o debo pagar",d:"Use nuestras herramientas: retención en la fuente, planilla independientes, nómina e IVA.",l:"#herramientas"}];
-return(<Sec id="escenarios" title="¿Se identifica con alguno de estos casos?" sub="¿EN QUÉ LE PODEMOS AYUDAR?" bg={B[3]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18}}>{scn.map((s,i)=><a key={i} href={s.l} style={{textDecoration:"none",color:"inherit"}}><Cd s={{cursor:"pointer"}}><div style={{fontSize:28,marginBottom:8}}>{s.e}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{s.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.7,fontFamily:F}}>{s.d}</p><span style={{display:"inline-block",marginTop:8,fontSize:13,color:"#2563EB",fontWeight:600,fontFamily:F}}>Ver solución →</span></Cd></a>)}</div></Sec>)}
+return(<Sec id="escenarios" title="¿Se identifica con alguno de estos casos?" sub="¿EN QUÉ LE PODEMOS AYUDAR?" bg={B[3]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,300px),1fr))",gap:18}}>{scn.map((s,i)=><a key={i} href={s.l} style={{textDecoration:"none",color:"inherit"}}><Cd s={{cursor:"pointer"}}><div style={{fontSize:28,marginBottom:8}}>{s.e}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{s.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.7,fontFamily:F}}>{s.d}</p><span style={{display:"inline-block",marginTop:8,fontSize:13,color:"#2563EB",fontWeight:600,fontFamily:F}}>Ver solución →</span></Cd></a>)}</div></Sec>)}
 
 function TrmS(){const trm=[{i:"📄",t:"Certificación de Ingresos",d:"Documento firmado por Contador Público. Válido ante bancos, inmobiliarias, embajadas. 100% online, entrega inmediata.",l:CERT_ROUTE,w:"Necesito un certificado de ingresos."},{i:"📝",t:"Declaración de Renta",d:"Preparación y presentación ante la DIAN. Plazos 2026: 12 agosto al 26 octubre.",l:"/declaracion-de-renta-personas-naturales",w:"Necesito ayuda con mi declaración de renta."},{i:"🏢",t:"Renovación Matrícula Mercantil",d:"Gestión ante Cámara de Comercio. Plazo: 31 de marzo. Sanciones hasta 17 SMLMV.",l:"#contacto",w:"Necesito renovar mi matrícula mercantil."},{i:"🧾",t:"Facturación Electrónica",d:"Implementación completa: habilitación DIAN, proveedor tecnológico, capacitación y soporte.",l:"/facturacion-electronica",w:"Necesito implementar facturación electrónica."},{i:"📊",t:"Información Exógena",d:"Medios magnéticos ante la DIAN. Sanciones desde $524.000 hasta 5% de sumas no reportadas.",l:"#contacto",w:"Necesito ayuda con información exógena."},{i:"🏗️",t:"Creación de Empresas",d:"SAS, LTDA, S.A.: estatutos, Cámara de Comercio, RUT, cuenta bancaria e IVA.",l:"/creacion-de-empresa",w:"Quiero crear mi empresa en Colombia."}];
-return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAVE" bg={B[4]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:18}}>{trm.map((t,i)=><Cd key={i}><div style={{fontSize:26,marginBottom:6}}>{t.i}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{t.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{t.d}</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8}}><a href={t.l} style={{fontSize:13,color:"#2563EB",fontWeight:700,textDecoration:"none",fontFamily:F}}>Ver detalle →</a><a href={wm("Hola CONTARAE, "+t.w)} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#0F766E",fontWeight:700,textDecoration:"none",fontFamily:F}}>WhatsApp →</a></div></Cd>)}</div></Sec>)}
+return(<Sec id="tramites" title="Trámites más solicitados" sub="TRÁMITES CLAVE" bg={B[4]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,300px),1fr))",gap:18}}>{trm.map((t,i)=><Cd key={i}><div style={{fontSize:26,marginBottom:6}}>{t.i}</div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:5,fontFamily:F}}>{t.t}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.75,fontFamily:F}}>{t.d}</p><div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8}}><a href={t.l} style={{fontSize:13,color:"#2563EB",fontWeight:700,textDecoration:"none",fontFamily:F}}>Ver detalle →</a><a href={wm("Hola CONTARAE, "+t.w)} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#0F766E",fontWeight:700,textDecoration:"none",fontFamily:F}}>WhatsApp →</a></div></Cd>)}</div></Sec>)}
 
 function MiniTrustIcon({kind}){
   const common={width:18,height:18,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:"1.8",strokeLinecap:"round",strokeLinejoin:"round"};
@@ -1897,7 +1547,7 @@ function LeadCaptureForm(){
         <input required type="email" inputMode="email" value={form.email} onChange={e=>update("email",e.target.value)} onBlur={e=>update("email",normalizeEmail(e.target.value))} placeholder="Correo electrónico" autoComplete="email" style={{...IS,borderRadius:13}}/>
       </div>
       <select value={form.serviceInterest} onChange={e=>update("serviceInterest",e.target.value)} style={{...IS,borderRadius:13}}>
-        {["Certificación de ingresos","Declaración de renta","Contabilidad mensual","Asesoría tributaria","Creación de empresa","Facturación electrónica","Otro servicio"].map(item=><option key={item} value={item}>{item}</option>)}
+        {["Certificación de ingresos","Declaración de renta","Contabilidad mensual","Asesoría tributaria","Creación de empresa","Facturación electrónica","Automatización de procesos","Desarrollo web con IA aplicada","Otro servicio"].map(item=><option key={item} value={item}>{item}</option>)}
       </select>
       <textarea value={form.comment} onChange={e=>update("comment",e.target.value)} placeholder="Cuéntanos brevemente qué necesitas" style={{...IS,borderRadius:13,minHeight:86,resize:"vertical"}}/>
       <label style={{display:"flex",gap:10,alignItems:"flex-start",fontFamily:F,fontSize:12,color:"rgba(255,255,255,.78)",lineHeight:1.6}}>
@@ -2296,10 +1946,11 @@ function ServiceSeoPage({config}){
 
       <Sec id="detalle-servicio" title="Qué incluye este servicio" sub="ALCANCE" bg={B[1]}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:18}} className="tool-grid">
-          {config.cards.map(([title,desc],index)=>(
-            <Cd key={index} s={{background:"#fff"}}>
+          {config.cards.map(([title,desc,id,inquiry],index)=>(
+            <Cd key={index} id={id} s={{background:"#fff"}}>
               <h2 style={{fontFamily:FH,fontSize:23,lineHeight:1.22,color:"#0B1D3A",marginBottom:10}}>{title}</h2>
               <p style={{fontSize:15,color:"#52647F",lineHeight:1.85,margin:0}}>{desc}</p>
+              {inquiry&&<a href={wm(inquiry)} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:18,fontFamily:F,color:"#1D4ED8",fontWeight:700}}>Cotizar este servicio →</a>}
             </Cd>
           ))}
         </div>
@@ -3177,7 +2828,7 @@ function ToolIntroCard({item}){
   )
 }
 
-function ToolStage({id,kicker,title,desc,children,tone=0}){const bg=SUB_BG[tone%SUB_BG.length];return(<div id={id} style={{minHeight:"calc(100vh - 108px)",display:"flex",alignItems:"center",padding:"14px 0 10px",scrollMarginTop:"145px"}}><div style={{width:"100%",background:bg,border:"1px solid rgba(37,99,235,.10)",borderRadius:28,padding:"34px 28px 28px",boxShadow:"0 16px 40px rgba(15,23,42,.06)",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg, rgba(37,99,235,0), rgba(37,99,235,.26), rgba(56,189,248,.20), rgba(37,99,235,0))"}}/><div style={{maxWidth:970,margin:"0 auto 14px"}}><div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"6px 14px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:700,color:"#1D4ED8",letterSpacing:"1.2px",fontFamily:F,marginBottom:12}}><span style={{width:14,height:1.5,background:"rgba(37,99,235,.35)",borderRadius:999}}/>{kicker}</div><h3 style={{fontFamily:FH,fontSize:"clamp(28px,3.9vw,42px)",fontWeight:700,color:"#0B1D3A",lineHeight:1.08,margin:"0 0 10px",maxWidth:720,textWrap:"balance"}}>{title}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.82,maxWidth:760,fontFamily:F,margin:0}}>{desc}</p></div><div style={{marginTop:12}}>{children}</div></div></div>)}
+function ToolStage({id,kicker,title,desc,children,tone=0}){const bg=SUB_BG[tone%SUB_BG.length];return(<div id={id} className="home-tool-stage" style={{minHeight:"calc(100vh - 108px)",display:"flex",alignItems:"center",padding:"14px 0 10px",scrollMarginTop:"145px"}}><div style={{width:"100%",background:bg,border:"1px solid rgba(37,99,235,.10)",borderRadius:28,padding:"34px 28px 28px",boxShadow:"0 16px 40px rgba(15,23,42,.06)",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg, rgba(37,99,235,0), rgba(37,99,235,.26), rgba(56,189,248,.20), rgba(37,99,235,0))"}}/><div style={{maxWidth:970,margin:"0 auto 14px"}}><div style={{display:"inline-flex",alignItems:"center",gap:10,padding:"6px 14px",borderRadius:999,background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.10)",fontSize:11,fontWeight:700,color:"#1D4ED8",letterSpacing:"1.2px",fontFamily:F,marginBottom:12}}><span style={{width:14,height:1.5,background:"rgba(37,99,235,.35)",borderRadius:999}}/>{kicker}</div><h3 style={{fontFamily:FH,fontSize:"clamp(28px,3.9vw,42px)",fontWeight:700,color:"#0B1D3A",lineHeight:1.08,margin:"0 0 10px",maxWidth:720,textWrap:"balance"}}>{title}</h3><p style={{fontSize:15,color:"#5A6F8A",lineHeight:1.82,maxWidth:760,fontFamily:F,margin:0}}>{desc}</p></div><div style={{marginTop:12}}>{children}</div></div></div>)}
 
 function Tools(){const uv25=49799,uv26=52374;
 return(<Sec id="herramientas" title="Herramientas CONTARAE" sub="HERRAMIENTAS" bg={B[6]}>
@@ -3189,7 +2840,7 @@ return(<Sec id="herramientas" title="Herramientas CONTARAE" sub="HERRAMIENTAS" b
     {TOOL_META.map(item=><ToolIntroCard key={item.id} item={item}/>) }
   </div>
 
-  <div style={{display:"grid",gap:26}}>
+  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:26}}>
     <ToolStage id="tool-renta" tone={0} kicker="ANÁLISIS TRIBUTARIO" title="Condiciones y fecha para declarar renta" desc="Revise topes en UVT y pesos, entienda qué puede sumar en cada condición y consulte la fecha estimada de presentación según los últimos dígitos."><ToolRenta uv={uv25}/></ToolStage>
     <ToolStage id="tool-retencion" tone={1} kicker="CÁLCULO MENSUAL" title="Retención en la fuente" desc="Estime la retención aplicable con deducciones y rentas exentas, y compare fácilmente los años 2025 y 2026 para tomar mejores decisiones tributarias."><ToolRet uv25={uv25} uv26={uv26}/></ToolStage>
     <ToolStage id="tool-planilla" tone={2} kicker="SEGURIDAD SOCIAL" title="Planilla independientes" desc="Simule el valor de salud, pensión y ARL para contratistas e independientes con una vista clara del IBC y del total mensual a pagar."><ToolPlan/></ToolStage>
@@ -3308,7 +2959,7 @@ function ToolRenta({uv}){
   };
   return(
     <div style={PANEL}>
-      <div style={{display:"grid",gap:18}}>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:18}}>
         <div>
           <h3 style={{fontSize:24,fontWeight:900,color:"#0B1D3A",marginBottom:8,fontFamily:F}}>Guía de declaración de renta personas naturales</h3>
           <div style={{...NOTE_BOX,marginBottom:0}}>Año gravable 2025 · UVT usada para topes: <strong>{cop(uv)}</strong>. Revise las condiciones, consulte su fecha estimada y solicite confirmación inicial sin costo.</div>
@@ -3317,7 +2968,7 @@ function ToolRenta({uv}){
         <div style={{padding:18,borderRadius:20,background:"linear-gradient(135deg,#0B1D3A,#1B3A5C)",color:"#fff",border:"1px solid rgba(125,211,252,.16)",boxShadow:"0 18px 42px rgba(15,23,42,.12)"}}>
           <div style={{fontFamily:FH,fontSize:25,lineHeight:1.15,marginBottom:8}}>Declarar renta no siempre significa pagar impuesto</div>
           <p style={{fontFamily:F,fontSize:14,lineHeight:1.75,color:"rgba(240,249,255,.86)",margin:"0 0 12px"}}>En muchos casos la declaración queda sin valor a pagar o con saldos controlados por retenciones, deducciones y rentas exentas. Presentarla a tiempo evita sanciones, intereses y requerimientos.</p>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,210px),1fr))",gap:10}}>
             <div style={{padding:13,borderRadius:16,background:"rgba(255,255,255,.08)",border:"1px solid rgba(191,219,254,.16)"}}><div style={{fontSize:11,letterSpacing:"1.1px",fontWeight:900,color:"#BFDBFE",fontFamily:F}}>SANCIÓN MÍNIMA</div><strong style={{display:"block",fontSize:20,fontFamily:FH,marginTop:4}}>{sancionUvt} UVT</strong><span style={{fontFamily:F,fontSize:13,color:"rgba(226,232,240,.82)"}}>{cop(sancionCop)} en 2026</span></div>
             <div style={{padding:13,borderRadius:16,background:"rgba(255,255,255,.08)",border:"1px solid rgba(191,219,254,.16)",fontFamily:F,fontSize:13,lineHeight:1.65,color:"rgba(226,232,240,.86)"}}>Si no se declara cuando corresponde, la sanción puede ser mayor según ingresos, consignaciones, impuesto a cargo, emplazamientos o requerimientos.</div>
           </div>
@@ -3328,7 +2979,7 @@ function ToolRenta({uv}){
             const open=active===group.id;
             return(
               <div key={group.id} style={{padding:16,borderRadius:18,background:open?"#F8FBFF":"#fff",border:`1px solid ${open?"rgba(37,99,235,.28)":"rgba(37,99,235,.10)"}`,boxShadow:open?"0 16px 34px rgba(37,99,235,.08)":"0 10px 24px rgba(15,23,42,.04)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:10}}>
+                <div className="renta-condition-heading" style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:10}}>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <span style={{width:36,height:36,borderRadius:14,background:"rgba(37,99,235,.08)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{group.icon}</span>
                     <div>
@@ -3399,7 +3050,7 @@ function ToolRenta({uv}){
             </div>
             <div style={{padding:16,borderRadius:18,background:"rgba(15,23,42,.03)",border:"1px solid rgba(37,99,235,.10)"}}>
               <div style={{fontFamily:F,fontSize:13,fontWeight:900,color:"#0B1D3A",marginBottom:10}}>Soportes que normalmente revisamos</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,220px),1fr))",gap:8}}>
                 {supportChecklist.map(item=><div key={item} style={{display:"flex",gap:8,alignItems:"flex-start",fontFamily:F,fontSize:13,color:"#475569",lineHeight:1.55}}><span style={{width:18,height:18,borderRadius:999,background:"rgba(37,99,235,.10)",color:"#1D4ED8",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,flex:"0 0 auto"}}>✓</span><span>{item}</span></div>)}
               </div>
             </div>
@@ -3504,7 +3155,7 @@ function Abt(){return(<Sec id="nosotros" title="Conozca a CONTARAE" sub="NOSOTRO
 
 /* ══════ BLOG ══════ */
 const BLG=[{title:"Declaración de renta PN 2026",tag:"Tributario",date:"Abr 2026",ex:"Conozca topes, plazos, soportes y sanciones para cumplir con su declaración del año gravable 2025 sin contratiempos.",content:"La declaración de renta de personas naturales en 2026 exige revisar topes de ingresos, patrimonio, compras, consumos y movimientos bancarios. Además de conocer las fechas oficiales, conviene preparar con tiempo certificados de ingresos, extractos, soportes de inversiones, deudas y deducciones. Una revisión previa evita sanciones por extemporaneidad, omisión o inexactitud y le permite planear mejor su flujo de caja antes de presentar y pagar ante la DIAN."},{title:"Renovación matrícula mercantil",tag:"Empresarial",date:"Mar 2026",ex:"Revise requisitos, plazo máximo, costos y consecuencias de no renovar oportunamente su registro mercantil.",content:"La renovación de matrícula mercantil debe gestionarse cada año dentro del plazo legal. No hacerlo puede generar sanciones, afectar la reputación comercial de la empresa y complicar trámites bancarios, contractuales y societarios. Tener actualizada la información en Cámara de Comercio también facilita la formalización del negocio y la participación en procesos de contratación o validación ante terceros."},{title:"Certificación de ingresos",tag:"Certificaciones",date:"Mar 2026",ex:"Le explicamos qué soportes se necesitan, cómo se determina la tarifa y en qué casos la solicitan bancos, inmobiliarias o embajadas.",content:"La certificación de ingresos debe elaborarse con soportes suficientes y coherentes con la realidad económica del solicitante. Dependiendo del tipo de ingreso, pueden requerirse desprendibles de nómina, facturas, contratos, extractos, certificados de inversiones o documentos de arriendo. Una certificación bien preparada brinda confianza al tercero que la recibe y reduce devoluciones o requerimientos adicionales."},{title:"Facturación electrónica",tag:"Tributario",date:"Feb 2026",ex:"Obligaciones, requisitos técnicos y puntos clave para implementar o actualizar su facturación electrónica correctamente.",content:"La facturación electrónica no es solo un requisito formal: impacta el control del ingreso, la trazabilidad de la operación y el cumplimiento ante la DIAN. Es importante validar numeración, habilitación, proveedor tecnológico, certificado digital y consistencia entre facturas, notas crédito y reportes contables. Una implementación adecuada evita rechazos, errores de transmisión y diferencias tributarias posteriores."},{title:"5 errores contabilidad pymes",tag:"Contable",date:"Ene 2026",ex:"Errores frecuentes en pequeñas empresas y recomendaciones prácticas para evitarlos desde la operación diaria.",content:"Entre los errores más comunes están mezclar finanzas personales con las del negocio, no conciliar bancos, no conservar soportes, no revisar impuestos periódicamente y no interpretar indicadores financieros. Corregir estos puntos mejora la visibilidad del negocio, permite tomar mejores decisiones y disminuye riesgos tributarios y contables con el paso del tiempo."},{title:"Información exógena DIAN",tag:"Tributario",date:"Ene 2026",ex:"Qué es, quiénes deben presentarla, qué información reporta y por qué conviene prepararla con anticipación.",content:"La información exógena o medios magnéticos exige consolidar operaciones con terceros, pagos, retenciones, ingresos y otros movimientos reportables. Prepararla con anticipación ayuda a depurar bases, corregir inconsistencias y evitar sanciones derivadas de errores, omisiones o reportes tardíos. Es una obligación sensible porque cruza información relevante con otras declaraciones y reportes frente a la DIAN."}];
-function BlgS(){const[exp,sE]=useState(null);return(<Sec id="blog" title="Artículos y guías" sub="BLOG" bg={B[2]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:18}}>{BLG.map((p,i)=><Cd key={i} s={{borderRadius:16,overflow:"hidden",padding:0,background:"#fff"}}><div style={{padding:22}}><div style={{display:"flex",gap:6,marginBottom:8}}><span style={{fontSize:10,fontWeight:600,color:"#2563EB",background:"rgba(37,99,235,.06)",padding:"3px 9px",borderRadius:100,fontFamily:F}}>{p.tag}</span><span style={{fontSize:10,color:"#7A8FA8",fontFamily:F}}>{p.date}</span></div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:6,lineHeight:1.45,fontFamily:F}}>{p.title}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.7,fontFamily:F}}>{p.ex}</p><button onClick={()=>sE(exp===i?null:i)} style={{marginTop:10,fontSize:13,color:"#2563EB",fontWeight:600,fontFamily:F,background:"none",border:"none",cursor:"pointer",padding:0}}>{exp===i?"Cerrar ✕":"Leer más →"}</button></div>{exp===i&&<div style={{padding:"0 22px 22px",borderTop:"1px solid rgba(37,99,235,.05)"}}><div style={{paddingTop:14,fontSize:14,color:"#3a5068",lineHeight:1.9,fontFamily:F,whiteSpace:"pre-line"}}>{p.content}</div><div style={{marginTop:14,padding:12,borderRadius:8,background:"rgba(37,99,235,.04)"}}><a href={wm(`Hola CONTARAE, necesito ayuda con: ${p.title}`)} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#2563EB",fontWeight:600,textDecoration:"none",fontFamily:F}}>Consultar por WhatsApp →</a></div></div>}</Cd>)}</div></Sec>)}
+function BlgS(){const[exp,sE]=useState(null);return(<Sec id="blog" title="Artículos y guías" sub="BLOG" bg={B[2]}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,320px),1fr))",gap:18}}>{BLG.map((p,i)=><Cd key={i} s={{borderRadius:16,overflow:"hidden",padding:0,background:"#fff"}}><div style={{padding:22}}><div style={{display:"flex",gap:6,marginBottom:8}}><span style={{fontSize:10,fontWeight:600,color:"#2563EB",background:"rgba(37,99,235,.06)",padding:"3px 9px",borderRadius:100,fontFamily:F}}>{p.tag}</span><span style={{fontSize:10,color:"#7A8FA8",fontFamily:F}}>{p.date}</span></div><h3 style={{fontSize:15,fontWeight:700,color:"#0B1D3A",marginBottom:6,lineHeight:1.45,fontFamily:F}}>{p.title}</h3><p style={{fontSize:14,color:"#5A6F8A",lineHeight:1.7,fontFamily:F}}>{p.ex}</p><button onClick={()=>sE(exp===i?null:i)} style={{marginTop:10,fontSize:13,color:"#2563EB",fontWeight:600,fontFamily:F,background:"none",border:"none",cursor:"pointer",padding:0}}>{exp===i?"Cerrar ✕":"Leer más →"}</button></div>{exp===i&&<div style={{padding:"0 22px 22px",borderTop:"1px solid rgba(37,99,235,.05)"}}><div style={{paddingTop:14,fontSize:14,color:"#3a5068",lineHeight:1.9,fontFamily:F,whiteSpace:"pre-line"}}>{p.content}</div><div style={{marginTop:14,padding:12,borderRadius:8,background:"rgba(37,99,235,.04)"}}><a href={wm(`Hola CONTARAE, necesito ayuda con: ${p.title}`)} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#2563EB",fontWeight:600,textDecoration:"none",fontFamily:F}}>Consultar por WhatsApp →</a></div></div>}</Cd>)}</div></Sec>)}
 
 /* ══════ DOWNLOADS ══════ */
 const DL=[{n:"Checklist declaración renta PN",d:"Documentos para declarar renta 2025.",f:"PDF"},{n:"Calendario tributario DIAN 2026",d:"Fechas de todas las obligaciones.",f:"PDF"},{n:"Control ingresos y gastos",d:"Plantilla mensual para independientes.",f:"Excel"},{n:"Conciliación retenciones",d:"Cruce retenciones vs formulario 220.",f:"Excel"},{n:"Control facturación mensual",d:"Facturas con cálculo automático de IVA.",f:"Excel"},{n:"Conciliación bancaria",d:"Compare extracto vs registros contables.",f:"Excel"},{n:"Inventario activos fijos",d:"Activos con depreciación y valor en libros.",f:"Excel"},{n:"Estados financieros pymes",d:"Balance y estado de resultados NIIF.",f:"Excel"},{n:"Liquidación prestaciones",d:"Prima, cesantías, intereses y vacaciones.",f:"Excel"},{n:"Control nómina mensual",d:"Nómina con deducciones y aportes.",f:"Excel"},{n:"Modelo certificación laboral",d:"Formato listo para diligenciar.",f:"Word"},{n:"Guía soportes certificación",d:"Documentos según tipo de ingreso.",f:"PDF"},{n:"Autorización datos personales",d:"Formato Ley 1581/2012.",f:"PDF"},{n:"Solicitud certificación contable",d:"Modelo de solicitud formal.",f:"Word"},{n:"Checklist creación empresa",d:"Requisitos para SAS, LTDA o S.A.",f:"PDF"},{n:"Modelo acta constitución SAS",d:"Acta y estatutos para SAS.",f:"Word"}];
@@ -3571,7 +3222,7 @@ export default function App(){
     {adminRoute?<PortalRoute><AdminPanel/></PortalRoute>:clientPortalRoute?<PortalRoute><ClientPortal/></PortalRoute>:verifyRoute?<CertificateVerificationPage/>:paymentsPortalRoute?<PaymentsPortalPage/>:paymentRoute?<>
     <ServicePaymentPage/>
     </>:<>
-    <Nav path={path}/>{!toolRoute&&<Banner path={path}/>}
+    <Nav path={path}/>{!toolRoute&&(certRoute||certSupportRoute||serviceSeoRoute)&&<Banner path={path}/>}
     {certSupportRoute?<>
       <CertificationSupportPage config={certSupportConfig}/>
       <div className="ai"><FaqS/></div>
@@ -3591,7 +3242,7 @@ export default function App(){
       <div className="ai"><FaqS/></div>
       <div className="ai"><Ftr/></div>
     </>:<>
-      <Hero/>
+      <HomeHero/>
       <div className="ai"><SvcS/></div>
       <div className="ai"><PlnS/></div>
       <div className="ai"><ScnS/></div>
